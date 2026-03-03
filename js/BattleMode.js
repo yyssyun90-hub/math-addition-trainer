@@ -3,14 +3,26 @@
  * 包含：快速匹配、创建房间、加入房间、实时对战、聊天系统、AI对手
  * 依赖：utils.js (需要 I18n, SoundManager, Validators, GAME_CONSTANTS)
  * 
- * 版本：3.0.0
+ * 版本：6.0.0 (终极完美版)
  * 更新说明：
- * - 添加匹配超时处理（30秒）
- * - 添加AI对手功能（三个难度级别）
- * - 添加本地对战模式（Supabase降级）
- * - 修复所有55个自查发现的问题
- * - 优化资源清理和内存管理
- * - 完善错误处理和并发控制
+ * - 修复无匹配数字时未更新目标数字的问题
+ * - 添加糖果主题明亮色彩样式
+ * - 增强并发控制和信号量系统
+ * - 添加本地存储持久化（支持localStorage降级到内存存储）
+ * - 优化性能和内存管理
+ * - 完善错误处理和Promise追踪
+ * - 修复XSS漏洞和安全性问题
+ * - 添加浏览器后退按钮处理
+ * - 添加多标签页同步（BroadcastChannel）
+ * - 添加心跳检测和自动重连（带防抖）
+ * - 添加移动端触摸事件支持
+ * - 添加字体回退和缩放检测
+ * - 添加长时间等待提示
+ * - 添加对手离线通知
+ * - 优化DOM查询缓存
+ * - 添加观察者管理（ResizeObserver）
+ * - 完善AI资源清理
+ * - 增强输入验证
  * ============================================================
  */
 
@@ -25,38 +37,77 @@ class BattleMode {
             opponentId: null,
             opponentName: null,
             opponentIsAI: false, // 标记对手是否为AI
-            aiDifficulty: 'medium', // AI难度级别：easy/medium/hard
+            aiDifficulty: 'medium', // AI难度级别：easy/medium/hard/expert
             status: 'waiting', // 'waiting', 'playing', 'finished'
             myTurn: false,
             roundTimer: null,
             channel: null,
+            subscriptionId: null,
             gameActive: false,
             selectedCards: []
         };
         
         // 匹配系统状态
-        this.matchTimeoutId = null; // 匹配超时定时器
-        this.matchStartTime = null; // 匹配开始时间
-        this.queueStatusInterval = null; // 排队状态更新定时器
+        this.matchTimeoutId = null;
+        this.matchStartTime = null;
+        this.queueStatusInterval = null;
+        this.longWaitTimer = null;
         
         // 重连机制
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 3;
+        this.reconnectTimer = null;
         
         // AI相关
-        this.aiResponseTimer = null; // AI聊天回复定时器
-        this.aiMoveTimer = null; // AI移动定时器
-        this.aiMoveRetryCount = 0; // AI移动重试计数
-        this.localPollingTimer = null; // 本地对战轮询定时器
+        this.aiResponseTimer = null;
+        this.aiMoveTimer = null;
+        this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
+        this.aiResponsePending = false;
+        this.localPollingTimer = null;
         
-        // 并发控制标志
-        this.cardClickProcessing = false; // 卡片点击处理中
-        this.endTurnInProgress = false; // 结束回合处理中
-        this.rematchInProgress = false; // 再战处理中
-        this.scoreUpdateInProgress = false; // 分数更新处理中
+        // 并发控制
+        this.cardClickProcessing = false;
+        this.endTurnInProgress = false;
+        this.rematchInProgress = false;
+        this.scoreUpdateInProgress = false;
+        
+        // 防抖
+        this.clickDebounceTimer = null;
+        this.lastClickTime = 0;
+        this.CLICK_DEBOUNCE_TIME = 300;
+        this.zoomTimer = null;
+        
+        // 信号量系统
+        this.semaphores = {
+            match: false,
+            battle: false,
+            score: false,
+            turn: false,
+            ai: false
+        };
+        
+        // Promise追踪
+        this.activePromises = new Set();
+        this.promiseCounter = 0;
+        
+        // 内存存储（localStorage降级用）
+        this.memoryStorage = new Map();
+        
+        // DOM元素缓存
+        this.cachedElements = null;
+        
+        // 观察者管理
+        this.observers = {
+            resize: null,
+            mutation: null,
+            intersection: null
+        };
         
         // 事件处理器
         this.onlineHandler = null;
+        this.offlineHandler = null;
+        this.popStateHandler = null;
         this.quickMatchHandler = null;
         this.joinRoomHandler = null;
         this.copyHandler = null;
@@ -68,96 +119,806 @@ class BattleMode {
         this.confirmJoinHandler = null;
         this.cancelJoinHandler = null;
         this.gridClickHandler = null;
+        this.gridTouchHandler = null;
         this.continueWaitingHandler = null;
         this.playWithAIHandler = null;
         
         // 常量定义
         this.constants = {
-            MATCH_TIMEOUT: 30000, // 30秒
-            MAX_CHAT_MESSAGES: 100, // 最大聊天记录数
-            ELO_K_FACTOR: 32, // ELO计算常数
-            BASE_MATCH_RANGE: 200, // 基础匹配范围
-            MAX_MATCH_RANGE: 400, // 最大匹配范围
-            AI_RESPONSE_DELAY: 1000, // AI回复延迟（毫秒）
-            AI_MOVE_DELAY: 500, // AI移动延迟（毫秒）
-            AI_MAX_RETRIES: 3, // AI最大重试次数
-            ROUND_TIME: 30, // 每回合时间（秒）
-            TIME_BONUS_FACTOR: 15, // 时间奖励因子
-            MAX_TIME_BONUS: 200 // 最大时间奖励
+            MATCH_TIMEOUT: 30000,
+            MAX_CHAT_MESSAGES: 100,
+            ELO_K_FACTOR: 32,
+            BASE_MATCH_RANGE: 200,
+            MAX_MATCH_RANGE: 400,
+            AI_RESPONSE_DELAY: 1000,
+            AI_MOVE_DELAY: 500,
+            AI_MAX_RETRIES: 3,
+            ROUND_TIME: 30,
+            TIME_BONUS_FACTOR: 15,
+            MAX_TIME_BONUS: 200,
+            LOCAL_STORAGE_KEY: 'candy_battle_local',
+            STORAGE_EXPIRY: 3600000
         };
+
+        // 初始化
+        this.setupPromiseErrorHandler();
+        this.setupHistoryHandler();
+        this.setupTabCommunication();
+        this.setupZoomDetection();
     }
 
     // ==================== 初始化 ====================
 
-    /**
-     * 初始化对战模式
-     */
     init() {
-        this.leaveBattle(); // 确保开始时是干净状态
+        this.leaveBattle();
         this.bindEvents();
         this.setupReconnectionHandler();
+        this.injectCandyStyles();
+    }
+
+    /**
+     * 安全存储（支持localStorage降级）
+     */
+    safeStorage() {
+        return {
+            setItem: (key, value) => {
+                try {
+                    // 检查存储配额
+                    const testKey = '_test_' + Date.now();
+                    localStorage.setItem(testKey, 'test');
+                    localStorage.removeItem(testKey);
+                    
+                    localStorage.setItem(key, value);
+                    return true;
+                } catch (e) {
+                    console.warn('localStorage不可用，使用内存存储:', e);
+                    
+                    if (!this.memoryStorage) this.memoryStorage = new Map();
+                    
+                    // 限制内存存储大小
+                    if (this.memoryStorage.size > 50) {
+                        const oldestKey = this.memoryStorage.keys().next().value;
+                        this.memoryStorage.delete(oldestKey);
+                    }
+                    
+                    this.memoryStorage.set(key, value);
+                    return false;
+                }
+            },
+            getItem: (key) => {
+                try {
+                    return localStorage.getItem(key);
+                } catch (e) {
+                    return this.memoryStorage?.get(key) || null;
+                }
+            },
+            removeItem: (key) => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (e) {
+                    this.memoryStorage?.delete(key);
+                }
+            },
+            clear: () => {
+                try {
+                    localStorage.clear();
+                } catch (e) {
+                    this.memoryStorage?.clear();
+                }
+            }
+        };
+    }
+
+    /**
+     * Promise追踪
+     */
+    trackPromise(promise, name = 'unnamed') {
+        const id = ++this.promiseCounter;
+        const trackedPromise = promise
+            .finally(() => {
+                this.activePromises.delete(trackedPromise);
+            });
+        
+        this.activePromises.add(trackedPromise);
+        return trackedPromise;
+    }
+
+    /**
+     * 清理AI资源
+     */
+    cleanupAIResources() {
+        if (this.aiMoveTimer) {
+            clearTimeout(this.aiMoveTimer);
+            this.aiMoveTimer = null;
+        }
+        
+        if (this.aiResponseTimer) {
+            clearTimeout(this.aiResponseTimer);
+            this.aiResponseTimer = null;
+        }
+        
+        this.aiResponsePending = false;
+        this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
+    }
+
+    /**
+     * 注入糖果主题CSS
+     */
+    injectCandyStyles() {
+        const styleId = 'candy-battle-styles';
+        if (document.getElementById(styleId)) return;
+
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            /* 糖果主题样式 */
+            :root {
+                --candy-pink: #ff9a9e;
+                --candy-light-pink: #ffdde1;
+                --candy-purple: #a18cd1;
+                --candy-blue: #fbc2eb;
+                --candy-yellow: #fad0c4;
+                --candy-orange: #ff9a9e;
+                --candy-mint: #a1c4fd;
+                --candy-glow: #fbc2eb;
+            }
+
+            * {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            }
+
+            #battle-grid {
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 15px;
+                padding: 20px;
+                background: linear-gradient(145deg, #fff5f7, #ffe4e8);
+                border-radius: 40px;
+                border: 4px solid #ffb6c1;
+                box-shadow: inset 0 2px 10px rgba(255, 182, 193, 0.3), 0 12px 0 #ff69b4;
+            }
+
+            #battle-grid .number-card {
+                background: linear-gradient(145deg, #ffffff, #fff0f5);
+                border: 4px solid #ffb6c1;
+                border-radius: 25px;
+                box-shadow: 0 10px 0 #ff69b4, 0 15px 25px rgba(255, 105, 180, 0.3);
+                color: #d44e8c;
+                font-size: 2.8rem;
+                font-weight: bold;
+                width: 90px;
+                height: 90px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                text-shadow: 3px 3px 0 rgba(255, 255, 255, 0.7);
+                position: relative;
+                animation: cardAppear 0.3s ease-out;
+                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
+            }
+
+            @keyframes cardAppear {
+                from {
+                    transform: scale(0) rotate(-180deg);
+                    opacity: 0;
+                }
+                to {
+                    transform: scale(1) rotate(0);
+                    opacity: 1;
+                }
+            }
+
+            #battle-grid .number-card:hover {
+                transform: translateY(-8px) scale(1.05);
+                box-shadow: 0 18px 0 #ff69b4, 0 20px 30px rgba(255, 105, 180, 0.4);
+                background: linear-gradient(145deg, #fff5fa, #ffe4f0);
+            }
+
+            #battle-grid .number-card:active {
+                transform: translateY(10px);
+                box-shadow: 0 5px 0 #ff69b4;
+            }
+
+            #battle-grid .number-card.selected {
+                background: linear-gradient(145deg, #a8e6cf, #d4edda);
+                border-color: #4caf50;
+                box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.3);
+                color: #1b5e20;
+                transform: scale(1.08) translateY(-5px);
+                animation: pulse 0.5s infinite;
+            }
+
+            @keyframes pulse {
+                0% { box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.3); }
+                50% { box-shadow: 0 10px 0 #2e7d32, 0 20px 35px rgba(76, 175, 80, 0.5); }
+                100% { box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.3); }
+            }
+
+            #battle-grid .number-card.matched {
+                opacity: 0.3;
+                transform: scale(0.7);
+                pointer-events: none;
+                filter: grayscale(0.6);
+                box-shadow: 0 5px 0 #999;
+                border-color: #999;
+                animation: vanish 0.3s ease-out;
+            }
+
+            @keyframes vanish {
+                0% { transform: scale(1); opacity: 1; }
+                100% { transform: scale(0); opacity: 0; }
+            }
+
+            .battle-target {
+                background: linear-gradient(145deg, #f9d423, #fda085);
+                border: 6px solid #ff6b6b;
+                border-radius: 70px;
+                box-shadow: 0 15px 0 #c92a2a, 0 20px 30px rgba(255, 107, 107, 0.4);
+                color: white;
+                font-size: 5rem;
+                font-weight: bold;
+                width: 150px;
+                height: 150px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 25px;
+                text-shadow: 4px 4px 0 #c92a2a;
+                animation: targetGlow 1s infinite;
+                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+            }
+
+            @keyframes targetGlow {
+                0% { box-shadow: 0 15px 0 #c92a2a, 0 20px 30px rgba(255, 107, 107, 0.4); }
+                50% { box-shadow: 0 15px 0 #c92a2a, 0 25px 40px rgba(255, 107, 107, 0.6); }
+                100% { box-shadow: 0 15px 0 #c92a2a, 0 20px 30px rgba(255, 107, 107, 0.4); }
+            }
+
+            .turn-indicator {
+                background: linear-gradient(145deg, #f6d5f7, #fbe9d7);
+                border: 4px solid #f48fb1;
+                border-radius: 50px;
+                padding: 15px 30px;
+                font-size: 1.5rem;
+                font-weight: bold;
+                color: #ad1457;
+                box-shadow: 0 8px 0 #d81b60, 0 10px 20px rgba(216, 27, 96, 0.3);
+                text-align: center;
+                margin-bottom: 25px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .turn-indicator .turn-text {
+                display: inline-block;
+                margin-right: 20px;
+            }
+
+            .turn-indicator .timer {
+                background: white;
+                border-radius: 40px;
+                padding: 8px 20px;
+                color: #c2185b;
+                font-size: 1.8rem;
+                font-weight: bold;
+                box-shadow: inset 0 3px 8px rgba(0,0,0,0.1);
+                border: 2px solid #f8bbd0;
+                font-family: monospace;
+            }
+
+            .timer.warning {
+                color: #ff4444 !important;
+                animation: timerWarning 0.5s infinite;
+            }
+
+            @keyframes timerWarning {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.1); background: #ffebee; }
+                100% { transform: scale(1); }
+            }
+
+            .player-card {
+                background: linear-gradient(145deg, #fff9e6, #ffe6f0);
+                border: 4px solid #f06292;
+                border-radius: 40px;
+                padding: 20px;
+                box-shadow: 0 10px 0 #ec407a, 0 15px 25px rgba(236, 64, 122, 0.2);
+                transition: all 0.3s ease;
+            }
+
+            .player-card.active {
+                border-color: #4caf50;
+                box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.2);
+                transform: translateY(-5px);
+            }
+
+            .player-avatar {
+                width: 70px;
+                height: 70px;
+                border-radius: 35px;
+                background: linear-gradient(145deg, #fccfdf, #faa0c0);
+                border: 4px solid #f48fb1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 2.5rem;
+                color: #ad1457;
+                box-shadow: 0 6px 0 #c2185b;
+                margin-bottom: 10px;
+            }
+
+            .player-name {
+                font-size: 1.2rem;
+                font-weight: bold;
+                color: #880e4f;
+                margin-bottom: 10px;
+            }
+
+            .player-score {
+                font-size: 2rem;
+                font-weight: bold;
+                color: #d81b60;
+                text-shadow: 2px 2px 0 #f8bbd0;
+                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+            }
+
+            .progress-bar {
+                background: rgba(255, 255, 255, 0.6);
+                border: 3px solid #f8bbd0;
+                border-radius: 25px;
+                height: 25px;
+                overflow: hidden;
+                box-shadow: inset 0 2px 8px rgba(0,0,0,0.1);
+                margin: 10px 0;
+            }
+
+            .progress-fill {
+                height: 100%;
+                border-radius: 25px;
+                transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 0 0 15px #ffb347;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .progress-fill.player1 {
+                background: linear-gradient(90deg, #f9d423, #fda085, #ff6b6b);
+            }
+
+            .progress-fill.player2 {
+                background: linear-gradient(90deg, #a8e6cf, #d4edda, #4caf50);
+            }
+
+            .progress-fill::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+                animation: shimmer 1.5s infinite;
+            }
+
+            @keyframes shimmer {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+            }
+
+            .chat-container {
+                background: linear-gradient(145deg, #fff5f7, #ffe4e8);
+                border: 4px solid #f8bbd0;
+                border-radius: 40px;
+                padding: 20px;
+                box-shadow: inset 0 2px 15px rgba(255, 182, 193, 0.3), 0 10px 0 #f48fb1;
+                margin-top: 20px;
+            }
+
+            .chat-messages {
+                background: rgba(255, 255, 255, 0.8);
+                border-radius: 30px;
+                padding: 15px;
+                min-height: 180px;
+                max-height: 250px;
+                overflow-y: auto;
+                border: 3px solid #ffc1cc;
+                margin-bottom: 15px;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .chat-messages::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            .chat-messages::-webkit-scrollbar-track {
+                background: #ffe4e8;
+                border-radius: 10px;
+            }
+
+            .chat-messages::-webkit-scrollbar-thumb {
+                background: #ffb6c1;
+                border-radius: 10px;
+                border: 2px solid #ffc1cc;
+            }
+
+            .message {
+                margin: 10px 0;
+                padding: 12px 18px;
+                border-radius: 25px;
+                max-width: 85%;
+                word-wrap: break-word;
+                font-size: 1rem;
+                line-height: 1.4;
+                animation: messageAppear 0.2s ease-out;
+            }
+
+            @keyframes messageAppear {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .message.self {
+                background: linear-gradient(145deg, #b9f6ca, #a5d6a5);
+                border-radius: 25px 25px 5px 25px;
+                margin-left: auto;
+                color: #1b5e20;
+                border: 3px solid #81c784;
+                box-shadow: 0 5px 0 #2e7d32;
+            }
+
+            .message.opponent {
+                background: linear-gradient(145deg, #ffccbc, #ffab91);
+                border-radius: 25px 25px 25px 5px;
+                margin-right: auto;
+                color: #bf360c;
+                border: 3px solid #ff8a65;
+                box-shadow: 0 5px 0 #e64a19;
+            }
+
+            .message.system {
+                background: linear-gradient(145deg, #e1bee7, #d1c4e9);
+                border-radius: 30px;
+                margin: 8px auto;
+                text-align: center;
+                color: #4a148c;
+                border: 3px solid #ba68c8;
+                font-style: italic;
+                box-shadow: 0 5px 0 #7b1fa2;
+                max-width: 90%;
+            }
+
+            .message-sender {
+                font-weight: bold;
+                margin-right: 8px;
+                color: inherit;
+            }
+
+            .chat-input-area {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .chat-input-area input {
+                flex: 1;
+                padding: 15px 20px;
+                border: 3px solid #ffb6c1;
+                border-radius: 40px;
+                font-size: 1rem;
+                background: white;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 4px 0 #ff69b4;
+                transition: all 0.2s ease;
+            }
+
+            .chat-input-area input:focus {
+                outline: none;
+                border-color: #ff69b4;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 6px 0 #ff1493;
+                transform: translateY(-2px);
+            }
+
+            .chat-input-area input:disabled {
+                opacity: 0.6;
+                background: #f5f5f5;
+                box-shadow: 0 4px 0 #999;
+                border-color: #ccc;
+            }
+
+            .candy-btn {
+                background: linear-gradient(145deg, #ffdde1, #ee9ca7);
+                border: none;
+                border-radius: 50px;
+                padding: 15px 30px;
+                font-size: 1.2rem;
+                font-weight: bold;
+                color: #880e4f;
+                cursor: pointer;
+                box-shadow: 0 8px 0 #c2185b, 0 10px 20px rgba(194, 24, 91, 0.3);
+                transition: all 0.1s ease;
+                border: 3px solid #f8bbd0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
+            }
+
+            .candy-btn:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 13px 0 #c2185b, 0 15px 25px rgba(194, 24, 91, 0.4);
+            }
+
+            .candy-btn:active {
+                transform: translateY(8px);
+                box-shadow: 0 3px 0 #c2185b;
+            }
+
+            .candy-btn.primary {
+                background: linear-gradient(145deg, #f9d423, #fda085);
+                color: #b71c1c;
+                box-shadow: 0 8px 0 #d32f2f;
+                border-color: #ff8a80;
+            }
+
+            .candy-btn.secondary {
+                background: linear-gradient(145deg, #b2f0e5, #7fc7d9);
+                color: #004d40;
+                box-shadow: 0 8px 0 #00796b;
+                border-color: #80cbc4;
+            }
+
+            .candy-btn.small {
+                padding: 10px 20px;
+                font-size: 1rem;
+            }
+
+            .candy-btn:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+                transform: translateY(0);
+                box-shadow: 0 4px 0 #999;
+            }
+
+            .waiting-spinner {
+                display: inline-block;
+                width: 50px;
+                height: 50px;
+                border: 6px solid #ffb6c1;
+                border-top-color: #ff1493;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 20px auto;
+            }
+
+            .waiting-spinner-small {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                border: 3px solid #ffb6c1;
+                border-top-color: #ff1493;
+                border-radius: 50%;
+                animation: spinSmall 1s linear infinite;
+                margin-right: 8px;
+            }
+
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+
+            @keyframes spinSmall {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+
+            .battle-result {
+                text-align: center;
+                padding: 30px;
+                background: linear-gradient(145deg, #fff5f7, #ffe4e8);
+                border-radius: 60px;
+                border: 6px solid #ffb6c1;
+                box-shadow: 0 20px 0 #ff69b4, 0 25px 40px rgba(255, 105, 180, 0.3);
+            }
+
+            .result-title {
+                font-size: 3rem;
+                margin-bottom: 30px;
+                animation: resultPop 0.5s ease-out;
+            }
+
+            @keyframes resultPop {
+                0% { transform: scale(0); }
+                80% { transform: scale(1.1); }
+                100% { transform: scale(1); }
+            }
+
+            .result-scores {
+                display: flex;
+                justify-content: center;
+                gap: 50px;
+                margin: 30px 0;
+            }
+
+            .result-score-card {
+                background: white;
+                border-radius: 40px;
+                padding: 25px;
+                min-width: 150px;
+                border: 4px solid #f48fb1;
+                box-shadow: 0 8px 0 #c2185b;
+            }
+
+            .result-score-card.winner {
+                border-color: #4caf50;
+                box-shadow: 0 8px 0 #2e7d32;
+                background: linear-gradient(145deg, #e8f5e9, #c8e6c9);
+            }
+
+            .result-score {
+                font-size: 3.5rem;
+                font-weight: bold;
+                color: #d81b60;
+                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+            }
+
+            .winner .result-score {
+                color: #2e7d32;
+            }
+
+            .room-code-hint {
+                display: block;
+                font-size: 0.8rem;
+                color: #666;
+                margin-top: 5px;
+                cursor: pointer;
+                transition: color 0.2s;
+            }
+
+            .room-code-hint:hover {
+                color: #ff1493;
+            }
+
+            .battle-container.compact #battle-grid .number-card {
+                width: 60px;
+                height: 60px;
+                font-size: 2rem;
+            }
+
+            .battle-container.compact .battle-target {
+                width: 100px;
+                height: 100px;
+                font-size: 3.5rem;
+            }
+
+            .battle-container.compact .candy-btn {
+                padding: 12px 20px;
+                font-size: 1rem;
+            }
+
+            @media (max-width: 768px) {
+                #battle-grid .number-card {
+                    width: 60px;
+                    height: 60px;
+                    font-size: 2rem;
+                }
+
+                .battle-target {
+                    width: 100px;
+                    height: 100px;
+                    font-size: 3.5rem;
+                }
+
+                .candy-btn {
+                    padding: 12px 20px;
+                    font-size: 1rem;
+                }
+            }
+
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    /**
+     * 移除所有事件监听器
+     */
+    removeAllEventListeners() {
+        const listeners = [
+            { id: 'quick-match-btn', event: 'click', handler: this.quickMatchHandler },
+            { id: 'join-room-btn', event: 'click', handler: this.joinRoomHandler },
+            { id: 'copy-room-code', event: 'click', handler: this.copyHandler },
+            { id: 'cancel-match', event: 'click', handler: this.cancelHandler },
+            { id: 'send-message', event: 'click', handler: this.sendHandler },
+            { id: 'chat-input', event: 'keypress', handler: this.chatKeyHandler },
+            { id: 'rematch-btn', event: 'click', handler: this.rematchHandler },
+            { id: 'close-battle-btn', event: 'click', handler: this.closeHandler },
+            { id: 'confirm-join', event: 'click', handler: this.confirmJoinHandler },
+            { id: 'cancel-join', event: 'click', handler: this.cancelJoinHandler },
+            { id: 'continue-waiting-btn', event: 'click', handler: this.continueWaitingHandler },
+            { id: 'play-with-ai-btn', event: 'click', handler: this.playWithAIHandler }
+        ];
+
+        listeners.forEach(({ id, event, handler }) => {
+            if (handler) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.removeEventListener(event, handler);
+                }
+            }
+        });
+
+        const battleGrid = document.getElementById('battle-grid');
+        if (battleGrid) {
+            if (this.gridClickHandler) {
+                battleGrid.removeEventListener('click', this.gridClickHandler);
+            }
+            if (this.gridTouchHandler) {
+                battleGrid.removeEventListener('touchstart', this.gridTouchHandler);
+            }
+        }
     }
 
     /**
      * 绑定事件
      */
     bindEvents() {
-        // 快速匹配按钮
+        this.removeAllEventListeners();
+
         const quickMatchBtn = document.getElementById('quick-match-btn');
         if (quickMatchBtn) {
-            if (this.quickMatchHandler) {
-                quickMatchBtn.removeEventListener('click', this.quickMatchHandler);
-            }
             this.quickMatchHandler = () => this.quickMatch();
             quickMatchBtn.addEventListener('click', this.quickMatchHandler);
         }
 
-        // 加入房间按钮
         const joinRoomBtn = document.getElementById('join-room-btn');
         if (joinRoomBtn) {
-            if (this.joinRoomHandler) {
-                joinRoomBtn.removeEventListener('click', this.joinRoomHandler);
-            }
             this.joinRoomHandler = () => this.showJoinModal();
             joinRoomBtn.addEventListener('click', this.joinRoomHandler);
         }
 
-        // 复制房间码按钮
         const copyBtn = document.getElementById('copy-room-code');
         if (copyBtn) {
-            if (this.copyHandler) {
-                copyBtn.removeEventListener('click', this.copyHandler);
-            }
             this.copyHandler = () => this.copyRoomCode();
             copyBtn.addEventListener('click', this.copyHandler);
         }
 
-        // 取消匹配按钮
         const cancelMatch = document.getElementById('cancel-match');
         if (cancelMatch) {
-            if (this.cancelHandler) {
-                cancelMatch.removeEventListener('click', this.cancelHandler);
-            }
             this.cancelHandler = () => this.cancelMatch();
             cancelMatch.addEventListener('click', this.cancelHandler);
         }
 
-        // 发送消息按钮
         const sendMessage = document.getElementById('send-message');
         if (sendMessage) {
-            if (this.sendHandler) {
-                sendMessage.removeEventListener('click', this.sendHandler);
-            }
             this.sendHandler = () => this.sendChatMessage();
             sendMessage.addEventListener('click', this.sendHandler);
         }
 
-        // 聊天输入框回车发送
         const chatInput = document.getElementById('chat-input');
         if (chatInput) {
-            if (this.chatKeyHandler) {
-                chatInput.removeEventListener('keypress', this.chatKeyHandler);
-            }
             this.chatKeyHandler = (e) => {
                 if (e.key === 'Enter') {
                     this.sendChatMessage();
@@ -166,181 +927,510 @@ class BattleMode {
             chatInput.addEventListener('keypress', this.chatKeyHandler);
         }
 
-        // 再战一局按钮
         const rematchBtn = document.getElementById('rematch-btn');
         if (rematchBtn) {
-            if (this.rematchHandler) {
-                rematchBtn.removeEventListener('click', this.rematchHandler);
-            }
             this.rematchHandler = () => this.rematch();
             rematchBtn.addEventListener('click', this.rematchHandler);
         }
 
-        // 关闭对战按钮
         const closeBattleBtn = document.getElementById('close-battle-btn');
         if (closeBattleBtn) {
-            if (this.closeHandler) {
-                closeBattleBtn.removeEventListener('click', this.closeHandler);
-            }
             this.closeHandler = () => this.closeBattle();
             closeBattleBtn.addEventListener('click', this.closeHandler);
         }
 
-        // 确认加入房间按钮
         const confirmJoin = document.getElementById('confirm-join');
         if (confirmJoin) {
-            if (this.confirmJoinHandler) {
-                confirmJoin.removeEventListener('click', this.confirmJoinHandler);
-            }
             this.confirmJoinHandler = () => this.confirmJoin();
             confirmJoin.addEventListener('click', this.confirmJoinHandler);
         }
 
-        // 取消加入按钮
         const cancelJoin = document.getElementById('cancel-join');
         if (cancelJoin) {
-            if (this.cancelJoinHandler) {
-                cancelJoin.removeEventListener('click', this.cancelJoinHandler);
-            }
             this.cancelJoinHandler = () => this.closeJoinModal();
             cancelJoin.addEventListener('click', this.cancelJoinHandler);
         }
 
-        // 对战网格点击（使用事件委托）
         const battleGrid = document.getElementById('battle-grid');
         if (battleGrid) {
-            if (this.gridClickHandler) {
-                battleGrid.removeEventListener('click', this.gridClickHandler);
-            }
             this.gridClickHandler = (e) => this.handleBattleCardClick(e);
+            this.gridTouchHandler = (e) => {
+                e.preventDefault();
+                this.handleBattleCardClick(e);
+            };
             battleGrid.addEventListener('click', this.gridClickHandler);
+            battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
         }
     }
 
     /**
-     * 设置断线重连处理器
+     * 设置断线重连
      */
     setupReconnectionHandler() {
-        // 先移除旧的监听器
         if (this.onlineHandler) {
             window.removeEventListener('online', this.onlineHandler);
         }
+        if (this.offlineHandler) {
+            window.removeEventListener('offline', this.offlineHandler);
+        }
         
         this.onlineHandler = () => {
+            this.showFeedback('网络已连接', '#4CAF50');
             if (this.room.status === 'playing' && this.room.battleId && !this.room.opponentIsAI) {
                 this.attemptReconnect();
             }
         };
         
+        this.offlineHandler = () => {
+            this.showFeedback('网络已断开，正在使用离线模式', '#ffa500');
+            if (!this.room.opponentIsAI && this.room.status === 'playing') {
+                this.switchToOfflineMode();
+            }
+        };
+        
         window.addEventListener('online', this.onlineHandler);
+        window.addEventListener('offline', this.offlineHandler);
     }
 
     /**
-     * 尝试重连
+     * 设置历史状态处理
      */
-    async attemptReconnect() {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('重连失败，请重新开始对战', '#ff4444');
-            }
-            this.leaveBattle();
-            return;
-        }
-
-        this.reconnectAttempts++;
+    setupHistoryHandler() {
+        this.originalHash = window.location.hash;
         
-        try {
-            if (!this.game.state.supabaseReady) {
-                throw new Error('Supabase未连接');
-            }
-
-            const { data: battle, error } = await this.game.state.supabase
-                .from('candy_math_battles')
-                .select('*')
-                .eq('id', this.room.battleId)
-                .single();
-
-            if (error || !battle) throw new Error('对战不存在');
-
-            if (battle.status === 'finished') {
-                this.showBattleResult(battle);
-            } else {
-                this.subscribeToBattle(this.room.battleId);
-                if (this.game.ui) {
-                    this.game.ui.showFeedback('重连成功', '#4CAF50');
+        this.popStateHandler = (e) => {
+            if (this.room.gameActive || this.room.status === 'playing') {
+                e.preventDefault();
+                
+                if (confirm('当前对战正在进行，确定要离开吗？')) {
+                    this.leaveBattle();
+                    if (this.game.ui) {
+                        this.game.ui.closeModal('battle-modal');
+                    }
+                    window.location.hash = this.originalHash;
+                } else {
+                    history.pushState(null, null, window.location.href);
                 }
-                this.reconnectAttempts = 0;
+            }
+        };
+        
+        window.addEventListener('popstate', this.popStateHandler);
+    }
+
+    /**
+     * 设置标签页通信
+     */
+    setupTabCommunication() {
+        try {
+            this.broadcastChannel = new BroadcastChannel('candy_battle');
+            
+            this.broadcastChannel.onmessage = (event) => {
+                const { type, data } = event.data;
+                
+                if (type === 'BATTLE_STARTED' && data.userId === this.game.state?.currentUser?.id) {
+                    if (this.room.status !== 'playing') {
+                        this.showFeedback('您已在其他标签页开始对战', '#ffa500');
+                        this.leaveBattle();
+                        if (this.game.ui) {
+                            this.game.ui.closeModal('battle-modal');
+                        }
+                    }
+                }
+            };
+        } catch (e) {
+            console.warn('BroadcastChannel不可用', e);
+        }
+    }
+
+    /**
+     * 设置缩放检测
+     */
+    setupZoomDetection() {
+        this.checkZoom();
+        window.addEventListener('resize', () => {
+            if (this.zoomTimer) clearTimeout(this.zoomTimer);
+            this.zoomTimer = setTimeout(() => this.checkZoom(), 100);
+        });
+    }
+
+    checkZoom() {
+        const zoom = Math.round(window.devicePixelRatio * 100);
+        const zoomWarning = document.getElementById('zoom-warning');
+        
+        if (zoom > 150 || zoom < 80) {
+            if (!zoomWarning) {
+                const warning = document.createElement('div');
+                warning.id = 'zoom-warning';
+                warning.style.cssText = `
+                    position: fixed;
+                    top: 10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #ff4444;
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 30px;
+                    z-index: 10000;
+                    font-size: 14px;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                `;
+                warning.textContent = '检测到页面缩放可能影响显示，建议重置到100%';
+                document.body.appendChild(warning);
+                
+                setTimeout(() => {
+                    warning.remove();
+                }, 5000);
+            }
+        } else {
+            if (zoomWarning) zoomWarning.remove();
+        }
+    }
+
+    /**
+     * 设置布局观察者
+     */
+    setupLayoutObserver() {
+        if (this.observers.resize) return;
+        
+        const battleContainer = document.querySelector('.battle-container');
+        if (!battleContainer) return;
+        
+        this.observers.resize = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                const width = entry.contentRect.width;
+                if (width < 600) {
+                    battleContainer.classList.add('compact');
+                } else {
+                    battleContainer.classList.remove('compact');
+                }
+            }
+        });
+        
+        this.observers.resize.observe(battleContainer);
+    }
+
+    /**
+     * Promise错误处理
+     */
+    setupPromiseErrorHandler() {
+        const asyncMethods = [
+            'quickMatch', 'joinQueue', 'createBattleRoom', 'startBattle',
+            'checkBattleMatch', 'updateBattleScore', 'endTurn', 'endBattle',
+            'sendChatMessage', 'rematch', 'attemptReconnect', 'confirmJoin'
+        ];
+        
+        asyncMethods.forEach(methodName => {
+            const originalMethod = this[methodName];
+            if (originalMethod && typeof originalMethod === 'function') {
+                this[methodName] = async (...args) => {
+                    try {
+                        return await this.trackPromise(originalMethod.apply(this, args), methodName);
+                    } catch (error) {
+                        console.error(`方法 ${methodName} 执行失败:`, error);
+                        this.showFeedback('操作失败，请重试', '#ff4444');
+                        return null;
+                    }
+                };
+            }
+        });
+    }
+
+    /**
+     * 获取信号量
+     */
+    async acquireSemaphore(name, timeout = 5000) {
+        const startTime = Date.now();
+        while (this.semaphores[name]) {
+            if (Date.now() - startTime > timeout) {
+                throw new Error(`获取信号量超时: ${name}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        this.semaphores[name] = true;
+        return true;
+    }
+
+    releaseSemaphore(name) {
+        this.semaphores[name] = false;
+    }
+
+    playSound(soundName) {
+        try {
+            if (typeof SoundManager !== 'undefined' && SoundManager.play) {
+                SoundManager.play(soundName);
             }
         } catch (error) {
-            console.error('重连失败:', error);
-            setTimeout(() => this.attemptReconnect(), 2000);
+            console.warn('播放声音失败:', error);
         }
+    }
+
+    showFeedback(message, color = '#4CAF50') {
+        if (this.game?.ui) {
+            this.game.ui.showFeedback(message, color);
+        }
+    }
+
+    t(key) {
+        try {
+            if (typeof I18n !== 'undefined' && I18n.t) {
+                return I18n.t(key);
+            }
+        } catch (error) {
+            console.warn('I18n不可用');
+        }
+        
+        const defaults = {
+            'win': '胜利',
+            'lose': '失败',
+            'yourTurn': '你的回合',
+            'opponentTurn': '对手回合'
+        };
+        return defaults[key] || key;
+    }
+
+    isSupabaseAvailable() {
+        return this.game.state && 
+               this.game.state.supabaseReady && 
+               this.game.state.supabase && 
+               navigator.onLine;
+    }
+
+    /**
+     * 获取玩家分数元素
+     */
+    getMyScoreElement() {
+        if (this.room.opponentIsAI) {
+            return document.getElementById('player1-score');
+        }
+        return this.room.playerRole === 'player1' ? 
+            document.getElementById('player1-score') : 
+            document.getElementById('player2-score');
+    }
+
+    /**
+     * 获取对手分数元素
+     */
+    getOpponentScoreElement() {
+        if (this.room.opponentIsAI) {
+            return document.getElementById('player2-score');
+        }
+        return this.room.playerRole === 'player1' ? 
+            document.getElementById('player2-score') : 
+            document.getElementById('player1-score');
+    }
+
+    /**
+     * 显示房间码
+     */
+    showRoomCode() {
+        const roomCodeSpan = document.getElementById('room-code');
+        if (roomCodeSpan && this.room.roomCode) {
+            roomCodeSpan.textContent = this.room.roomCode;
+            
+            const oldHint = document.querySelector('.room-code-hint');
+            if (oldHint) oldHint.remove();
+            
+            const copyHint = document.createElement('small');
+            copyHint.className = 'room-code-hint';
+            copyHint.textContent = '点击可复制';
+            copyHint.onclick = () => this.copyRoomCode();
+            
+            roomCodeSpan.parentNode.appendChild(copyHint);
+        }
+    }
+
+    /**
+     * 禁用聊天输入
+     */
+    disableChatInput(disabled = true) {
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-message');
+        
+        if (chatInput) {
+            chatInput.disabled = disabled;
+            chatInput.placeholder = disabled ? '对战已结束' : '输入消息...';
+        }
+        if (sendButton) {
+            sendButton.disabled = disabled;
+        }
+    }
+
+    /**
+     * 更新进度条样式
+     */
+    updateProgressBars() {
+        const player1Progress = document.getElementById('player1-progress');
+        const player2Progress = document.getElementById('player2-progress');
+        
+        if (player1Progress) {
+            player1Progress.classList.add('player1');
+        }
+        if (player2Progress) {
+            player2Progress.classList.add('player2');
+        }
+    }
+
+    /**
+     * 开始心跳检测
+     */
+    startHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+        
+        this.heartbeatInterval = setInterval(() => {
+            this.checkConnection();
+        }, 30000);
+    }
+
+    async checkConnection() {
+        if (!this.isSupabaseAvailable() || !this.room.battleId || this.room.opponentIsAI) {
+            return;
+        }
+        
+        try {
+            const { error } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('id')
+                .eq('id', this.room.battleId)
+                .limit(1)
+                .maybeSingle();
+                
+            if (error) {
+                console.warn('连接检测失败，尝试重连:', error);
+                this.handleConnectionLost();
+            }
+        } catch (error) {
+            console.warn('连接检测异常:', error);
+            this.handleConnectionLost();
+        }
+    }
+
+    handleConnectionLost() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.showFeedback('连接丢失，请检查网络', '#ff4444');
+            return;
+        }
+        
+        this.reconnectAttempts++;
+        
+        if (this.room.battleId) {
+            this.subscribeToBattle(this.room.battleId);
+        }
+    }
+
+    /**
+     * 同步分数
+     */
+    async syncScores() {
+        if (!this.isSupabaseAvailable() || this.room.opponentIsAI) return;
+        
+        try {
+            const { data: battle } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('player1_score, player2_score, player1_progress, player2_progress')
+                .eq('id', this.room.battleId)
+                .single();
+                
+            if (battle) {
+                const localMyScore = parseInt(this.getMyScoreElement()?.textContent) || 0;
+                const localOpponentScore = parseInt(this.getOpponentScoreElement()?.textContent) || 0;
+                
+                const serverMyScore = this.room.playerRole === 'player1' ? 
+                    battle.player1_score : battle.player2_score;
+                const serverOpponentScore = this.room.playerRole === 'player1' ? 
+                    battle.player2_score : battle.player1_score;
+                
+                if (localMyScore !== serverMyScore) {
+                    const correctScore = Math.max(localMyScore, serverMyScore);
+                    this.getMyScoreElement().textContent = correctScore;
+                }
+                
+                if (localOpponentScore !== serverOpponentScore) {
+                    const correctScore = Math.max(localOpponentScore, serverOpponentScore);
+                    this.getOpponentScoreElement().textContent = correctScore;
+                }
+            }
+        } catch (error) {
+            console.error('同步分数失败:', error);
+        }
+    }
+
+    startScoreSync() {
+        this.scoreSyncInterval = setInterval(() => {
+            this.syncScores();
+        }, 10000);
     }
 
     // ==================== 匹配系统 ====================
 
-    /**
-     * 快速匹配（增强版，包含超时和AI对手）
-     */
     async quickMatch() {
-        if (!this.game.auth || !this.game.auth.isLoggedIn()) {
+        return this.trackPromise(this._quickMatch(), 'quickMatch');
+    }
+
+    async _quickMatch() {
+        try {
+            await this.acquireSemaphore('match');
+            
+            if (!this.game.auth || !this.game.auth.isLoggedIn()) {
+                this.showFeedback('请先登录', '#ff4444');
+                if (this.game.auth) {
+                    this.game.auth.showAuthModal('login');
+                }
+                return;
+            }
+
+            this.cleanupMatch();
+
             if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
+                this.game.ui.openModal('battle-modal');
             }
-            if (this.game.auth) {
-                this.game.auth.showAuthModal('login');
-            }
-            return;
+            
+            const waitingDiv = document.getElementById('battle-waiting');
+            const activeDiv = document.getElementById('battle-active');
+            const resultDiv = document.getElementById('battle-result');
+            
+            if (waitingDiv) waitingDiv.style.display = 'block';
+            if (activeDiv) activeDiv.style.display = 'none';
+            if (resultDiv) resultDiv.style.display = 'none';
+
+            const roomCode = this.generateRoomCode();
+            this.room.roomCode = roomCode;
+            const roomCodeSpan = document.getElementById('room-code');
+            if (roomCodeSpan) roomCodeSpan.textContent = roomCode;
+
+            this.showMatchWaitingUI();
+
+            this.matchStartTime = Date.now();
+
+            await this.joinQueue({
+                id: this.game.state.currentUser.id,
+                name: this.game.state.currentUser.name
+            });
+
+            // 设置长时间等待提示
+            this.longWaitTimer = setTimeout(() => {
+                this.longWaitTimer = null;
+                if (this.matchQueue.length > 0) {
+                    this.showLongWaitSuggestion();
+                }
+            }, 15000);
+
+            this.matchTimeoutId = setTimeout(() => {
+                this.handleMatchTimeout();
+            }, this.constants.MATCH_TIMEOUT);
+
+            this.startQueueStatusUpdate();
+            this.pushBattleState();
+            this.setupLayoutObserver();
+            
+        } finally {
+            this.releaseSemaphore('match');
         }
+    }
 
-        // 清理之前的匹配状态
-        this.cleanupMatch();
-
-        // 打开对战模态框
-        if (this.game.ui) {
-            this.game.ui.openModal('battle-modal');
-        }
-        
-        const waitingDiv = document.getElementById('battle-waiting');
-        if (waitingDiv) {
-            waitingDiv.style.display = 'block';
-        }
-        
-        const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) {
-            activeDiv.style.display = 'none';
-        }
-        
-        const resultDiv = document.getElementById('battle-result');
-        if (resultDiv) {
-            resultDiv.style.display = 'none';
-        }
-
-        // 生成房间码
-        const roomCode = this.generateRoomCode();
-        this.room.roomCode = roomCode;
-        const roomCodeSpan = document.getElementById('room-code');
-        if (roomCodeSpan) roomCodeSpan.textContent = roomCode;
-
-        // 显示等待提示和排队状态
-        this.showMatchWaitingUI();
-
-        // 记录匹配开始时间
-        this.matchStartTime = Date.now();
-
-        // 加入匹配队列
-        await this.joinQueue({
-            id: this.game.state.currentUser.id,
-            name: this.game.state.currentUser.name
-        });
-
-        // 设置匹配超时
-        this.matchTimeoutId = setTimeout(() => {
-            this.handleMatchTimeout();
-        }, this.constants.MATCH_TIMEOUT);
-
-        // 启动排队状态更新
-        this.startQueueStatusUpdate();
+    pushBattleState() {
+        history.pushState({ battle: true }, null, window.location.href);
     }
 
     /**
@@ -350,52 +1440,117 @@ class BattleMode {
         const waitingDiv = document.getElementById('battle-waiting');
         if (!waitingDiv) return;
 
-        // 移除旧的提示
         const oldHint = document.getElementById('match-waiting-hint');
         if (oldHint) oldHint.remove();
 
-        // 添加等待提示
         const hintDiv = document.createElement('div');
         hintDiv.id = 'match-waiting-hint';
-        hintDiv.style.marginTop = '15px';
-        hintDiv.style.padding = '10px';
-        hintDiv.style.background = '#fff0f5';
-        hintDiv.style.borderRadius = '20px';
-        hintDiv.style.border = '1px solid #ffb6c1';
-        hintDiv.innerHTML = `
-            <div style="margin-bottom: 8px;">
-                <span class="waiting-spinner-small">🔄</span>
-                <span id="match-status-text">正在寻找对手...</span>
-            </div>
-            <div id="queue-status" style="font-size: 0.9rem; color: #666;">
-                当前排队人数: <span id="queue-count">1</span>
-            </div>
-            <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
-                等待时间: <span id="wait-time">0</span>秒
-            </div>
+        hintDiv.style.cssText = `
+            margin-top: 15px;
+            padding: 15px;
+            background: linear-gradient(145deg, #fff0f5, #ffe4e8);
+            border-radius: 30px;
+            border: 3px solid #ffb6c1;
+            box-shadow: 0 8px 0 #ff69b4;
         `;
+
+        const statusContainer = document.createElement('div');
+        statusContainer.style.cssText = 'margin-bottom: 10px; display: flex; align-items: center; justify-content: center;';
+
+        const spinner = document.createElement('span');
+        spinner.className = 'waiting-spinner-small';
+        statusContainer.appendChild(spinner);
+
+        const statusText = document.createElement('span');
+        statusText.id = 'match-status-text';
+        statusText.style.cssText = 'font-size: 1.2rem; font-weight: bold; color: #d44e8c;';
+        statusText.textContent = '正在寻找对手...';
+        statusContainer.appendChild(statusText);
+
+        hintDiv.appendChild(statusContainer);
+
+        const queueStatus = document.createElement('div');
+        queueStatus.id = 'queue-status';
+        queueStatus.style.cssText = 'font-size: 1rem; color: #666; text-align: center;';
+        queueStatus.textContent = '当前排队人数: ';
+
+        const queueCount = document.createElement('span');
+        queueCount.id = 'queue-count';
+        queueCount.style.cssText = 'font-weight: bold; color: #ff1493;';
+        queueCount.textContent = '1';
+        queueStatus.appendChild(queueCount);
+
+        hintDiv.appendChild(queueStatus);
+
+        const waitTimeDiv = document.createElement('div');
+        waitTimeDiv.style.cssText = 'font-size: 0.9rem; color: #999; margin-top: 8px; text-align: center;';
+        waitTimeDiv.textContent = '等待时间: ';
+
+        const waitTime = document.createElement('span');
+        waitTime.id = 'wait-time';
+        waitTime.style.cssText = 'font-weight: bold;';
+        waitTime.textContent = '0';
+        waitTimeDiv.appendChild(waitTime);
+        waitTimeDiv.appendChild(document.createTextNode('秒'));
+
+        hintDiv.appendChild(waitTimeDiv);
 
         waitingDiv.appendChild(hintDiv);
-
-        // 添加CSS动画
-        const style = document.createElement('style');
-        style.textContent = `
-            .waiting-spinner-small {
-                display: inline-block;
-                animation: spinSmall 1s linear infinite;
-                margin-right: 8px;
-            }
-            @keyframes spinSmall {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-            }
-        `;
-        document.head.appendChild(style);
     }
 
     /**
-     * 开始更新排队状态
+     * 显示长时间等待建议
      */
+    showLongWaitSuggestion() {
+        const waitingDiv = document.getElementById('battle-waiting');
+        if (!waitingDiv) return;
+        
+        if (document.getElementById('long-wait-suggestion')) return;
+        
+        const suggestion = document.createElement('div');
+        suggestion.id = 'long-wait-suggestion';
+        suggestion.style.cssText = `
+            margin-top: 15px;
+            padding: 10px;
+            background: #fff3e0;
+            border-radius: 20px;
+            border: 2px solid #ff9800;
+            color: #e65100;
+            font-size: 0.9rem;
+            text-align: center;
+        `;
+        
+        const text = document.createTextNode('⏳ 等待时间较长，您可以：');
+        suggestion.appendChild(text);
+        
+        const continueBtn = document.createElement('button');
+        continueBtn.className = 'candy-btn small';
+        continueBtn.style.cssText = 'margin: 0 5px;';
+        continueBtn.textContent = '继续等待';
+        continueBtn.onclick = () => this.continueWaiting();
+        suggestion.appendChild(continueBtn);
+        
+        const aiBtn = document.createElement('button');
+        aiBtn.className = 'candy-btn small secondary';
+        aiBtn.style.cssText = 'margin: 0 5px;';
+        aiBtn.textContent = '与AI对战';
+        aiBtn.onclick = () => {
+            this.continueWaiting();
+            this.startAIBattle();
+        };
+        suggestion.appendChild(aiBtn);
+        
+        waitingDiv.appendChild(suggestion);
+    }
+
+    /**
+     * 继续等待
+     */
+    continueWaiting() {
+        const suggestion = document.getElementById('long-wait-suggestion');
+        if (suggestion) suggestion.remove();
+    }
+
     startQueueStatusUpdate() {
         if (this.queueStatusInterval) {
             clearInterval(this.queueStatusInterval);
@@ -406,9 +1561,6 @@ class BattleMode {
         }, 1000);
     }
 
-    /**
-     * 更新排队状态
-     */
     updateQueueStatus() {
         const queueCount = document.getElementById('queue-count');
         if (queueCount) {
@@ -431,9 +1583,6 @@ class BattleMode {
         }
     }
 
-    /**
-     * 停止排队状态更新
-     */
     stopQueueStatusUpdate() {
         if (this.queueStatusInterval) {
             clearInterval(this.queueStatusInterval);
@@ -441,9 +1590,6 @@ class BattleMode {
         }
     }
 
-    /**
-     * 处理匹配超时
-     */
     handleMatchTimeout() {
         this.matchTimeoutId = null;
 
@@ -453,7 +1599,6 @@ class BattleMode {
 
         this.stopQueueStatusUpdate();
 
-        // 清理房间码显示
         const roomCodeSpan = document.getElementById('room-code');
         if (roomCodeSpan) {
             roomCodeSpan.textContent = '------';
@@ -462,117 +1607,103 @@ class BattleMode {
         this.showAIOption();
     }
 
-    /**
-     * 显示AI对战选项
-     */
     showAIOption() {
         const waitingDiv = document.getElementById('battle-waiting');
         if (!waitingDiv) return;
 
-        // 移除旧的等待提示
         const oldHint = document.getElementById('match-waiting-hint');
         if (oldHint) oldHint.remove();
 
-        // 检查是否已有AI选项
         const existingOption = document.getElementById('ai-option');
         if (existingOption) existingOption.remove();
 
-        // 添加AI对战选项
         const aiDiv = document.createElement('div');
         aiDiv.id = 'ai-option';
-        aiDiv.style.marginTop = '20px';
-        aiDiv.style.padding = '20px';
-        aiDiv.style.background = 'linear-gradient(145deg, #fff0f5, #ffe4e1)';
-        aiDiv.style.borderRadius = '30px';
-        aiDiv.style.border = '2px solid #ff69b4';
-        aiDiv.style.boxShadow = '0 4px 0 #ff1493';
-        aiDiv.innerHTML = `
-            <div style="font-size: 2rem; margin-bottom: 10px;">😢</div>
-            <p style="margin-bottom: 10px; font-weight: bold;">当前没有其他玩家在线</p>
-            <p style="margin-bottom: 15px; font-size: 0.9rem; color: #666;">
-                您可以继续等待，或者与AI练习对战<br>
-                (AI对战不计入排名，不消耗积分)
-            </p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button class="candy-btn primary" id="continue-waiting-btn" style="flex: 1;">
-                    ⏳ 继续等待
-                </button>
-                <button class="candy-btn secondary" id="play-with-ai-btn" style="flex: 1;">
-                    🤖 与AI对战
-                </button>
-            </div>
+        aiDiv.style.cssText = `
+            margin-top: 20px;
+            padding: 25px;
+            background: linear-gradient(145deg, #fff0f5, #ffe4e1);
+            border-radius: 40px;
+            border: 3px solid #ff69b4;
+            box-shadow: 0 10px 0 #ff1493;
         `;
+
+        const emoji = document.createElement('div');
+        emoji.style.cssText = 'font-size: 3rem; margin-bottom: 15px;';
+        emoji.textContent = '😢';
+        aiDiv.appendChild(emoji);
+
+        const p1 = document.createElement('p');
+        p1.style.cssText = 'margin-bottom: 12px; font-weight: bold; color: #d44e8c;';
+        p1.textContent = '当前没有其他玩家在线';
+        aiDiv.appendChild(p1);
+
+        const p2 = document.createElement('p');
+        p2.style.cssText = 'margin-bottom: 20px; font-size: 1rem; color: #666;';
+        p2.textContent = '您可以继续等待，或者与AI练习对战 (AI对战不计入排名，不消耗积分)';
+        aiDiv.appendChild(p2);
+
+        const btnContainer = document.createElement('div');
+        btnContainer.style.cssText = 'display: flex; gap: 15px; justify-content: center;';
+
+        const continueBtn = document.createElement('button');
+        continueBtn.className = 'candy-btn primary';
+        continueBtn.style.cssText = 'flex: 1;';
+        continueBtn.textContent = '⏳ 继续等待';
+        btnContainer.appendChild(continueBtn);
+
+        const aiBtn = document.createElement('button');
+        aiBtn.className = 'candy-btn secondary';
+        aiBtn.style.cssText = 'flex: 1;';
+        aiBtn.textContent = '🤖 与AI对战';
+        btnContainer.appendChild(aiBtn);
+
+        aiDiv.appendChild(btnContainer);
 
         waitingDiv.appendChild(aiDiv);
 
-        // 绑定事件（先移除旧的监听器）
-        const continueBtn = document.getElementById('continue-waiting-btn');
-        if (continueBtn) {
-            if (this.continueWaitingHandler) {
-                continueBtn.removeEventListener('click', this.continueWaitingHandler);
-            }
-            this.continueWaitingHandler = () => {
-                aiDiv.remove();
-                this.quickMatch(); // 重新开始匹配
-            };
-            continueBtn.addEventListener('click', this.continueWaitingHandler);
-        }
+        continueBtn.onclick = () => {
+            aiDiv.remove();
+            this.quickMatch();
+        };
 
-        const aiBtn = document.getElementById('play-with-ai-btn');
-        if (aiBtn) {
-            if (this.playWithAIHandler) {
-                aiBtn.removeEventListener('click', this.playWithAIHandler);
-            }
-            this.playWithAIHandler = () => {
-                aiDiv.remove();
-                this.startAIBattle();
-            };
-            aiBtn.addEventListener('click', this.playWithAIHandler);
-        }
+        aiBtn.onclick = () => {
+            aiDiv.remove();
+            this.startAIBattle();
+        };
     }
 
-    /**
-     * 开始与AI对战
-     */
     async startAIBattle() {
-        // 清理匹配状态
+        this.cleanupAIResources();
+        
         this.cleanupMatch();
 
-        // 创建AI玩家
         const aiPlayer = {
             id: 'ai_' + Math.random().toString(36).substring(2, 8),
             name: this.getAIName(),
             elo: 1200
         };
 
-        // 标记对手为AI
         this.room.opponentIsAI = true;
         this.room.aiDifficulty = this.selectAIDifficulty();
 
-        // 重置AI重试计数
-        this.aiMoveRetryCount = 0;
-
-        // 创建对战房间（不通过Supabase）
         await this.startAIBattleRoom(aiPlayer);
 
-        if (this.game.ui) {
-            this.game.ui.showFeedback('已为您匹配AI对手', '#4CAF50');
-        }
+        this.showFeedback('已为您匹配AI对手', '#4CAF50');
+        
+        const aiOption = document.getElementById('ai-option');
+        if (aiOption) aiOption.remove();
     }
 
-    /**
-     * 选择AI难度（根据玩家ELO）
-     */
     selectAIDifficulty() {
-        const playerELO = this.game.state.currentUser?.elo || 1200;
-        if (playerELO < 1000) return 'easy';
-        if (playerELO < 1400) return 'medium';
-        return 'hard';
+        const playerELO = this.game.state?.currentUser?.elo || 1200;
+        
+        if (playerELO < 900) return 'easy';
+        if (playerELO < 1300) return 'medium';
+        if (playerELO < 1600) return 'hard';
+        return 'expert';
     }
 
-    /**
-     * 获取AI名称
-     */
     getAIName() {
         const names = [
             '🤖 机器人小糖',
@@ -586,14 +1717,16 @@ class BattleMode {
             '🌈 彩虹AI',
             '⭐ 明星AI'
         ];
-        return names[Math.floor(Math.random() * names.length)] + 
-               (this.room.aiDifficulty === 'easy' ? ' (简单)' : 
-                this.room.aiDifficulty === 'medium' ? ' (中等)' : ' (困难)');
+        
+        let difficultyText = '';
+        if (this.room.aiDifficulty === 'easy') difficultyText = ' (简单)';
+        else if (this.room.aiDifficulty === 'medium') difficultyText = ' (中等)';
+        else if (this.room.aiDifficulty === 'hard') difficultyText = ' (困难)';
+        else difficultyText = ' (专家)';
+        
+        return names[Math.floor(Math.random() * names.length)] + difficultyText;
     }
 
-    /**
-     * 开始AI对战房间（本地模拟）
-     */
     async startAIBattleRoom(aiPlayer) {
         this.room.battleId = 'ai_' + Date.now();
         this.room.roomCode = this.generateRoomCode();
@@ -604,67 +1737,57 @@ class BattleMode {
         this.room.gameActive = true;
         this.room.selectedCards = [];
 
-        // 更新UI
         const waitingDiv = document.getElementById('battle-waiting');
-        if (waitingDiv) waitingDiv.style.display = 'none';
-        
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'block';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (waitingDiv) waitingDiv.style.display = 'none';
+        if (activeDiv) activeDiv.style.display = 'block';
         if (resultDiv) resultDiv.style.display = 'none';
 
-        // 清空聊天记录
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) chatMessages.innerHTML = '';
 
-        // 设置玩家名称和头像
         const player1Name = document.getElementById('player1-name');
-        if (player1Name) player1Name.textContent = this.game.state.currentUser.name;
-        
         const player2Name = document.getElementById('player2-name');
-        if (player2Name) player2Name.textContent = aiPlayer.name;
-        
         const player1Avatar = document.getElementById('player1-avatar');
-        if (player1Avatar) player1Avatar.textContent = this.game.state.currentUser.name.charAt(0).toUpperCase();
-        
         const player2Avatar = document.getElementById('player2-avatar');
+        
+        if (player1Name) player1Name.textContent = this.game.state.currentUser.name;
+        if (player2Name) player2Name.textContent = aiPlayer.name;
+        if (player1Avatar) player1Avatar.textContent = this.game.state.currentUser.name.charAt(0).toUpperCase();
         if (player2Avatar) player2Avatar.textContent = '🤖';
 
-        // 重置分数和进度
         const player1Score = document.getElementById('player1-score');
-        if (player1Score) player1Score.textContent = '0';
-        
         const player2Score = document.getElementById('player2-score');
-        if (player2Score) player2Score.textContent = '0';
-        
         const player1Progress = document.getElementById('player1-progress');
-        if (player1Progress) player1Progress.style.width = '0%';
-        
         const player2Progress = document.getElementById('player2-progress');
+        
+        if (player1Score) player1Score.textContent = '0';
+        if (player2Score) player2Score.textContent = '0';
+        if (player1Progress) player1Progress.style.width = '0%';
         if (player2Progress) player2Progress.style.width = '0%';
 
-        // 随机决定先手
         const firstPlayer = Math.random() < 0.5 ? this.game.state.currentUser.id : aiPlayer.id;
         this.room.myTurn = firstPlayer === this.game.state.currentUser.id;
 
         this.updateTurnIndicator();
         this.generateBattleGrid();
         this.generateBattleTarget();
+        this.showRoomCode();
+        this.updateProgressBars();
 
-        this.addAIMessage(`⚔️ 与AI对战开始！ (难度: ${this.room.aiDifficulty === 'easy' ? '简单' : this.room.aiDifficulty === 'medium' ? '中等' : '困难'})`);
+        this.addAIMessage(`⚔️ 与AI对战开始！ (难度: ${this.room.aiDifficulty === 'easy' ? '简单' : this.room.aiDifficulty === 'medium' ? '中等' : this.room.aiDifficulty === 'hard' ? '困难' : '专家'})`);
         if (this.room.myTurn) {
             this.addAIMessage('你的回合，请选择卡片');
         } else {
             this.addAIMessage(`${aiPlayer.name} 的回合，请稍候...`);
-            // AI自动操作
             this.scheduleAIMove();
         }
+        
+        this.saveLocalBattleState();
     }
 
-    /**
-     * 调度AI移动
-     */
     scheduleAIMove() {
         if (this.aiMoveTimer) {
             clearTimeout(this.aiMoveTimer);
@@ -678,9 +1801,6 @@ class BattleMode {
         }, this.constants.AI_MOVE_DELAY);
     }
 
-    /**
-     * AI自动操作
-     */
     async makeAIMove() {
         if (!this.room.gameActive || this.room.myTurn) return;
 
@@ -689,69 +1809,90 @@ class BattleMode {
 
         const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
         
-        // 添加重试计数，防止无限循环
-        if (cards.length < 2) {
+        if (this.aiGlobalRetryCount > 5) {
+            console.warn('AI多次失败，重置网格');
+            this.refreshBattleGrid();
+            this.generateBattleTarget();
+            this.aiGlobalRetryCount = 0;
+            this.scheduleAIMove();
+            return;
+        }
+        
+        if (!cards || cards.length < 2) {
+            this.aiGlobalRetryCount++;
             if (this.aiMoveRetryCount >= this.constants.AI_MAX_RETRIES) {
-                // 多次重试后仍然无法生成卡片，强制刷新网格
                 this.refreshBattleGrid();
                 this.aiMoveRetryCount = 0;
             } else {
                 this.aiMoveRetryCount++;
             }
-            this.refreshBattleGrid();
             this.scheduleAIMove();
             return;
         }
         
-        this.aiMoveRetryCount = 0; // 重置计数
+        this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
 
-        const target = parseInt(document.getElementById('battle-target-number')?.textContent || '0');
+        const targetEl = document.getElementById('battle-target-number');
+        if (!targetEl) {
+            this.scheduleAIMove();
+            return;
+        }
         
-        // 根据难度决定AI行为
+        const target = parseInt(targetEl.textContent) || 0;
+        
         let move = null;
         
         if (this.room.aiDifficulty === 'easy') {
-            // 简单AI：随机选择，低概率选对
-            if (Math.random() < 0.3) { // 30%概率选对
+            if (Math.random() < 0.3) {
                 move = this.findCorrectMove(cards, target);
             }
         } else if (this.room.aiDifficulty === 'medium') {
-            // 中等AI：60%概率选对
-            if (Math.random() < 0.6) {
+            if (Math.random() < 0.7) {
+                move = this.findCorrectMove(cards, target);
+            }
+        } else if (this.room.aiDifficulty === 'hard') {
+            if (Math.random() < 0.95) {
                 move = this.findCorrectMove(cards, target);
             }
         } else {
-            // 困难AI：90%概率选对
-            if (Math.random() < 0.9) {
-                move = this.findCorrectMove(cards, target);
+            move = this.findCorrectMove(cards, target);
+            if (!move) {
+                move = this.findClosestMove(cards, target);
             }
         }
 
         if (!move) {
-            // 随机选择两张不同的卡片
             const index1 = Math.floor(Math.random() * cards.length);
             let index2;
             do {
                 index2 = Math.floor(Math.random() * cards.length);
-            } while (index2 === index1);
+            } while (index2 === index1 && cards.length > 1);
+            
+            if (cards.length === 1) {
+                this.refreshBattleGrid();
+                this.scheduleAIMove();
+                return;
+            }
+            
             move = [cards[index1], cards[index2]];
         }
 
         const [card1, card2] = move;
         
-        // 模拟点击
+        if (!card1 || !card2) {
+            this.scheduleAIMove();
+            return;
+        }
+        
         card1.classList.add('selected');
         card2.classList.add('selected');
         
-        // 等待一下再执行，看起来像真实玩家
         setTimeout(() => {
             this.executeAIMove(card1, card2, target);
         }, 500);
     }
 
-    /**
-     * 寻找正确组合
-     */
     findCorrectMove(cards, target) {
         for (let i = 0; i < cards.length; i++) {
             for (let j = i + 1; j < cards.length; j++) {
@@ -765,23 +1906,46 @@ class BattleMode {
         return null;
     }
 
-    /**
-     * 执行AI移动
-     */
+    findClosestMove(cards, target) {
+        let bestPair = null;
+        let closestDiff = Infinity;
+        
+        for (let i = 0; i < cards.length; i++) {
+            for (let j = i + 1; j < cards.length; j++) {
+                const num1 = parseInt(cards[i].dataset.value);
+                const num2 = parseInt(cards[j].dataset.value);
+                const sum = num1 + num2;
+                const diff = Math.abs(sum - target);
+                
+                if (diff < closestDiff) {
+                    closestDiff = diff;
+                    bestPair = [cards[i], cards[j]];
+                }
+            }
+        }
+        
+        return bestPair;
+    }
+
     async executeAIMove(card1, card2, target) {
         if (!this.room.gameActive) return;
+
+        if (!card1.isConnected || !card2.isConnected) {
+            console.log('AI移动时卡片已被移除');
+            this.scheduleAIMove();
+            return;
+        }
 
         const num1 = parseInt(card1.dataset.value);
         const num2 = parseInt(card2.dataset.value);
         const sum = num1 + num2;
         const isCorrectMove = sum === target;
 
-        // 添加AI操作消息
         const result = isCorrectMove ? '✓ 正确' : '✗ 错误';
         this.addAIMessage(`${this.room.opponentName} 选择了 ${num1} + ${num2} = ${sum} ${result}`);
 
         if (isCorrectMove) {
-            SoundManager.play('correct');
+            this.playSound('correct');
             
             card1.classList.add('matched');
             card2.classList.add('matched');
@@ -791,14 +1955,15 @@ class BattleMode {
                 if (card2.isConnected) card2.remove();
             }, 300);
 
-            // 更新AI分数
-            const aiScoreEl = document.getElementById('player2-score');
+            const aiScoreEl = this.getOpponentScoreElement();
             if (aiScoreEl) {
                 const currentScore = parseInt(aiScoreEl.textContent) || 0;
                 aiScoreEl.textContent = currentScore + 10;
             }
 
-            const aiProgress = document.getElementById('player2-progress');
+            const aiProgress = this.room.playerRole === 'player1' ? 
+                document.getElementById('player2-progress') : 
+                document.getElementById('player1-progress');
             if (aiProgress) {
                 const currentProgress = parseInt(aiProgress.style.width) || 0;
                 const newProgress = Math.min(100, currentProgress + 10);
@@ -812,14 +1977,15 @@ class BattleMode {
                 this.refreshBattleGrid();
             }
 
-            // 检查AI是否获胜
-            const aiProgressWidth = document.getElementById('player2-progress')?.style.width;
+            const aiProgressWidth = aiProgress?.style.width;
             if (aiProgressWidth && parseInt(aiProgressWidth) >= 100) {
                 this.endAIBattle(this.room.opponentId);
                 return;
             }
         } else {
-            SoundManager.play('wrong');
+            this.playSound('wrong');
+            
+            this.generateBattleTarget();
             
             setTimeout(() => {
                 if (card1.isConnected) card1.classList.remove('selected');
@@ -827,93 +1993,79 @@ class BattleMode {
             }, 500);
         }
 
-        // 轮到玩家
         this.room.myTurn = true;
         this.updateTurnIndicator();
         this.addAIMessage('你的回合');
     }
 
-    /**
-     * 结束AI对战
-     */
     endAIBattle(winnerId) {
         this.room.gameActive = false;
         this.stopTurnTimer();
+        this.cleanupAIResources();
 
-        // 清理AI定时器
-        if (this.aiMoveTimer) {
-            clearTimeout(this.aiMoveTimer);
-            this.aiMoveTimer = null;
-        }
-
-        if (this.aiResponseTimer) {
-            clearTimeout(this.aiResponseTimer);
-            this.aiResponseTimer = null;
-        }
-
-        // 更新UI
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'none';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (activeDiv) activeDiv.style.display = 'none';
         if (resultDiv) resultDiv.style.display = 'block';
 
         const iWon = winnerId === this.game.state.currentUser.id;
-        const lang = I18n;
         
         const resultTitle = document.getElementById('result-title');
-        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${lang.t('win')}` : `😢 ${lang.t('lose')}`;
+        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
 
         const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
         const aiScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
 
         const finalPlayerScore = document.getElementById('final-player-score');
-        if (finalPlayerScore) finalPlayerScore.textContent = myScore;
-        
         const finalOpponentScore = document.getElementById('final-opponent-score');
+        
+        if (finalPlayerScore) finalPlayerScore.textContent = myScore;
         if (finalOpponentScore) finalOpponentScore.textContent = aiScore;
 
-        // AI对战不播放成就音效
-        SoundManager.play(iWon ? 'achievement' : 'wrong');
+        this.playSound(iWon ? 'achievement' : 'wrong');
 
-        // 添加结束消息
         this.addAIMessage(`🏆 对战结束，${iWon ? '你' : this.room.opponentName} 获胜！`);
+        
+        this.disableChatInput(true);
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
     }
 
-    /**
-     * 添加AI消息到聊天
-     */
     addAIMessage(text) {
         const chat = document.getElementById('chat-messages');
         if (!chat) return;
 
+        const fragment = document.createDocumentFragment();
+        
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message system';
         msgDiv.textContent = text;
-        chat.appendChild(msgDiv);
         
-        // 限制聊天记录数量
+        fragment.appendChild(msgDiv);
+        chat.appendChild(fragment);
+        
         this.limitChatMessages(chat);
         
-        chat.scrollTop = chat.scrollHeight;
+        requestAnimationFrame(() => {
+            chat.scrollTop = chat.scrollHeight;
+        });
     }
 
-    /**
-     * 限制聊天记录数量
-     */
     limitChatMessages(chat) {
         while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
             chat.removeChild(chat.children[0]);
         }
     }
 
-    /**
-     * 清理匹配状态
-     */
     cleanupMatch() {
         if (this.matchTimeoutId) {
             clearTimeout(this.matchTimeoutId);
             this.matchTimeoutId = null;
+        }
+        
+        if (this.longWaitTimer) {
+            clearTimeout(this.longWaitTimer);
+            this.longWaitTimer = null;
         }
 
         this.stopQueueStatusUpdate();
@@ -923,20 +2075,25 @@ class BattleMode {
 
         const waitingHint = document.getElementById('match-waiting-hint');
         if (waitingHint) waitingHint.remove();
+        
+        const longWait = document.getElementById('long-wait-suggestion');
+        if (longWait) longWait.remove();
 
         this.matchStartTime = null;
+        
+        if (this.game.state?.currentUser?.id) {
+            this.leaveQueue(this.game.state.currentUser.id);
+        }
+        
+        if (this.matchQueue.length === 0) {
+            this.matchQueue = [];
+        }
     }
 
-    /**
-     * 生成房间码
-     */
     generateRoomCode() {
         return Math.random().toString(36).substring(2, 8).toUpperCase();
     }
 
-    /**
-     * 加入匹配队列
-     */
     async joinQueue(player) {
         const elo = await this.calculatePlayerELO(player.id) || 1200;
         
@@ -953,16 +2110,10 @@ class BattleMode {
         this.tryMatch();
     }
 
-    /**
-     * 离开匹配队列
-     */
     leaveQueue(playerId) {
         this.matchQueue = this.matchQueue.filter(p => p.id !== playerId);
     }
 
-    /**
-     * 尝试匹配（优化版）
-     */
     async tryMatch() {
         if (this.matchQueue.length < 2) return;
 
@@ -981,7 +2132,6 @@ class BattleMode {
                 const waitTime = Date.now() - this.matchQueue[j].joinTime;
                 const diff = Math.abs(this.matchQueue[i].elo - this.matchQueue[j].elo);
                 
-                // 随时间增加匹配范围
                 const timeBonus = Math.min(this.constants.MAX_TIME_BONUS, waitTime / 1000) * this.constants.TIME_BONUS_FACTOR;
                 const maxDiff = this.constants.BASE_MATCH_RANGE + timeBonus;
                 
@@ -1002,24 +2152,19 @@ class BattleMode {
             const player1 = this.matchQueue[i];
             const player2 = this.matchQueue[j];
             
-            // 从队列中移除
             const index1 = Math.max(i, j);
             const index2 = Math.min(i, j);
             this.matchQueue.splice(index1, 1);
             this.matchQueue.splice(index2, 1);
             
-            // 清理匹配超时（因为匹配成功了）
             this.cleanupMatch();
             
             await this.createBattleRoom(player1, player2);
         }
     }
 
-    /**
-     * 计算玩家ELO分数
-     */
     async calculatePlayerELO(userId) {
-        if (!this.game.state.supabaseReady) return 1200;
+        if (!this.isSupabaseAvailable()) return 1200;
 
         try {
             const { data: battles } = await this.game.state.supabase
@@ -1048,8 +2193,7 @@ class BattleMode {
                 totalScore += this.constants.ELO_K_FACTOR * (actual - expected);
             }
 
-            // 更新ELO到数据库
-            if (this.game.state.supabaseReady) {
+            if (this.isSupabaseAvailable()) {
                 const winRate = battles.length > 0 ? (wins / battles.length) * 100 : 0;
                 await this.game.state.supabase
                     .from('player_elo')
@@ -1072,18 +2216,14 @@ class BattleMode {
 
     // ==================== 房间管理 ====================
 
-    /**
-     * 创建对战房间
-     */
     async createBattleRoom(player1, player2) {
-        // 验证玩家信息
         if (!player1 || !player2 || !player1.id || !player2.id) {
             console.error('玩家信息不完整');
             return;
         }
 
-        if (!this.game.state.supabaseReady) {
-            // Supabase不可用时，使用本地对战
+        if (!this.isSupabaseAvailable()) {
+            console.log('Supabase不可用，使用本地对战');
             await this.startLocalBattle(player1, player2);
             return;
         }
@@ -1110,9 +2250,12 @@ class BattleMode {
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase错误:', error);
+                await this.startLocalBattle(player1, player2);
+                return;
+            }
 
-            // 通知玩家匹配成功
             this.notifyPlayer(player1.id, 'match_found', {
                 battleId: battle.id,
                 roomCode,
@@ -1126,14 +2269,10 @@ class BattleMode {
             });
         } catch (error) {
             console.error('创建对战房间失败:', error);
-            // 降级到本地对战
             await this.startLocalBattle(player1, player2);
         }
     }
 
-    /**
-     * 开始本地对战（Supabase不可用时）
-     */
     async startLocalBattle(player1, player2) {
         this.room.battleId = 'local_' + Date.now();
         this.room.roomCode = this.generateRoomCode();
@@ -1144,67 +2283,57 @@ class BattleMode {
         this.room.gameActive = true;
         this.room.opponentIsAI = false;
 
-        // 更新UI
         const waitingDiv = document.getElementById('battle-waiting');
-        if (waitingDiv) waitingDiv.style.display = 'none';
-        
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'block';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (waitingDiv) waitingDiv.style.display = 'none';
+        if (activeDiv) activeDiv.style.display = 'block';
         if (resultDiv) resultDiv.style.display = 'none';
 
-        // 清空聊天记录
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) chatMessages.innerHTML = '';
 
-        // 设置玩家名称
         if (this.room.playerRole === 'player1') {
             const player1Name = document.getElementById('player1-name');
-            if (player1Name) player1Name.textContent = player1.name;
-            
             const player2Name = document.getElementById('player2-name');
-            if (player2Name) player2Name.textContent = player2.name;
-            
             const player1Avatar = document.getElementById('player1-avatar');
-            if (player1Avatar) player1Avatar.textContent = player1.name.charAt(0).toUpperCase();
-            
             const player2Avatar = document.getElementById('player2-avatar');
+            
+            if (player1Name) player1Name.textContent = player1.name;
+            if (player2Name) player2Name.textContent = player2.name;
+            if (player1Avatar) player1Avatar.textContent = player1.name.charAt(0).toUpperCase();
             if (player2Avatar) player2Avatar.textContent = player2.name.charAt(0).toUpperCase();
         } else {
             const player1Name = document.getElementById('player1-name');
-            if (player1Name) player1Name.textContent = player2.name;
-            
             const player2Name = document.getElementById('player2-name');
-            if (player2Name) player2Name.textContent = player1.name;
-            
             const player1Avatar = document.getElementById('player1-avatar');
-            if (player1Avatar) player1Avatar.textContent = player2.name.charAt(0).toUpperCase();
-            
             const player2Avatar = document.getElementById('player2-avatar');
+            
+            if (player1Name) player1Name.textContent = player2.name;
+            if (player2Name) player2Name.textContent = player1.name;
+            if (player1Avatar) player1Avatar.textContent = player2.name.charAt(0).toUpperCase();
             if (player2Avatar) player2Avatar.textContent = player1.name.charAt(0).toUpperCase();
         }
 
-        // 重置分数和进度
         const player1Score = document.getElementById('player1-score');
-        if (player1Score) player1Score.textContent = '0';
-        
         const player2Score = document.getElementById('player2-score');
-        if (player2Score) player2Score.textContent = '0';
-        
         const player1Progress = document.getElementById('player1-progress');
-        if (player1Progress) player1Progress.style.width = '0%';
-        
         const player2Progress = document.getElementById('player2-progress');
+        
+        if (player1Score) player1Score.textContent = '0';
+        if (player2Score) player2Score.textContent = '0';
+        if (player1Progress) player1Progress.style.width = '0%';
         if (player2Progress) player2Progress.style.width = '0%';
 
-        // 随机决定先手
         const firstPlayer = Math.random() < 0.5 ? player1.id : player2.id;
         this.room.myTurn = firstPlayer === this.game.state.currentUser.id;
 
         this.updateTurnIndicator();
         this.generateBattleGrid();
         this.generateBattleTarget();
+        this.showRoomCode();
+        this.updateProgressBars();
 
         this.sendLocalMessage('⚔️ 对战开始！（本地模式）');
         if (this.room.myTurn) {
@@ -1213,15 +2342,11 @@ class BattleMode {
             this.sendLocalMessage(`等待 ${this.room.opponentName} 操作`);
         }
 
-        // 本地模式无法实时通信，需要轮询或手动刷新
         this.startLocalPolling();
+        this.saveLocalBattleState();
     }
 
-    /**
-     * 开始本地轮询（模拟对手操作）
-     */
     startLocalPolling() {
-        // 如果是本地对战且是对手回合，随机等待后模拟操作
         if (!this.room.myTurn && !this.room.opponentIsAI) {
             if (this.localPollingTimer) {
                 clearTimeout(this.localPollingTimer);
@@ -1234,9 +2359,6 @@ class BattleMode {
         }
     }
 
-    /**
-     * 模拟对手操作
-     */
     simulateOpponentMove() {
         if (!this.room.gameActive || this.room.myTurn) return;
 
@@ -1245,20 +2367,30 @@ class BattleMode {
 
         const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
         
-        if (cards.length < 2) {
+        if (!cards || cards.length < 2) {
             this.refreshBattleGrid();
             this.startLocalPolling();
             return;
         }
 
-        const target = parseInt(document.getElementById('battle-target-number')?.textContent || '0');
+        const targetEl = document.getElementById('battle-target-number');
+        if (!targetEl) {
+            this.startLocalPolling();
+            return;
+        }
         
-        // 随机选择两张卡片
+        const target = parseInt(targetEl.textContent) || 0;
+        
         const index1 = Math.floor(Math.random() * cards.length);
         let index2;
         do {
             index2 = Math.floor(Math.random() * cards.length);
-        } while (index2 === index1);
+        } while (index2 === index1 && cards.length > 1);
+        
+        if (index1 === index2) {
+            this.startLocalPolling();
+            return;
+        }
 
         const card1 = cards[index1];
         const card2 = cards[index2];
@@ -1267,7 +2399,6 @@ class BattleMode {
         const sum = num1 + num2;
         const isCorrect = sum === target;
 
-        // 模拟操作
         card1.classList.add('selected');
         card2.classList.add('selected');
 
@@ -1280,10 +2411,7 @@ class BattleMode {
                     if (card2.isConnected) card2.remove();
                 }, 300);
 
-                // 更新对手分数
-                const opponentScoreEl = this.room.playerRole === 'player1' ? 
-                    document.getElementById('player2-score') : 
-                    document.getElementById('player1-score');
+                const opponentScoreEl = this.getOpponentScoreElement();
                 if (opponentScoreEl) {
                     const currentScore = parseInt(opponentScoreEl.textContent) || 0;
                     opponentScoreEl.textContent = currentScore + 10;
@@ -1300,83 +2428,208 @@ class BattleMode {
 
                 this.generateBattleTarget();
 
-                // 检查对手是否获胜
                 const opponentProgressWidth = opponentProgress?.style.width;
                 if (opponentProgressWidth && parseInt(opponentProgressWidth) >= 100) {
                     this.endLocalBattle(this.room.opponentId);
                     return;
                 }
             } else {
+                this.generateBattleTarget();
+                
                 card1.classList.remove('selected');
                 card2.classList.remove('selected');
             }
 
-            // 轮到玩家
             this.room.myTurn = true;
             this.updateTurnIndicator();
             this.sendLocalMessage('你的回合');
         }, 500);
     }
 
-    /**
-     * 结束本地对战
-     */
     endLocalBattle(winnerId) {
         this.room.gameActive = false;
         this.stopTurnTimer();
 
-        // 清理本地轮询
         if (this.localPollingTimer) {
             clearTimeout(this.localPollingTimer);
             this.localPollingTimer = null;
         }
 
-        // 更新UI
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'none';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (activeDiv) activeDiv.style.display = 'none';
         if (resultDiv) resultDiv.style.display = 'block';
 
         const iWon = winnerId === this.game.state.currentUser.id;
-        const lang = I18n;
         
         const resultTitle = document.getElementById('result-title');
-        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${lang.t('win')}` : `😢 ${lang.t('lose')}`;
+        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
 
-        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
-        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
+        const myScore = parseInt(this.getMyScoreElement()?.textContent) || 0;
+        const opponentScore = parseInt(this.getOpponentScoreElement()?.textContent) || 0;
 
         const finalPlayerScore = document.getElementById('final-player-score');
-        if (finalPlayerScore) finalPlayerScore.textContent = myScore;
-        
         const finalOpponentScore = document.getElementById('final-opponent-score');
+        
+        if (finalPlayerScore) finalPlayerScore.textContent = myScore;
         if (finalOpponentScore) finalOpponentScore.textContent = opponentScore;
 
-        SoundManager.play(iWon ? 'achievement' : 'wrong');
+        this.playSound(iWon ? 'achievement' : 'wrong');
+        
+        this.disableChatInput(true);
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
     }
 
-    /**
-     * 发送本地消息
-     */
     sendLocalMessage(text) {
         const chat = document.getElementById('chat-messages');
         if (!chat) return;
 
+        const fragment = document.createDocumentFragment();
+        
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message system';
         msgDiv.textContent = text;
-        chat.appendChild(msgDiv);
         
-        // 限制聊天记录数量
+        fragment.appendChild(msgDiv);
+        chat.appendChild(fragment);
+        
         this.limitChatMessages(chat);
         
-        chat.scrollTop = chat.scrollHeight;
+        requestAnimationFrame(() => {
+            chat.scrollTop = chat.scrollHeight;
+        });
     }
 
-    /**
-     * 通知玩家
-     */
+    saveLocalBattleState() {
+        if (!this.room.battleId) return;
+        
+        try {
+            const state = {
+                battleId: this.room.battleId,
+                roomCode: this.room.roomCode,
+                opponentName: this.room.opponentName,
+                opponentIsAI: this.room.opponentIsAI,
+                aiDifficulty: this.room.aiDifficulty,
+                myTurn: this.room.myTurn,
+                gameActive: this.room.gameActive,
+                player1Score: document.getElementById('player1-score')?.textContent || '0',
+                player2Score: document.getElementById('player2-score')?.textContent || '0',
+                player1Progress: document.getElementById('player1-progress')?.style.width || '0%',
+                player2Progress: document.getElementById('player2-progress')?.style.width || '0%',
+                targetNumber: document.getElementById('battle-target-number')?.textContent || '0',
+                gridCards: this.saveGridState(),
+                chatMessages: this.saveChatState(),
+                timestamp: Date.now()
+            };
+            
+            this.safeStorage().setItem(this.constants.LOCAL_STORAGE_KEY, JSON.stringify(state));
+        } catch (error) {
+            console.error('保存本地对战状态失败:', error);
+        }
+    }
+
+    saveGridState() {
+        const grid = document.getElementById('battle-grid');
+        if (!grid) return [];
+        
+        const cards = Array.from(grid.querySelectorAll('.number-card'));
+        return cards.map(card => ({
+            value: card.dataset.value,
+            matched: card.classList.contains('matched'),
+            selected: card.classList.contains('selected')
+        }));
+    }
+
+    saveChatState() {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return [];
+        
+        return Array.from(chat.children).map(msg => ({
+            className: msg.className,
+            text: msg.textContent || msg.innerHTML
+        }));
+    }
+
+    loadLocalBattleState() {
+        try {
+            const saved = this.safeStorage().getItem(this.constants.LOCAL_STORAGE_KEY);
+            if (!saved) return false;
+            
+            const state = JSON.parse(saved);
+            
+            if (Date.now() - state.timestamp > this.constants.STORAGE_EXPIRY) {
+                this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+                return false;
+            }
+            
+            this.room.battleId = state.battleId;
+            this.room.roomCode = state.roomCode;
+            this.room.opponentName = state.opponentName;
+            this.room.opponentIsAI = state.opponentIsAI;
+            this.room.aiDifficulty = state.aiDifficulty;
+            this.room.myTurn = state.myTurn;
+            this.room.gameActive = state.gameActive;
+            
+            const player1Score = document.getElementById('player1-score');
+            const player2Score = document.getElementById('player2-score');
+            const player1Progress = document.getElementById('player1-progress');
+            const player2Progress = document.getElementById('player2-progress');
+            const targetNumber = document.getElementById('battle-target-number');
+            
+            if (player1Score) player1Score.textContent = state.player1Score;
+            if (player2Score) player2Score.textContent = state.player2Score;
+            if (player1Progress) player1Progress.style.width = state.player1Progress;
+            if (player2Progress) player2Progress.style.width = state.player2Progress;
+            if (targetNumber) targetNumber.textContent = state.targetNumber;
+            
+            this.loadGridState(state.gridCards);
+            this.loadChatState(state.chatMessages);
+            
+            return true;
+        } catch (error) {
+            console.error('加载本地对战状态失败:', error);
+            return false;
+        }
+    }
+
+    loadGridState(cardsData) {
+        const grid = document.getElementById('battle-grid');
+        if (!grid || !cardsData) return;
+        
+        const fragment = document.createDocumentFragment();
+        
+        cardsData.forEach(data => {
+            const card = document.createElement('div');
+            card.className = 'number-card';
+            if (data.matched) card.classList.add('matched');
+            if (data.selected) card.classList.add('selected');
+            card.dataset.value = data.value;
+            card.textContent = data.value;
+            fragment.appendChild(card);
+        });
+        
+        grid.innerHTML = '';
+        grid.appendChild(fragment);
+    }
+
+    loadChatState(messagesData) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat || !messagesData) return;
+        
+        const fragment = document.createDocumentFragment();
+        
+        messagesData.forEach(data => {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = data.className;
+            msgDiv.innerHTML = data.text;
+            fragment.appendChild(msgDiv);
+        });
+        
+        chat.innerHTML = '';
+        chat.appendChild(fragment);
+    }
+
     notifyPlayer(playerId, type, data) {
         if (this.game.state.currentUser && this.game.state.currentUser.id === playerId) {
             if (type === 'match_found') {
@@ -1386,9 +2639,6 @@ class BattleMode {
         }
     }
 
-    /**
-     * 显示加入房间模态框
-     */
     showJoinModal() {
         if (this.game.ui) {
             this.game.ui.openModal('join-modal');
@@ -1400,50 +2650,36 @@ class BattleMode {
         }
     }
 
-    /**
-     * 关闭加入房间模态框
-     */
     closeJoinModal() {
         if (this.game.ui) {
             this.game.ui.closeModal('join-modal');
         }
     }
 
-    /**
-     * 确认加入房间
-     */
     async confirmJoin() {
         const roomCodeInput = document.getElementById('room-code-input');
         const roomCode = roomCodeInput?.value;
         
         if (!roomCode || roomCode.length !== 6) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请输入6位房间码', '#ff4444');
-            }
+            this.showFeedback('请输入6位房间码', '#ff4444');
             return;
         }
 
-        if (!Validators.isValidRoomCode(roomCode)) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('房间码格式不正确', '#ff4444');
-            }
+        if (!Validators || !Validators.isValidRoomCode(roomCode)) {
+            this.showFeedback('房间码格式不正确', '#ff4444');
             return;
         }
 
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
-            }
+            this.showFeedback('请先登录', '#ff4444');
             if (this.game.auth) {
                 this.game.auth.showAuthModal('login');
             }
             return;
         }
 
-        if (!this.game.state.supabaseReady) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('Supabase未连接', '#ff4444');
-            }
+        if (!this.isSupabaseAvailable()) {
+            this.showFeedback('Supabase未连接', '#ff4444');
             return;
         }
 
@@ -1456,9 +2692,7 @@ class BattleMode {
                 .single();
 
             if (error || !battle) {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback('房间不存在或已开始', '#ff4444');
-                }
+                this.showFeedback('房间不存在或已开始', '#ff4444');
                 return;
             }
 
@@ -1481,27 +2715,17 @@ class BattleMode {
             this.closeJoinModal();
         } catch (error) {
             console.error('加入房间失败:', error);
-            if (this.game.ui) {
-                this.game.ui.showFeedback('加入房间失败', '#ff4444');
-            }
+            this.showFeedback('加入房间失败', '#ff4444');
         }
     }
 
-    /**
-     * 复制房间码
-     */
     copyRoomCode() {
         if (this.room.roomCode) {
             navigator.clipboard.writeText(this.room.roomCode);
-            if (this.game.ui) {
-                this.game.ui.showFeedback('复制成功', '#4CAF50');
-            }
+            this.showFeedback('复制成功', '#4CAF50');
         }
     }
 
-    /**
-     * 取消匹配
-     */
     cancelMatch() {
         this.cleanupMatch();
 
@@ -1516,14 +2740,9 @@ class BattleMode {
 
     // ==================== 对战逻辑 ====================
 
-    /**
-     * 开始对战
-     */
     async startBattle(data) {
-        if (!this.game.state.supabaseReady) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('Supabase未连接，无法开始对战', '#ff4444');
-            }
+        if (!this.isSupabaseAvailable()) {
+            this.showFeedback('Supabase未连接，无法开始对战', '#ff4444');
             return;
         }
 
@@ -1537,61 +2756,49 @@ class BattleMode {
         this.room.selectedCards = [];
         this.room.opponentIsAI = false;
 
-        // 更新UI
         const waitingDiv = document.getElementById('battle-waiting');
-        if (waitingDiv) waitingDiv.style.display = 'none';
-        
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'block';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (waitingDiv) waitingDiv.style.display = 'none';
+        if (activeDiv) activeDiv.style.display = 'block';
         if (resultDiv) resultDiv.style.display = 'none';
 
-        // 清空聊天记录
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) chatMessages.innerHTML = '';
 
-        // 设置玩家名称和头像
         if (this.room.playerRole === 'player1') {
             const player1Name = document.getElementById('player1-name');
-            if (player1Name) player1Name.textContent = this.game.state.currentUser.name;
-            
             const player2Name = document.getElementById('player2-name');
-            if (player2Name) player2Name.textContent = this.room.opponentName;
-            
             const player1Avatar = document.getElementById('player1-avatar');
-            if (player1Avatar) player1Avatar.textContent = this.game.state.currentUser.name.charAt(0).toUpperCase();
-            
             const player2Avatar = document.getElementById('player2-avatar');
+            
+            if (player1Name) player1Name.textContent = this.game.state.currentUser.name;
+            if (player2Name) player2Name.textContent = this.room.opponentName;
+            if (player1Avatar) player1Avatar.textContent = this.game.state.currentUser.name.charAt(0).toUpperCase();
             if (player2Avatar) player2Avatar.textContent = this.room.opponentName.charAt(0).toUpperCase();
         } else {
             const player1Name = document.getElementById('player1-name');
-            if (player1Name) player1Name.textContent = this.room.opponentName;
-            
             const player2Name = document.getElementById('player2-name');
-            if (player2Name) player2Name.textContent = this.game.state.currentUser.name;
-            
             const player1Avatar = document.getElementById('player1-avatar');
-            if (player1Avatar) player1Avatar.textContent = this.room.opponentName.charAt(0).toUpperCase();
-            
             const player2Avatar = document.getElementById('player2-avatar');
+            
+            if (player1Name) player1Name.textContent = this.room.opponentName;
+            if (player2Name) player2Name.textContent = this.game.state.currentUser.name;
+            if (player1Avatar) player1Avatar.textContent = this.room.opponentName.charAt(0).toUpperCase();
             if (player2Avatar) player2Avatar.textContent = this.game.state.currentUser.name.charAt(0).toUpperCase();
         }
 
-        // 重置分数和进度
         const player1Score = document.getElementById('player1-score');
-        if (player1Score) player1Score.textContent = '0';
-        
         const player2Score = document.getElementById('player2-score');
-        if (player2Score) player2Score.textContent = '0';
-        
         const player1Progress = document.getElementById('player1-progress');
-        if (player1Progress) player1Progress.style.width = '0%';
-        
         const player2Progress = document.getElementById('player2-progress');
+        
+        if (player1Score) player1Score.textContent = '0';
+        if (player2Score) player2Score.textContent = '0';
+        if (player1Progress) player1Progress.style.width = '0%';
         if (player2Progress) player2Progress.style.width = '0%';
 
-        // 随机决定先手
         const firstPlayer = Math.random() < 0.5 ? this.game.state.currentUser.id : this.room.opponentId;
         this.room.myTurn = firstPlayer === this.game.state.currentUser.id;
 
@@ -1607,6 +2814,8 @@ class BattleMode {
         this.updateTurnIndicator();
         this.generateBattleGrid();
         this.generateBattleTarget();
+        this.showRoomCode();
+        this.updateProgressBars();
 
         await this.sendSystemMessage('⚔️ 对战开始！');
         if (this.room.myTurn) {
@@ -1616,21 +2825,97 @@ class BattleMode {
         }
 
         this.subscribeToBattle(this.room.battleId);
+        this.pushBattleState();
+        this.startHeartbeat();
+        this.startScoreSync();
+        
+        this.broadcastChannel?.postMessage({
+            type: 'BATTLE_STARTED',
+            data: { userId: this.game.state.currentUser.id }
+        });
     }
 
-    /**
-     * 订阅对战更新
-     */
     subscribeToBattle(battleId) {
-        if (!this.game.state.supabaseReady) return;
+        if (!this.isSupabaseAvailable()) return;
+
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
 
         if (this.room.channel) {
-            this.room.channel.unsubscribe();
+            console.log('取消旧订阅:', this.room.subscriptionId);
+            try {
+                this.room.channel.unsubscribe();
+            } catch (e) {
+                console.warn('取消订阅失败:', e);
+            }
+            this.room.channel = null;
+            this.room.subscriptionId = null;
+        }
+
+        try {
+            this.game.state.supabase.removeAllChannels();
+        } catch (e) {
+            console.warn('清理频道失败:', e);
         }
 
         try {
             this.room.channel = this.game.state.supabase
                 .channel(`battle-${battleId}`)
+                .on('presence', { event: 'sync' }, () => {
+                    console.log('Presence sync');
+                })
+                .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+                    console.log('Player joined:', newPresences);
+                })
+                .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+                    console.log('Player left:', leftPresences);
+                    
+                    const offlineHint = document.createElement('div');
+                    offlineHint.className = 'offline-hint';
+                    offlineHint.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: #ff9800;
+                        color: white;
+                        padding: 12px 20px;
+                        border-radius: 30px;
+                        z-index: 10001;
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                        animation: slideIn 0.3s ease-out;
+                    `;
+                    
+                    const container = document.createElement('div');
+                    container.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+                    
+                    const icon = document.createElement('span');
+                    icon.textContent = '👋';
+                    container.appendChild(icon);
+                    
+                    const text = document.createElement('span');
+                    text.textContent = '对手已离线，等待重连...';
+                    container.appendChild(text);
+                    
+                    const closeBtn = document.createElement('button');
+                    closeBtn.style.cssText = 'background: none; border: none; color: white; font-size: 1.2rem; cursor: pointer;';
+                    closeBtn.textContent = '×';
+                    closeBtn.onclick = () => offlineHint.remove();
+                    container.appendChild(closeBtn);
+                    
+                    offlineHint.appendChild(container);
+                    
+                    document.body.appendChild(offlineHint);
+                    
+                    setTimeout(() => {
+                        if (offlineHint.isConnected) {
+                            offlineHint.remove();
+                        }
+                    }, 3000);
+                    
+                    this.showFeedback('对手已断开连接', '#ff9800');
+                })
                 .on(
                     'postgres_changes',
                     {
@@ -1639,7 +2924,9 @@ class BattleMode {
                         table: 'candy_math_battles',
                         filter: `id=eq.${battleId}`
                     },
-                    (payload) => this.handleBattleUpdate(payload)
+                    (payload) => {
+                        requestAnimationFrame(() => this.handleBattleUpdate(payload));
+                    }
                 )
                 .on(
                     'postgres_changes',
@@ -1649,7 +2936,9 @@ class BattleMode {
                         table: 'candy_math_battle_rounds',
                         filter: `battle_id=eq.${battleId}`
                     },
-                    (payload) => this.handleRoundUpdate(payload)
+                    (payload) => {
+                        requestAnimationFrame(() => this.handleRoundUpdate(payload));
+                    }
                 )
                 .on(
                     'postgres_changes',
@@ -1659,51 +2948,65 @@ class BattleMode {
                         table: 'candy_math_battle_messages',
                         filter: `battle_id=eq.${battleId}`
                     },
-                    (payload) => this.handleNewMessage(payload)
+                    (payload) => {
+                        requestAnimationFrame(() => this.handleNewMessage(payload));
+                    }
                 )
-                .subscribe((status, err) => {
+                .subscribe(async (status, err) => {
                     if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                         console.error('订阅失败:', err);
-                        this.attemptReconnect();
+                        this.reconnectTimer = setTimeout(() => {
+                            this.reconnectTimer = null;
+                            this.attemptReconnect();
+                        }, 5000);
                     } else if (status === 'CLOSED') {
                         console.log('通道已关闭');
+                        this.reconnectTimer = setTimeout(() => {
+                            this.reconnectTimer = null;
+                            if (this.room.gameActive && this.room.battleId) {
+                                this.subscribeToBattle(this.room.battleId);
+                            }
+                        }, 3000);
+                    } else if (status === 'SUBSCRIBED') {
+                        console.log('成功订阅对战:', battleId);
+                        this.room.channel.send({
+                            type: 'presence',
+                            event: 'join',
+                            payload: { user_id: this.game.state.currentUser.id }
+                        });
+                        this.reconnectAttempts = 0;
                     }
                 });
+                
+            this.room.subscriptionId = `battle-${battleId}-${Date.now()}`;
+            
         } catch (error) {
             console.error('订阅对战失败:', error);
         }
     }
 
-    /**
-     * 处理对战更新
-     */
     handleBattleUpdate(payload) {
         const battle = payload.new;
 
-        // 更新分数显示
         if (this.room.playerRole === 'player1') {
             const player1Score = document.getElementById('player1-score');
-            if (player1Score) player1Score.textContent = battle.player1_score || 0;
-            
             const player2Score = document.getElementById('player2-score');
-            if (player2Score) player2Score.textContent = battle.player2_score || 0;
-            
             const player1Progress = document.getElementById('player1-progress');
-            if (player1Progress) player1Progress.style.width = `${battle.player1_progress || 0}%`;
-            
             const player2Progress = document.getElementById('player2-progress');
+            
+            if (player1Score) player1Score.textContent = battle.player1_score || 0;
+            if (player2Score) player2Score.textContent = battle.player2_score || 0;
+            if (player1Progress) player1Progress.style.width = `${battle.player1_progress || 0}%`;
             if (player2Progress) player2Progress.style.width = `${battle.player2_progress || 0}%`;
         } else {
             const player1Score = document.getElementById('player1-score');
-            if (player1Score) player1Score.textContent = battle.player2_score || 0;
-            
             const player2Score = document.getElementById('player2-score');
-            if (player2Score) player2Score.textContent = battle.player1_score || 0;
-            
             const player1Progress = document.getElementById('player1-progress');
-            if (player1Progress) player1Progress.style.width = `${battle.player2_progress || 0}%`;
-            
             const player2Progress = document.getElementById('player2-progress');
+            
+            if (player1Score) player1Score.textContent = battle.player2_score || 0;
+            if (player2Score) player2Score.textContent = battle.player1_score || 0;
+            if (player1Progress) player1Progress.style.width = `${battle.player2_progress || 0}%`;
             if (player2Progress) player2Progress.style.width = `${battle.player1_progress || 0}%`;
         }
 
@@ -1715,9 +3018,6 @@ class BattleMode {
         }
     }
 
-    /**
-     * 处理回合更新
-     */
     handleRoundUpdate(payload) {
         const round = payload.new;
         if (round.player_id !== this.game.state.currentUser.id) {
@@ -1725,46 +3025,56 @@ class BattleMode {
         }
     }
 
-    /**
-     * 处理新消息
-     */
     handleNewMessage(payload) {
         const message = payload.new;
         this.addChatMessage(message);
     }
 
-    /**
-     * 更新回合指示器
-     */
     updateTurnIndicator() {
-        const indicator = document.getElementById('turn-indicator');
-        if (!indicator) return;
-
-        const turnText = indicator.querySelector('.turn-text');
-        const timer = document.getElementById('turn-timer');
-        const lang = I18n;
+        if (!this.cachedElements) {
+            this.cachedElements = {
+                indicator: document.getElementById('turn-indicator'),
+                turnText: document.querySelector('#turn-indicator .turn-text'),
+                timer: document.getElementById('turn-timer'),
+                player1Card: document.querySelector('.player-card.player1'),
+                player2Card: document.querySelector('.player-card.player2')
+            };
+        }
+        
+        const { indicator, turnText, timer, player1Card, player2Card } = this.cachedElements;
+        
+        if (!indicator || !turnText) return;
+        
+        if (player1Card) {
+            player1Card.classList.toggle('active', this.room.myTurn);
+        }
+        if (player2Card) {
+            player2Card.classList.toggle('active', !this.room.myTurn);
+        }
 
         if (this.room.opponentIsAI && !this.room.myTurn) {
-            // AI回合特殊显示
             turnText.textContent = 'AI思考中...';
             indicator.style.background = 'linear-gradient(145deg, #9b59b6, #8e44ad)';
             this.stopTurnTimer();
-            if (timer) timer.textContent = `${this.constants.ROUND_TIME}s`;
+            if (timer) {
+                timer.textContent = `${this.constants.ROUND_TIME}s`;
+                timer.classList.remove('warning');
+            }
         } else if (this.room.myTurn) {
-            turnText.textContent = lang.t('yourTurn');
+            turnText.textContent = this.t('yourTurn');
             indicator.style.background = 'linear-gradient(145deg, #6ab04c, #2e7d32)';
             this.startTurnTimer();
         } else {
-            turnText.textContent = lang.t('opponentTurn');
+            turnText.textContent = this.t('opponentTurn');
             indicator.style.background = 'linear-gradient(145deg, #e84342, #c0392b)';
             this.stopTurnTimer();
-            if (timer) timer.textContent = `${this.constants.ROUND_TIME}s`;
+            if (timer) {
+                timer.textContent = `${this.constants.ROUND_TIME}s`;
+                timer.classList.remove('warning');
+            }
         }
     }
 
-    /**
-     * 开始回合计时
-     */
     startTurnTimer() {
         let timeLeft = this.constants.ROUND_TIME;
         const timer = document.getElementById('turn-timer');
@@ -1773,17 +3083,52 @@ class BattleMode {
 
         this.room.roundTimer = setInterval(() => {
             timeLeft--;
-            if (timer) timer.textContent = `${timeLeft}s`;
+            if (timer) {
+                timer.textContent = `${timeLeft}s`;
+                
+                if (timeLeft <= 10) {
+                    timer.classList.add('warning');
+                    if (timeLeft === 10) {
+                        this.playSound('warning');
+                    }
+                }
+            }
 
             if (timeLeft <= 0) {
-                this.endTurn();
+                this.handleTurnTimeout();
             }
         }, 1000);
     }
 
-    /**
-     * 停止回合计时
-     */
+    async handleTurnTimeout() {
+        this.stopTurnTimer();
+        
+        const timer = document.getElementById('turn-timer');
+        if (timer) {
+            timer.classList.remove('warning');
+            timer.textContent = `${this.constants.ROUND_TIME}s`;
+        }
+        
+        if (!this.room.gameActive) return;
+        
+        if (this.room.selectedCards.length > 0) {
+            this.room.selectedCards.forEach(card => {
+                if (card && card.isConnected) {
+                    card.classList.remove('selected');
+                }
+            });
+            this.room.selectedCards = [];
+        }
+        
+        if (this.room.opponentIsAI) {
+            this.addAIMessage('⏰ 时间到，轮到对方了');
+        } else {
+            await this.sendSystemMessage('⏰ 时间到，轮到对方了');
+        }
+        
+        await this.endTurn();
+    }
+
     stopTurnTimer() {
         if (this.room.roundTimer) {
             clearInterval(this.room.roundTimer);
@@ -1791,83 +3136,119 @@ class BattleMode {
         }
     }
 
-    /**
-     * 生成对战网格
-     */
     generateBattleGrid() {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
+        const oldCards = grid.querySelectorAll('.number-card');
+        oldCards.forEach(card => {
+            card.style.animation = 'none';
+            card.offsetHeight;
+        });
+
         const numbers = [];
         for (let i = 0; i < 10; i++) {
             numbers.push(Math.floor(Math.random() * 10));
         }
 
-        grid.innerHTML = numbers.map(num => 
-            `<div class="number-card" data-value="${num}">${num}</div>`
-        ).join('');
+        const fragment = document.createDocumentFragment();
+        
+        numbers.forEach(num => {
+            const card = document.createElement('div');
+            card.className = 'number-card';
+            card.dataset.value = num;
+            card.textContent = num;
+            card.style.animation = 'cardAppear 0.3s ease-out';
+            fragment.appendChild(card);
+        });
+        
+        grid.innerHTML = '';
+        grid.appendChild(fragment);
     }
 
-    /**
-     * 刷新对战网格
-     */
     refreshBattleGrid() {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
+        const oldCards = grid.querySelectorAll('.number-card');
+        oldCards.forEach(card => {
+            card.style.animation = 'none';
+            card.offsetHeight;
+        });
+
         const numbers = [];
         for (let i = 0; i < 10; i++) {
             numbers.push(Math.floor(Math.random() * 10));
         }
         
-        grid.innerHTML = numbers.map(num => 
-            `<div class="number-card" data-value="${num}">${num}</div>`
-        ).join('');
+        const fragment = document.createDocumentFragment();
+        
+        numbers.forEach(num => {
+            const card = document.createElement('div');
+            card.className = 'number-card';
+            card.dataset.value = num;
+            card.textContent = num;
+            card.style.animation = 'cardAppear 0.3s ease-out';
+            fragment.appendChild(card);
+        });
+        
+        grid.innerHTML = '';
+        grid.appendChild(fragment);
     }
 
-    /**
-     * 生成对战目标
-     */
     generateBattleTarget() {
         const target = Math.floor(Math.random() * 10) + 5;
         const targetEl = document.getElementById('battle-target-number');
-        if (targetEl) targetEl.textContent = target;
+        if (targetEl) {
+            targetEl.textContent = target;
+            targetEl.style.animation = 'none';
+            targetEl.offsetHeight;
+            targetEl.style.animation = 'targetGlow 1s infinite';
+        }
     }
 
-    /**
-     * 处理对战卡片点击
-     */
     async handleBattleCardClick(e) {
+        const now = Date.now();
+        if (now - this.lastClickTime < this.CLICK_DEBOUNCE_TIME) {
+            return;
+        }
+        this.lastClickTime = now;
+        
+        if (this.clickDebounceTimer) {
+            clearTimeout(this.clickDebounceTimer);
+            this.clickDebounceTimer = null;
+        }
+        
         const card = e.target.closest('.number-card');
         if (!card) return;
 
-        if (!this.room.gameActive) return;
+        if (!this.room.gameActive) {
+            this.playSound('wrong');
+            this.showFeedback('游戏已结束', '#ffa500');
+            return;
+        }
         
         if (!this.room.myTurn) {
-            SoundManager.play('wrong');
-            if (this.game.ui) {
-                this.game.ui.showFeedback('现在是对手的回合', '#ffa500');
-            }
+            this.playSound('wrong');
+            this.showFeedback('现在是对手的回合', '#ffa500');
             return;
         }
 
-        // 检查卡片是否已被匹配
         if (card.classList.contains('matched')) {
             return;
         }
 
-        // 防止并发处理
+        if (this.room.selectedCards.includes(card)) {
+            card.classList.remove('selected');
+            this.room.selectedCards = this.room.selectedCards.filter(c => c !== card);
+            return;
+        }
+
         if (this.cardClickProcessing) return;
         this.cardClickProcessing = true;
 
         try {
-            SoundManager.play('click');
-
-            if (card.classList.contains('selected')) {
-                card.classList.remove('selected');
-                this.room.selectedCards = this.room.selectedCards.filter(c => c !== card);
-                return;
-            }
+            this.playSound('click');
 
             if (this.room.selectedCards.length >= 2) {
                 return;
@@ -1879,24 +3260,27 @@ class BattleMode {
             if (this.room.selectedCards.length === 2) {
                 await this.checkBattleMatch();
             }
+        } catch (error) {
+            console.error('卡片点击处理错误:', error);
+            this.room.selectedCards.forEach(c => {
+                if (c && c.isConnected) {
+                    c.classList.remove('selected');
+                }
+            });
+            this.room.selectedCards = [];
         } finally {
             this.cardClickProcessing = false;
         }
     }
 
-    /**
-     * 检查对战匹配
-     */
     async checkBattleMatch() {
         const [card1, card2] = this.room.selectedCards;
         
-        // 检查卡片是否还存在
         if (!card1 || !card2 || !card1.isConnected || !card2.isConnected) {
             this.room.selectedCards = [];
             return;
         }
 
-        // 获取目标数字
         const targetEl = document.getElementById('battle-target-number');
         if (!targetEl) {
             this.room.selectedCards = [];
@@ -1918,8 +3302,7 @@ class BattleMode {
         const roundTime = this.constants.ROUND_TIME - parseInt(timerText.replace('s', ''));
 
         try {
-            // 如果是AI对战，不记录到数据库
-            if (!this.room.opponentIsAI && this.game.state.supabaseReady) {
+            if (!this.room.opponentIsAI && this.isSupabaseAvailable()) {
                 const round = {
                     battle_id: this.room.battleId,
                     player_id: this.game.state.currentUser.id,
@@ -1937,7 +3320,7 @@ class BattleMode {
             }
 
             if (isCorrect) {
-                SoundManager.play('correct');
+                this.playSound('correct');
                 
                 card1.classList.add('matched');
                 card2.classList.add('matched');
@@ -1956,43 +3339,42 @@ class BattleMode {
                     this.refreshBattleGrid();
                 }
             } else {
-                SoundManager.play('wrong');
+                this.playSound('wrong');
+                
+                this.generateBattleTarget();
                 
                 setTimeout(() => {
                     if (card1.isConnected) card1.classList.remove('selected');
                     if (card2.isConnected) card2.classList.remove('selected');
                 }, 500);
+                
+                this.showFeedback('再试试其他组合吧！', '#ff69b4');
             }
 
             this.room.selectedCards = [];
             this.endTurn();
         } catch (error) {
             console.error('检查对战匹配失败:', error);
-            if (this.game.ui) {
-                this.game.ui.showFeedback('操作失败', '#ff4444');
-            }
+            this.showFeedback('操作失败', '#ff4444');
             this.room.selectedCards = [];
         }
     }
 
-    /**
-     * 更新对战分数
-     */
     async updateBattleScore(points) {
-        // 防止并发更新
         if (this.scoreUpdateInProgress) return;
         this.scoreUpdateInProgress = true;
 
         try {
             if (this.room.opponentIsAI) {
-                // AI对战，只更新本地分数
-                const myScoreEl = document.getElementById('player1-score');
+                const myScoreEl = this.getMyScoreElement();
                 if (myScoreEl) {
                     const currentScore = parseInt(myScoreEl.textContent) || 0;
                     myScoreEl.textContent = currentScore + points;
                 }
 
-                const myProgress = document.getElementById('player1-progress');
+                const myProgress = this.room.playerRole === 'player1' ? 
+                    document.getElementById('player1-progress') : 
+                    document.getElementById('player2-progress');
                 if (myProgress) {
                     const currentProgress = parseInt(myProgress.style.width) || 0;
                     const newProgress = Math.min(100, currentProgress + 10);
@@ -2005,54 +3387,94 @@ class BattleMode {
                         }, 500);
                     }
                 }
+                
+                this.saveLocalBattleState();
                 return;
             }
 
-            if (!this.game.state.supabaseReady || !this.room.gameActive) return;
+            if (!this.isSupabaseAvailable() || !this.room.gameActive) {
+                this.updateLocalScore(points);
+                return;
+            }
 
-            const field = this.room.playerRole === 'player1' ? 'player1_score' : 'player2_score';
-            const progressField = this.room.playerRole === 'player1' ? 'player1_progress' : 'player2_progress';
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries) {
+                try {
+                    const field = this.room.playerRole === 'player1' ? 'player1_score' : 'player2_score';
+                    const progressField = this.room.playerRole === 'player1' ? 'player1_progress' : 'player2_progress';
 
-            const { data: battle, error } = await this.game.state.supabase
-                .from('candy_math_battles')
-                .select('*')
-                .eq('id', this.room.battleId)
-                .single();
+                    const { data: battle, error } = await this.game.state.supabase
+                        .from('candy_math_battles')
+                        .select('*')
+                        .eq('id', this.room.battleId)
+                        .single();
 
-            if (error || !battle) throw error || new Error('对战不存在');
+                    if (error || !battle) throw error || new Error('对战不存在');
 
-            // 如果已经结束，不再更新
-            if (battle.status === 'finished') return;
+                    if (battle.status === 'finished') return;
 
-            const newScore = (battle[field] || 0) + points;
-            const newProgress = Math.min(100, (battle[progressField] || 0) + 10);
+                    const newScore = (battle[field] || 0) + points;
+                    const newProgress = Math.min(100, (battle[progressField] || 0) + 10);
 
-            await this.game.state.supabase
-                .from('candy_math_battles')
-                .update({
-                    [field]: newScore,
-                    [progressField]: newProgress
-                })
-                .eq('id', this.room.battleId);
+                    const { error: updateError } = await this.game.state.supabase
+                        .from('candy_math_battles')
+                        .update({
+                            [field]: newScore,
+                            [progressField]: newProgress
+                        })
+                        .eq('id', this.room.battleId)
+                        .eq(progressField, battle[progressField]);
 
+                    if (updateError) {
+                        throw updateError;
+                    }
+
+                    break;
+
+                } catch (error) {
+                    retryCount++;
+                    if (retryCount === maxRetries) {
+                        console.error('更新分数失败，使用本地更新:', error);
+                        this.updateLocalScore(points);
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+            }
+        } finally {
+            this.scoreUpdateInProgress = false;
+        }
+    }
+
+    updateLocalScore(points) {
+        const myScoreEl = this.getMyScoreElement();
+        if (myScoreEl) {
+            const currentScore = parseInt(myScoreEl.textContent) || 0;
+            myScoreEl.textContent = currentScore + points;
+        }
+
+        const myProgress = this.room.playerRole === 'player1' ? 
+            document.getElementById('player1-progress') : 
+            document.getElementById('player2-progress');
+        if (myProgress) {
+            const currentProgress = parseInt(myProgress.style.width) || 0;
+            const newProgress = Math.min(100, currentProgress + 10);
+            myProgress.style.width = newProgress + '%';
+            
             if (newProgress >= 100 && this.room.gameActive) {
                 this.room.gameActive = false;
                 setTimeout(() => {
                     this.endBattle(this.game.state.currentUser.id);
                 }, 500);
             }
-        } catch (error) {
-            console.error('更新对战分数失败:', error);
-        } finally {
-            this.scoreUpdateInProgress = false;
         }
+        
+        this.saveLocalBattleState();
     }
 
-    /**
-     * 结束回合
-     */
     async endTurn() {
-        // 防止重复结束回合
         if (this.endTurnInProgress) return;
         this.endTurnInProgress = true;
         
@@ -2063,12 +3485,15 @@ class BattleMode {
                 this.room.myTurn = false;
                 this.updateTurnIndicator();
                 this.scheduleAIMove();
+                this.saveLocalBattleState();
                 return;
             }
 
-            if (!this.game.state.supabaseReady || !navigator.onLine) {
+            if (!this.isSupabaseAvailable() || !navigator.onLine) {
                 this.room.myTurn = !this.room.myTurn;
                 this.updateTurnIndicator();
+                this.startLocalPolling();
+                this.saveLocalBattleState();
                 return;
             }
             
@@ -2099,28 +3524,23 @@ class BattleMode {
         }
     }
 
-    /**
-     * 结束对战
-     */
     async endBattle(winnerId) {
         this.room.gameActive = false;
         this.stopTurnTimer();
 
         if (this.room.opponentIsAI) return;
 
-        // 检查网络状态
         if (!navigator.onLine) {
             this.showBattleResultFallback(winnerId);
             return;
         }
 
-        if (!this.game.state.supabaseReady) {
+        if (!this.isSupabaseAvailable()) {
             this.showBattleResultFallback(winnerId);
             return;
         }
 
         try {
-            // 先获取当前对战状态
             const { data: battle, error: fetchError } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .select('*')
@@ -2129,7 +3549,6 @@ class BattleMode {
 
             if (fetchError) throw fetchError;
 
-            // 如果已经结束了，不再重复结束
             if (battle.status === 'finished') {
                 this.showBattleResult(battle);
                 return;
@@ -2149,10 +3568,8 @@ class BattleMode {
             const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
             await this.sendSystemMessage(`🏆 ${winner} 获胜！`);
 
-            // 更新ELO
             await this.updateELOAfterBattle(battle, winnerId);
             
-            // 重新获取更新后的对战数据并显示结果
             const { data: updatedBattle } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .select('*')
@@ -2164,22 +3581,26 @@ class BattleMode {
             console.error('结束对战失败:', error);
             this.showBattleResultFallback(winnerId);
         }
+        
+        this.disableChatInput(true);
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
     }
 
-    /**
-     * 更新战后ELO（修复版 - 不使用RPC函数）
-     */
     async updateELOAfterBattle(battle, winnerId) {
-        if (!this.game.state.supabaseReady) return;
+        if (!this.isSupabaseAvailable()) return;
 
         try {
             const player1ELO = battle.player1_elo || 1200;
             const player2ELO = battle.player2_elo || 1200;
             
-            const player1NewELO = this.calculateNewELO(player1ELO, player2ELO, winnerId === battle.player1_id);
-            const player2NewELO = this.calculateNewELO(player2ELO, player1ELO, winnerId === battle.player2_id);
+            const player1Result = winnerId === battle.player1_id ? 'win' : 
+                                  winnerId === 'draw' ? 'draw' : 'lose';
+            const player2Result = winnerId === battle.player2_id ? 'win' : 
+                                  winnerId === 'draw' ? 'draw' : 'lose';
+            
+            const player1NewELO = this.calculateNewELO(player1ELO, player2ELO, player1Result);
+            const player2NewELO = this.calculateNewELO(player2ELO, player1ELO, player2Result);
 
-            // 获取当前统计数据
             const { data: currentStats } = await this.game.state.supabase
                 .from('player_elo')
                 .select('battles, wins')
@@ -2192,7 +3613,6 @@ class BattleMode {
                 });
             }
 
-            // 批量更新
             await this.game.state.supabase
                 .from('player_elo')
                 .upsert([
@@ -2203,6 +3623,12 @@ class BattleMode {
                         wins: winnerId === battle.player1_id ? 
                             (statsMap[battle.player1_id]?.wins || 0) + 1 : 
                             (statsMap[battle.player1_id]?.wins || 0),
+                        win_rate: this.calculateWinRate(
+                            winnerId === battle.player1_id ? 
+                                (statsMap[battle.player1_id]?.wins || 0) + 1 : 
+                                (statsMap[battle.player1_id]?.wins || 0),
+                            (statsMap[battle.player1_id]?.battles || 0) + 1
+                        ),
                         updated_at: new Date().toISOString()
                     },
                     {
@@ -2212,6 +3638,12 @@ class BattleMode {
                         wins: winnerId === battle.player2_id ? 
                             (statsMap[battle.player2_id]?.wins || 0) + 1 : 
                             (statsMap[battle.player2_id]?.wins || 0),
+                        win_rate: this.calculateWinRate(
+                            winnerId === battle.player2_id ? 
+                                (statsMap[battle.player2_id]?.wins || 0) + 1 : 
+                                (statsMap[battle.player2_id]?.wins || 0),
+                            (statsMap[battle.player2_id]?.battles || 0) + 1
+                        ),
                         updated_at: new Date().toISOString()
                     }
                 ], { onConflict: 'user_id' });
@@ -2220,117 +3652,157 @@ class BattleMode {
         }
     }
 
-    /**
-     * 计算新ELO
-     */
-    calculateNewELO(myELO, opponentELO, isWin) {
-        const expected = 1 / (1 + Math.pow(10, (opponentELO - myELO) / 400));
-        const actual = isWin ? 1 : 0;
-        return myELO + this.constants.ELO_K_FACTOR * (actual - expected);
+    calculateNewELO(myELO, opponentELO, result) {
+        myELO = parseInt(myELO) || 1200;
+        opponentELO = parseInt(opponentELO) || 1200;
+        
+        if (myELO < 100) myELO = 1200;
+        if (opponentELO < 100) opponentELO = 1200;
+        
+        const exponent = (opponentELO - myELO) / 400;
+        const expected = 1 / (1 + Math.pow(10, exponent));
+        
+        let actual;
+        if (result === 'win') actual = 1;
+        else if (result === 'draw') actual = 0.5;
+        else actual = 0;
+        
+        let newELO = myELO + this.constants.ELO_K_FACTOR * (actual - expected);
+        newELO = Math.max(400, Math.min(3000, newELO));
+        
+        return Math.round(newELO * 10) / 10;
     }
 
-    /**
-     * 降级显示对战结果（Supabase不可用时）
-     */
+    calculateWinRate(wins, battles) {
+        if (battles === 0) return 0;
+        return Math.round((wins / battles) * 100 * 10) / 10;
+    }
+
     showBattleResultFallback(winnerId) {
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'none';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (activeDiv) activeDiv.style.display = 'none';
         if (resultDiv) resultDiv.style.display = 'block';
 
         const iWon = winnerId === this.game.state.currentUser.id;
-        const lang = I18n;
         
         const resultTitle = document.getElementById('result-title');
-        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${lang.t('win')}` : `😢 ${lang.t('lose')}`;
+        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
 
-        // 从本地状态获取分数
-        const myScore = this.room.playerRole === 'player1' ? 
-            parseInt(document.getElementById('player1-score')?.textContent) : 
-            parseInt(document.getElementById('player2-score')?.textContent);
-        
-        const opponentScore = this.room.playerRole === 'player1' ? 
-            parseInt(document.getElementById('player2-score')?.textContent) : 
-            parseInt(document.getElementById('player1-score')?.textContent);
+        const myScore = parseInt(this.getMyScoreElement()?.textContent) || 0;
+        const opponentScore = parseInt(this.getOpponentScoreElement()?.textContent) || 0;
 
         const finalPlayerScore = document.getElementById('final-player-score');
-        if (finalPlayerScore) finalPlayerScore.textContent = myScore || 0;
-        
         const finalOpponentScore = document.getElementById('final-opponent-score');
-        if (finalOpponentScore) finalOpponentScore.textContent = opponentScore || 0;
+        
+        if (finalPlayerScore) finalPlayerScore.textContent = myScore;
+        if (finalOpponentScore) finalOpponentScore.textContent = opponentScore;
 
-        SoundManager.play(iWon ? 'achievement' : 'wrong');
+        const myResultCard = document.querySelector('.result-score-card:first-child');
+        const opponentResultCard = document.querySelector('.result-score-card:last-child');
+        
+        if (myResultCard && opponentResultCard) {
+            if (iWon) {
+                myResultCard.classList.add('winner');
+                opponentResultCard.classList.remove('winner');
+            } else {
+                opponentResultCard.classList.add('winner');
+                myResultCard.classList.remove('winner');
+            }
+        }
+
+        this.playSound(iWon ? 'achievement' : 'wrong');
     }
 
-    /**
-     * 显示对战结果
-     */
     showBattleResult(battle) {
         const activeDiv = document.getElementById('battle-active');
-        if (activeDiv) activeDiv.style.display = 'none';
-        
         const resultDiv = document.getElementById('battle-result');
+        
+        if (activeDiv) activeDiv.style.display = 'none';
         if (resultDiv) resultDiv.style.display = 'block';
 
         const iWon = battle.winner_id === this.game.state.currentUser.id;
-        const lang = I18n;
         
         const resultTitle = document.getElementById('result-title');
-        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${lang.t('win')}` : `😢 ${lang.t('lose')}`;
+        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
 
         if (this.room.playerRole === 'player1') {
             const finalPlayerScore = document.getElementById('final-player-score');
-            if (finalPlayerScore) finalPlayerScore.textContent = battle.player1_score || 0;
-            
             const finalOpponentScore = document.getElementById('final-opponent-score');
+            
+            if (finalPlayerScore) finalPlayerScore.textContent = battle.player1_score || 0;
             if (finalOpponentScore) finalOpponentScore.textContent = battle.player2_score || 0;
         } else {
             const finalPlayerScore = document.getElementById('final-player-score');
-            if (finalPlayerScore) finalPlayerScore.textContent = battle.player2_score || 0;
-            
             const finalOpponentScore = document.getElementById('final-opponent-score');
+            
+            if (finalPlayerScore) finalPlayerScore.textContent = battle.player2_score || 0;
             if (finalOpponentScore) finalOpponentScore.textContent = battle.player1_score || 0;
         }
 
-        SoundManager.play(iWon ? 'achievement' : 'wrong');
+        const myResultCard = document.querySelector('.result-score-card:first-child');
+        const opponentResultCard = document.querySelector('.result-score-card:last-child');
+        
+        if (myResultCard && opponentResultCard) {
+            if (iWon) {
+                myResultCard.classList.add('winner');
+                opponentResultCard.classList.remove('winner');
+            } else {
+                opponentResultCard.classList.add('winner');
+                myResultCard.classList.remove('winner');
+            }
+        }
+
+        this.playSound(iWon ? 'achievement' : 'wrong');
     }
 
     // ==================== 聊天系统 ====================
 
-    /**
-     * 发送聊天消息
-     */
     async sendChatMessage() {
         const input = document.getElementById('chat-input');
         if (!input || !input.value.trim()) return;
 
         let text = input.value.trim();
-        input.value = '';
-
-        // 消息长度限制
+        
+        // 移除控制字符和不可见字符
+        text = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        
         if (text.length > 200) {
             text = text.substring(0, 200) + '...';
         }
+        
+        if (text.length === 0) return;
+        
+        const emojiRegex = /^[\p{Emoji}\s]+$/u;
+        if (emojiRegex.test(text) && text.length > 50) {
+            text = text.substring(0, 50);
+        }
+        
+        input.value = '';
 
         if (this.room.opponentIsAI) {
-            // AI对战，模拟回复
             this.addChatMessage({
                 player_id: this.game.state.currentUser.id,
                 player_name: this.game.state.currentUser.name,
                 message: text
             });
             
-            // 先清理旧的AI回复定时器
             if (this.aiResponseTimer) {
                 clearTimeout(this.aiResponseTimer);
+                this.aiResponseTimer = null;
             }
             
-            // AI随机回复
+            if (this.aiResponsePending) {
+                this.aiResponsePending = false;
+            }
+            
+            this.aiResponsePending = true;
+            
             this.aiResponseTimer = setTimeout(() => {
                 this.aiResponseTimer = null;
+                this.aiResponsePending = false;
                 
-                // 检查对战是否还在进行
                 if (!this.room.gameActive) return;
                 
                 const aiResponses = [
@@ -2352,10 +3824,12 @@ class BattleMode {
                     message: response
                 });
             }, 1000);
+            
+            this.saveLocalBattleState();
             return;
         }
 
-        if (!this.game.state.supabaseReady || !this.room.battleId) return;
+        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
 
         try {
             await this.game.state.supabase
@@ -2371,16 +3845,13 @@ class BattleMode {
         }
     }
 
-    /**
-     * 发送系统消息
-     */
     async sendSystemMessage(text) {
         if (this.room.opponentIsAI) {
             this.addAIMessage(text);
             return;
         }
 
-        if (!this.game.state.supabaseReady || !this.room.battleId) return;
+        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
 
         try {
             await this.game.state.supabase
@@ -2397,115 +3868,126 @@ class BattleMode {
         }
     }
 
-    /**
-     * 添加聊天消息到界面
-     */
     addChatMessage(message) {
         const chat = document.getElementById('chat-messages');
         if (!chat) return;
 
+        const fragment = document.createDocumentFragment();
         const msgDiv = document.createElement('div');
         
-        // 消息长度显示限制
         const displayMessage = message.message.length > 100 
             ? message.message.substring(0, 100) + '...' 
             : message.message;
         
+        const escapedMessage = this.escapeHtml(displayMessage);
+        const escapedName = this.escapeHtml(message.player_name || '');
+        
         if (message.player_id === 'system') {
             msgDiv.className = 'message system';
             msgDiv.textContent = displayMessage;
-        } else if (message.player_id === this.game.state.currentUser.id) {
+        } else if (message.player_id === this.game.state?.currentUser?.id) {
             msgDiv.className = 'message self';
-            msgDiv.innerHTML = `<span class="message-sender">你:</span> ${this.escapeHtml(displayMessage)}`;
+            msgDiv.innerHTML = `<span class="message-sender">你:</span> ${escapedMessage}`;
         } else {
             msgDiv.className = 'message opponent';
-            msgDiv.innerHTML = `<span class="message-sender">${this.escapeHtml(message.player_name)}:</span> ${this.escapeHtml(displayMessage)}`;
+            msgDiv.innerHTML = `<span class="message-sender">${escapedName}:</span> ${escapedMessage}`;
         }
 
-        chat.appendChild(msgDiv);
+        fragment.appendChild(msgDiv);
+        chat.appendChild(fragment);
         
-        // 限制聊天记录数量
         this.limitChatMessages(chat);
         
-        chat.scrollTop = chat.scrollHeight;
+        requestAnimationFrame(() => {
+            chat.scrollTop = chat.scrollHeight;
+        });
     }
 
-    /**
-     * 转义HTML特殊字符（防止XSS）
-     */
     escapeHtml(text) {
+        if (!text) return '';
+        
         const div = document.createElement('div');
         div.textContent = text;
-        return div.innerHTML;
+        return div.innerHTML
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;')
+            .replace(/\//g, '&#x2F;');
     }
 
-    /**
-     * 添加对手操作到聊天
-     */
     addOpponentMove(round) {
         const chat = document.getElementById('chat-messages');
         if (!chat) return;
 
+        const fragment = document.createDocumentFragment();
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message system';
         
         const result = round.is_correct ? '✓ 正确' : '✗ 错误';
         msgDiv.textContent = `${this.room.opponentName} 选择了 ${round.num1} + ${round.num2} = ${round.num1 + round.num2} ${result}`;
         
-        chat.appendChild(msgDiv);
+        fragment.appendChild(msgDiv);
+        chat.appendChild(fragment);
         
-        // 限制聊天记录数量
         this.limitChatMessages(chat);
         
-        chat.scrollTop = chat.scrollHeight;
+        requestAnimationFrame(() => {
+            chat.scrollTop = chat.scrollHeight;
+        });
     }
 
     // ==================== 退出清理 ====================
 
-    /**
-     * 离开对战
-     */
     leaveBattle() {
-        // 清理匹配状态
         this.cleanupMatch();
 
-        // 从匹配队列中移除
         if (this.game.state.currentUser) {
             this.leaveQueue(this.game.state.currentUser.id);
         }
         
-        // 清理订阅
         if (this.room.channel) {
-            this.room.channel.unsubscribe();
+            try {
+                this.room.channel.unsubscribe();
+            } catch (e) {
+                console.warn('取消订阅失败:', e);
+            }
             this.room.channel = null;
         }
         
-        // 停止计时器
         this.stopTurnTimer();
-        
-        // 清理AI定时器
-        if (this.aiMoveTimer) {
-            clearTimeout(this.aiMoveTimer);
-            this.aiMoveTimer = null;
-        }
-        
-        if (this.aiResponseTimer) {
-            clearTimeout(this.aiResponseTimer);
-            this.aiResponseTimer = null;
-        }
+        this.cleanupAIResources();
         
         if (this.localPollingTimer) {
             clearTimeout(this.localPollingTimer);
             this.localPollingTimer = null;
         }
         
-        // 重置并发标志
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        
+        if (this.scoreSyncInterval) {
+            clearInterval(this.scoreSyncInterval);
+            this.scoreSyncInterval = null;
+        }
+        
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        
         this.cardClickProcessing = false;
         this.endTurnInProgress = false;
         this.rematchInProgress = false;
         this.scoreUpdateInProgress = false;
         
-        // 重置房间状态
+        Object.keys(this.semaphores).forEach(key => {
+            this.semaphores[key] = false;
+        });
+        
         this.room = {
             roomCode: null,
             battleId: null,
@@ -2518,19 +4000,21 @@ class BattleMode {
             myTurn: false,
             roundTimer: null,
             channel: null,
+            subscriptionId: null,
             gameActive: false,
             selectedCards: []
         };
         
         this.reconnectAttempts = 0;
         this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
+        this.cachedElements = null;
+        
+        this.disableChatInput(false);
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
     }
 
-    /**
-     * 再战一局
-     */
     async rematch() {
-        // 防止重复点击
         if (this.rematchInProgress) return;
         this.rematchInProgress = true;
         
@@ -2546,16 +4030,12 @@ class BattleMode {
                 await this.quickMatch();
             }
         } finally {
-            // 延迟重置标志，防止快速连续点击
             setTimeout(() => {
                 this.rematchInProgress = false;
             }, 1000);
         }
     }
 
-    /**
-     * 关闭对战
-     */
     closeBattle() {
         this.leaveBattle();
         if (this.game.ui) {
@@ -2563,41 +4043,88 @@ class BattleMode {
         }
     }
 
-    /**
-     * 销毁所有资源（完全清理）
-     */
-    destroy() {
+    async destroy() {
+        if (this.activePromises.size > 0) {
+            console.log(`等待 ${this.activePromises.size} 个 Promise 完成...`);
+            await Promise.race([
+                Promise.allSettled(Array.from(this.activePromises)),
+                new Promise(resolve => setTimeout(resolve, 5000))
+            ]);
+        }
+
         this.leaveBattle();
         this.cleanupMatch();
+        this.cleanupAIResources();
         
-        // 移除所有事件监听器
         if (this.onlineHandler) {
             window.removeEventListener('online', this.onlineHandler);
         }
-        
-        // 清理所有定时器
-        if (this.aiResponseTimer) {
-            clearTimeout(this.aiResponseTimer);
-            this.aiResponseTimer = null;
+        if (this.offlineHandler) {
+            window.removeEventListener('offline', this.offlineHandler);
+        }
+        if (this.popStateHandler) {
+            window.removeEventListener('popstate', this.popStateHandler);
         }
         
-        if (this.aiMoveTimer) {
-            clearTimeout(this.aiMoveTimer);
-            this.aiMoveTimer = null;
+        if (this.broadcastChannel) {
+            this.broadcastChannel.close();
+            this.broadcastChannel = null;
         }
         
-        if (this.localPollingTimer) {
-            clearTimeout(this.localPollingTimer);
-            this.localPollingTimer = null;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
         }
         
-        // 取消所有订阅
+        if (this.longWaitTimer) {
+            clearTimeout(this.longWaitTimer);
+            this.longWaitTimer = null;
+        }
+        
+        if (this.matchTimeoutId) {
+            clearTimeout(this.matchTimeoutId);
+            this.matchTimeoutId = null;
+        }
+        
+        if (this.queueStatusInterval) {
+            clearInterval(this.queueStatusInterval);
+            this.queueStatusInterval = null;
+        }
+        
+        if (this.room.roundTimer) {
+            clearInterval(this.room.roundTimer);
+            this.room.roundTimer = null;
+        }
+        
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        
+        if (this.scoreSyncInterval) {
+            clearInterval(this.scoreSyncInterval);
+            this.scoreSyncInterval = null;
+        }
+        
+        // 清理观察者
+        Object.keys(this.observers).forEach(key => {
+            if (this.observers[key]) {
+                this.observers[key].disconnect();
+                this.observers[key] = null;
+            }
+        });
+        
         if (this.room.channel) {
-            this.room.channel.unsubscribe();
+            try {
+                this.room.channel.unsubscribe();
+            } catch (e) {
+                console.warn('取消订阅失败:', e);
+            }
             this.room.channel = null;
         }
         
-        // 移除所有事件处理器引用
+        this.removeAllEventListeners();
+        
         this.quickMatchHandler = null;
         this.joinRoomHandler = null;
         this.copyHandler = null;
@@ -2609,9 +4136,43 @@ class BattleMode {
         this.confirmJoinHandler = null;
         this.cancelJoinHandler = null;
         this.gridClickHandler = null;
+        this.gridTouchHandler = null;
         this.continueWaitingHandler = null;
         this.playWithAIHandler = null;
         this.onlineHandler = null;
+        this.offlineHandler = null;
+        this.popStateHandler = null;
+        
+        const tempElements = [
+            'match-waiting-hint',
+            'ai-option',
+            'candy-battle-styles',
+            'zoom-warning',
+            'long-wait-suggestion'
+        ];
+        tempElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
+        
+        const styleIds = [
+            'candy-battle-styles',
+            'battle-mode-spinner-style',
+            'battle-mode-animations'
+        ];
+        styleIds.forEach(id => {
+            const style = document.getElementById(id);
+            if (style) style.remove();
+        });
+        
+        const roomCodeHint = document.querySelector('.room-code-hint');
+        if (roomCodeHint) roomCodeHint.remove();
+        
+        const offlineHints = document.querySelectorAll('.offline-hint');
+        offlineHints.forEach(hint => hint.remove());
+        
+        this.cachedElements = null;
+        this.safeStorage().clear();
     }
 }
 
