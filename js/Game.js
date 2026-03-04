@@ -38,6 +38,7 @@ class CandyMathGame {
             // Supabase
             supabase: null,
             supabaseReady: false,
+            supabaseError: null, // 新增：存储错误信息
             
             // 冷却
             hintCooldown: 0,
@@ -49,6 +50,12 @@ class CandyMathGame {
         this.difficultyConfig = GAME_CONSTANTS.DIFFICULTY_CONFIG;
         this.modeConfig = GAME_CONSTANTS.MODE_CONFIG;
         this.currentConfig = this.difficultyConfig[this.state.currentDifficulty];
+        
+        // ==================== Supabase配置 ====================
+        this.supabaseConfig = {
+            url: process.env.SUPABASE_URL || 'https://your-project.supabase.co',
+            anonKey: process.env.SUPABASE_ANON_KEY || 'your-anon-key'
+        };
         
         // ==================== 颜色管理 ====================
         this.colorIndex = 0;
@@ -131,6 +138,8 @@ class CandyMathGame {
         if (this.initialized) return;
         
         try {
+            console.log('开始初始化游戏...');
+            
             // 初始化子模块
             this.storage = new StorageManager(this);
             this.auth = new AuthManager(this);
@@ -144,7 +153,7 @@ class CandyMathGame {
             this.ui.init();
             
             // 初始化Supabase
-            await this.auth.initSupabase();
+            await this.initSupabase();
             
             // 初始化对战模式（懒加载）
             this.initBattle();
@@ -172,20 +181,105 @@ class CandyMathGame {
             
             this.initialized = true;
             
-            // === 关键修复：将 battle 实例暴露到全局 ===
+            // 将 battle 实例暴露到全局
             window.battleMode = this.battle;
             
             console.log('游戏初始化成功', {
                 battleMode: this.battle ? '已创建' : '未创建',
-                battleModeGlobal: window.battleMode ? '已挂载' : '未挂载'
+                battleModeGlobal: window.battleMode ? '已挂载' : '未挂载',
+                supabaseReady: this.state.supabaseReady,
+                supabaseError: this.state.supabaseError
             });
-            
-            // 输出Supabase状态
-            console.log('Supabase连接状态:', this.state.supabaseReady ? '成功' : '失败');
             
         } catch (error) {
             console.error('初始化失败:', error);
-            this.ui?.showFeedback('errorOccurred', '#ff4444');
+            this.state.supabaseError = error.message;
+            this.ui?.showFeedback('初始化失败，使用离线模式', '#ffa500');
+            
+            // 即使Supabase失败，也继续初始化其他模块
+            this.continueInitWithoutSupabase();
+        }
+    }
+
+    /**
+     * 无Supabase继续初始化
+     */
+    continueInitWithoutSupabase() {
+        try {
+            this.initBattle();
+            this.initTournament();
+            this.bindEvents();
+            this.setupNetworkListeners();
+            this.loadDifficulty(this.state.currentDifficulty);
+            this.ui.updateLanguage();
+            this.ui.updateUserUI();
+            
+            this.initialized = true;
+            window.battleMode = this.battle;
+            
+            console.log('游戏以离线模式初始化成功');
+            this.ui?.showFeedback('已切换到离线模式', '#ffa500');
+        } catch (error) {
+            console.error('离线初始化失败:', error);
+        }
+    }
+
+    /**
+     * 初始化Supabase
+     */
+    async initSupabase() {
+        try {
+            console.log('初始化Supabase...');
+            
+            // 检查是否已有配置
+            if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+                console.warn('Supabase配置缺失，使用本地模式');
+                this.state.supabaseReady = false;
+                return;
+            }
+            
+            // 创建Supabase客户端
+            const { createClient } = window.supabase;
+            if (!createClient) {
+                throw new Error('Supabase客户端库未加载');
+            }
+            
+            this.state.supabase = createClient(
+                window.SUPABASE_URL,
+                window.SUPABASE_ANON_KEY,
+                {
+                    auth: {
+                        autoRefreshToken: true,
+                        persistSession: true,
+                        detectSessionInUrl: true
+                    }
+                }
+            );
+            
+            // 测试连接
+            const { error } = await this.state.supabase
+                .from('candy_math_battles')
+                .select('count', { count: 'exact', head: true });
+            
+            if (error) {
+                console.error('Supabase连接测试失败:', error);
+                this.state.supabaseReady = false;
+                this.state.supabaseError = error.message;
+                
+                // 如果是API key错误，给出明确提示
+                if (error.message?.includes('API key')) {
+                    console.warn('Supabase API key配置错误，请检查环境变量');
+                }
+            } else {
+                console.log('Supabase连接成功');
+                this.state.supabaseReady = true;
+                this.state.supabaseError = null;
+            }
+            
+        } catch (error) {
+            console.error('Supabase初始化失败:', error);
+            this.state.supabaseReady = false;
+            this.state.supabaseError = error.message;
         }
     }
 
@@ -676,7 +770,7 @@ class CandyMathGame {
             this.storage?.saveGuestGame();
         }
 
-        if (this.state.currentUser && this.state.isOnline) {
+        if (this.state.currentUser && this.state.isOnline && this.state.supabaseReady) {
             await this.storage?.syncToCloud();
         }
     }
@@ -962,15 +1056,21 @@ class CandyMathGame {
 
 // ==================== 启动游戏 ====================
 document.addEventListener('DOMContentLoaded', () => {
+    // 设置Supabase配置（从环境变量或直接配置）
+    window.SUPABASE_URL = 'https://your-project.supabase.co';  // 替换为你的Supabase URL
+    window.SUPABASE_ANON_KEY = 'your-anon-key';  // 替换为你的Supabase anon key
+    
     window.game = new CandyMathGame();
     window.game.init();
     
-    // 添加延迟检查，确保BattleMode已加载
+    // 延迟检查
     setTimeout(() => {
         console.log('启动检查:', {
             gameExists: !!window.game,
             battleExists: !!window.game?.battle,
-            battleModeGlobal: !!window.battleMode
+            battleModeGlobal: !!window.battleMode,
+            supabaseReady: window.game?.state?.supabaseReady,
+            supabaseError: window.game?.state?.supabaseError
         });
         
         // 如果battleMode仍未挂载，手动挂载
