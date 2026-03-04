@@ -20,7 +20,7 @@ class CandyMathGame {
             gameActive: false,
             isPaused: false,
             startTime: null,
-            timer: null, // 新增
+            timer: null,
             
             // 模式设置
             currentMode: 'challenge',
@@ -171,7 +171,18 @@ class CandyMathGame {
             this.ui.checkFirstTime();
             
             this.initialized = true;
-            console.log('游戏初始化成功');
+            
+            // === 关键修复：将 battle 实例暴露到全局 ===
+            window.battleMode = this.battle;
+            
+            console.log('游戏初始化成功', {
+                battleMode: this.battle ? '已创建' : '未创建',
+                battleModeGlobal: window.battleMode ? '已挂载' : '未挂载'
+            });
+            
+            // 输出Supabase状态
+            console.log('Supabase连接状态:', this.state.supabaseReady ? '成功' : '失败');
+            
         } catch (error) {
             console.error('初始化失败:', error);
             this.ui?.showFeedback('errorOccurred', '#ff4444');
@@ -183,8 +194,10 @@ class CandyMathGame {
      */
     initBattle() {
         if (!this.battle) {
+            console.log('初始化对战模式...');
             this.battle = new BattleMode(this);
             this.battle.init();
+            console.log('对战模式初始化完成');
         }
         return this.battle;
     }
@@ -226,6 +239,11 @@ class CandyMathGame {
         window.removeEventListener('online', this.handleNetworkOnline);
         window.removeEventListener('offline', this.handleNetworkOffline);
         
+        // 清理全局引用
+        if (window.battleMode === this.battle) {
+            window.battleMode = null;
+        }
+        
         this.initialized = false;
     }
 
@@ -236,7 +254,6 @@ class CandyMathGame {
         // 语言切换
         const langBtn = document.getElementById('lang-switch');
         if (langBtn) {
-            // 移除可能存在的旧监听器
             if (this.langClickHandler) {
                 langBtn.removeEventListener('click', this.langClickHandler);
             }
@@ -647,7 +664,7 @@ class CandyMathGame {
 
         this.ui?.setCardsEnabled(false);
         this.ui?.clearSelected();
-        this.state.selectedCards = []; // 新增
+        this.state.selectedCards = [];
         
         this.ui?.showGameOver();
 
@@ -947,4 +964,19 @@ class CandyMathGame {
 document.addEventListener('DOMContentLoaded', () => {
     window.game = new CandyMathGame();
     window.game.init();
+    
+    // 添加延迟检查，确保BattleMode已加载
+    setTimeout(() => {
+        console.log('启动检查:', {
+            gameExists: !!window.game,
+            battleExists: !!window.game?.battle,
+            battleModeGlobal: !!window.battleMode
+        });
+        
+        // 如果battleMode仍未挂载，手动挂载
+        if (window.game?.battle && !window.battleMode) {
+            window.battleMode = window.game.battle;
+            console.log('手动挂载 battleMode 成功');
+        }
+    }, 1000);
 });
