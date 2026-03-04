@@ -3,33 +3,13 @@
  * 包含：快速匹配、创建房间、加入房间、实时对战、聊天系统、AI对手
  * 依赖：utils.js (需要 I18n, SoundManager, Validators, GAME_CONSTANTS)
  * 
- * 版本：7.0.0 (终极完美版)
+ * 版本：7.1.0 (匹配修复版)
  * 更新说明：
- * - 修复无匹配数字时未更新目标数字的问题
- * - 添加马卡龙色系柔和主题
- * - 增强并发控制和信号量系统
- * - 添加本地存储持久化（支持localStorage降级到内存存储）
- * - 优化性能和内存管理
- * - 完善错误处理和Promise追踪
- * - 修复XSS漏洞和安全性问题
- * - 添加浏览器后退按钮处理
- * - 添加多标签页同步（BroadcastChannel）
- * - 添加心跳检测和自动重连（带防抖）
- * - 添加移动端触摸事件支持
- * - 添加字体回退和缩放检测
- * - 添加长时间等待提示
- * - 添加对手离线通知
- * - 优化DOM查询缓存
- * - 添加观察者管理（ResizeObserver）
- * - 完善AI资源清理
- * - 增强输入验证
- * - 添加声音队列管理
- * - 添加页面可见性处理
- * - 添加刷新防抖和计数限制
- * - 添加递归防护
- * - 添加长按菜单禁用
- * - 添加页面卸载处理
- * - 增强声音方法安全性
+ * - 修复快速匹配无法匹配的问题（放宽匹配条件，添加强制匹配）
+ * - 修复加入房间失败的问题（完善房间状态检查）
+ * - 修复文字重影问题（优化CSS文本渲染）
+ * - 添加匹配调试日志
+ * - 优化ELO匹配算法
  * ============================================================
  */
 
@@ -43,9 +23,9 @@ class BattleMode {
             playerRole: null, // 'player1' 或 'player2'
             opponentId: null,
             opponentName: null,
-            opponentIsAI: false, // 标记对手是否为AI
-            aiDifficulty: 'medium', // AI难度级别：easy/medium/hard/expert
-            status: 'waiting', // 'waiting', 'playing', 'finished'
+            opponentIsAI: false,
+            aiDifficulty: 'medium',
+            status: 'waiting',
             myTurn: false,
             roundTimer: null,
             channel: null,
@@ -110,7 +90,7 @@ class BattleMode {
         this.soundProcessTimer = null;
         this.lastWrongSoundTime = 0;
         
-        // 内存存储（localStorage降级用）
+        // 内存存储
         this.memoryStorage = new Map();
         
         // DOM元素缓存
@@ -150,20 +130,21 @@ class BattleMode {
             MATCH_TIMEOUT: 30000,
             MAX_CHAT_MESSAGES: 100,
             ELO_K_FACTOR: 32,
-            BASE_MATCH_RANGE: 200,
-            MAX_MATCH_RANGE: 400,
+            BASE_MATCH_RANGE: 400, // 增大基础匹配范围
+            MAX_MATCH_RANGE: 800,  // 增大最大匹配范围
             AI_RESPONSE_DELAY: 1000,
             AI_MOVE_DELAY: 500,
             AI_MAX_RETRIES: 3,
             ROUND_TIME: 30,
-            TIME_BONUS_FACTOR: 15,
-            MAX_TIME_BONUS: 200,
+            TIME_BONUS_FACTOR: 30, // 增大时间加成因子
+            MAX_TIME_BONUS: 400,    // 增大最大时间加成
             LOCAL_STORAGE_KEY: 'candy_battle_local',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
             SOUND_QUEUE_MAX: 10,
-            WRONG_SOUND_COOLDOWN: 200
+            WRONG_SOUND_COOLDOWN: 200,
+            FORCE_MATCH_TIME: 10000 // 10秒后强制匹配
         };
 
         // 初始化
@@ -185,13 +166,12 @@ class BattleMode {
     }
 
     /**
-     * 安全存储（支持localStorage降级）
+     * 安全存储
      */
     safeStorage() {
         return {
             setItem: (key, value) => {
                 try {
-                    // 检查存储配额
                     const testKey = '_test_' + Date.now();
                     localStorage.setItem(testKey, 'test');
                     localStorage.removeItem(testKey);
@@ -203,7 +183,6 @@ class BattleMode {
                     
                     if (!this.memoryStorage) this.memoryStorage = new Map();
                     
-                    // 限制内存存储大小
                     if (this.memoryStorage.size > 50) {
                         const oldestKey = this.memoryStorage.keys().next().value;
                         this.memoryStorage.delete(oldestKey);
@@ -238,12 +217,11 @@ class BattleMode {
     }
 
     /**
-     * Promise追踪（带超时）
+     * Promise追踪
      */
     trackPromise(promise, name = 'unnamed', timeout = 30000) {
         const id = ++this.promiseCounter;
         
-        // 添加超时处理
         const timeoutPromise = new Promise((_, reject) => {
             const timer = setTimeout(() => {
                 reject(new Error(`Promise ${name} 超时 (${timeout}ms)`));
@@ -256,7 +234,6 @@ class BattleMode {
         const trackedPromise = Promise.race([promise, timeoutPromise])
             .finally(() => {
                 this.activePromises.delete(trackedPromise);
-                // 清理超时timer
                 const timer = this.promiseTimeouts?.get(id);
                 if (timer) {
                     clearTimeout(timer);
@@ -292,7 +269,6 @@ class BattleMode {
      */
     stopAllSounds() {
         try {
-            // 安全检查每个方法
             if (typeof SoundManager !== 'undefined') {
                 if (SoundManager.stopAll && typeof SoundManager.stopAll === 'function') {
                     SoundManager.stopAll();
@@ -301,17 +277,13 @@ class BattleMode {
                 }
             }
             
-            // 停止所有Audio元素
             document.querySelectorAll('audio').forEach(audio => {
                 try {
                     audio.pause();
                     audio.currentTime = 0;
-                } catch (e) {
-                    // 忽略单个音频的错误
-                }
+                } catch (e) {}
             });
             
-            // 停止所有Howl实例
             if (typeof Howl !== 'undefined' && Howler && Howler.stop) {
                 Howler.stop();
             }
@@ -365,20 +337,17 @@ class BattleMode {
     }
 
     /**
-     * 播放声音（带队列管理）
+     * 播放声音
      */
     playSound(soundName) {
-        // 如果游戏未激活，不播放声音
         if (!this.room.gameActive) {
             return;
         }
         
-        // 如果队列太长，丢弃新声音
         if (this.soundQueue.length > this.maxSoundQueueSize) {
             return;
         }
         
-        // 避免重复的相同声音（比如连续点击错误）
         if (soundName === 'wrong' && this.lastWrongSoundTime) {
             const now = Date.now();
             if (now - this.lastWrongSoundTime < this.constants.WRONG_SOUND_COOLDOWN) {
@@ -402,13 +371,12 @@ class BattleMode {
         
         try {
             if (typeof SoundManager !== 'undefined' && SoundManager.play && typeof SoundManager.play === 'function') {
-                // 添加超时保护
                 const playPromise = Promise.resolve(SoundManager.play(soundName));
                 
                 this.soundProcessTimer = setTimeout(() => {
                     this.isPlayingSound = false;
                     this.processSoundQueue();
-                }, 1000); // 最多等待1秒
+                }, 1000);
                 
                 playPromise
                     .finally(() => {
@@ -435,7 +403,7 @@ class BattleMode {
     }
 
     /**
-     * 注入糖果主题CSS（马卡龙色系）
+     * 注入糖果主题CSS（修复文字重影）
      */
     injectCandyStyles() {
         const styleId = 'candy-battle-styles';
@@ -444,7 +412,7 @@ class BattleMode {
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
-            /* 马卡龙色系 - 更柔和的颜色主题 */
+            /* 马卡龙色系 - 修复文字重影 */
             :root {
                 --macaron-pink: #fce4e8;
                 --macaron-peach: #ffe9e0;
@@ -456,6 +424,9 @@ class BattleMode {
 
             * {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                -webkit-font-smoothing: antialiased; /* 修复文字重影 */
+                -moz-osx-font-smoothing: grayscale;  /* 修复文字重影 */
+                text-rendering: optimizeLegibility;   /* 修复文字重影 */
             }
 
             /* 卡片样式优化 */
@@ -485,12 +456,14 @@ class BattleMode {
                 justify-content: center;
                 cursor: pointer;
                 transition: all 0.25s ease;
-                text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.8);
                 position: relative;
                 animation: cardAppear 0.3s ease-out;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
                 -webkit-tap-highlight-color: transparent;
                 touch-action: manipulation;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+                text-shadow: none; /* 移除文字阴影解决重影 */
             }
 
             @keyframes cardAppear {
@@ -559,9 +532,11 @@ class BattleMode {
                 align-items: center;
                 justify-content: center;
                 margin: 0 auto 25px;
-                text-shadow: 1px 1px 0 #e6b68f;
                 animation: macaronGlow 4s ease-in-out infinite;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+                text-shadow: none; /* 移除文字阴影解决重影 */
             }
 
             @keyframes macaronGlow {
@@ -584,6 +559,8 @@ class BattleMode {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             .turn-indicator .turn-text {
@@ -649,14 +626,17 @@ class BattleMode {
                 font-weight: 500;
                 color: #b28b99;
                 margin-bottom: 10px;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             .player-score {
                 font-size: 2rem;
                 font-weight: 500;
                 color: #b28b99;
-                text-shadow: 1px 1px 0 #fff0f5;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             /* 进度条优化 */
@@ -749,6 +729,8 @@ class BattleMode {
                 font-size: 1rem;
                 line-height: 1.4;
                 animation: messageAppear 0.2s ease-out;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             @keyframes messageAppear {
@@ -814,6 +796,8 @@ class BattleMode {
                 box-shadow: inset 0 2px 5px rgba(0,0,0,0.02), 0 3px 0 #f5b8c7;
                 transition: all 0.2s ease;
                 color: #b28b99;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             .chat-input-area input:focus {
@@ -849,6 +833,8 @@ class BattleMode {
                 gap: 10px;
                 -webkit-tap-highlight-color: transparent;
                 touch-action: manipulation;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             .candy-btn:hover {
@@ -935,6 +921,8 @@ class BattleMode {
                 font-size: 3rem;
                 margin-bottom: 30px;
                 animation: resultPop 0.5s ease-out;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             @keyframes resultPop {
@@ -970,6 +958,8 @@ class BattleMode {
                 font-weight: 500;
                 color: #b28b99;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             .winner .result-score {
@@ -983,6 +973,8 @@ class BattleMode {
                 margin-top: 5px;
                 cursor: pointer;
                 transition: color 0.2s;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
 
             .room-code-hint:hover {
@@ -1314,6 +1306,8 @@ class BattleMode {
                     z-index: 10000;
                     font-size: 14px;
                     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
                 `;
                 warning.textContent = '检测到页面缩放可能影响显示，建议重置到100%';
                 document.body.appendChild(warning);
@@ -1603,6 +1597,8 @@ class BattleMode {
         try {
             await this.acquireSemaphore('match');
             
+            console.log('开始快速匹配');
+            
             if (!this.game.auth || !this.game.auth.isLoggedIn()) {
                 this.showFeedback('请先登录', '#ff4444');
                 if (this.game.auth) {
@@ -1634,12 +1630,15 @@ class BattleMode {
 
             this.matchStartTime = Date.now();
 
+            console.log('加入匹配队列:', this.game.state.currentUser);
+            
             await this.joinQueue({
                 id: this.game.state.currentUser.id,
                 name: this.game.state.currentUser.name
             });
 
-            // 设置长时间等待提示
+            console.log('当前队列人数:', this.matchQueue.length);
+
             this.longWaitTimer = setTimeout(() => {
                 this.longWaitTimer = null;
                 if (this.matchQueue.length > 0) {
@@ -1648,6 +1647,7 @@ class BattleMode {
             }, 15000);
 
             this.matchTimeoutId = setTimeout(() => {
+                console.log('匹配超时');
                 this.handleMatchTimeout();
             }, this.constants.MATCH_TIMEOUT);
 
@@ -1694,7 +1694,7 @@ class BattleMode {
 
         const statusText = document.createElement('span');
         statusText.id = 'match-status-text';
-        statusText.style.cssText = 'font-size: 1.2rem; font-weight: 500; color: #b28b99;';
+        statusText.style.cssText = 'font-size: 1.2rem; font-weight: 500; color: #b28b99; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
         statusText.textContent = '正在寻找对手...';
         statusContainer.appendChild(statusText);
 
@@ -1702,7 +1702,7 @@ class BattleMode {
 
         const queueStatus = document.createElement('div');
         queueStatus.id = 'queue-status';
-        queueStatus.style.cssText = 'font-size: 1rem; color: #b28b99; text-align: center;';
+        queueStatus.style.cssText = 'font-size: 1rem; color: #b28b99; text-align: center; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
         queueStatus.textContent = '当前排队人数: ';
 
         const queueCount = document.createElement('span');
@@ -1714,7 +1714,7 @@ class BattleMode {
         hintDiv.appendChild(queueStatus);
 
         const waitTimeDiv = document.createElement('div');
-        waitTimeDiv.style.cssText = 'font-size: 0.9rem; color: #b28b99; margin-top: 8px; text-align: center;';
+        waitTimeDiv.style.cssText = 'font-size: 0.9rem; color: #b28b99; margin-top: 8px; text-align: center; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
         waitTimeDiv.textContent = '等待时间: ';
 
         const waitTime = document.createElement('span');
@@ -1749,6 +1749,8 @@ class BattleMode {
             color: #b27a58;
             font-size: 0.9rem;
             text-align: center;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         `;
         
         const text = document.createTextNode('⏳ 等待时间较长，您可以：');
@@ -1807,9 +1809,9 @@ class BattleMode {
         const matchStatus = document.getElementById('match-status-text');
         if (matchStatus) {
             if (this.matchQueue.length >= 2) {
-                matchStatus.innerHTML = '🎉 找到对手！准备开始对战...';
+                matchStatus.textContent = '🎉 找到对手！准备开始对战...';
             } else if (this.matchQueue.length === 1) {
-                matchStatus.innerHTML = '⏳ 等待其他玩家加入...';
+                matchStatus.textContent = '⏳ 等待其他玩家加入...';
             }
         }
     }
@@ -1865,12 +1867,12 @@ class BattleMode {
         aiDiv.appendChild(emoji);
 
         const p1 = document.createElement('p');
-        p1.style.cssText = 'margin-bottom: 12px; font-weight: 500; color: #b28b99;';
+        p1.style.cssText = 'margin-bottom: 12px; font-weight: 500; color: #b28b99; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
         p1.textContent = '当前没有其他玩家在线';
         aiDiv.appendChild(p1);
 
         const p2 = document.createElement('p');
-        p2.style.cssText = 'margin-bottom: 20px; font-size: 1rem; color: #b28b99;';
+        p2.style.cssText = 'margin-bottom: 20px; font-size: 1rem; color: #b28b99; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
         p2.textContent = '您可以继续等待，或者与AI练习对战 (AI对战不计入排名，不消耗积分)';
         aiDiv.appendChild(p2);
 
@@ -2046,7 +2048,6 @@ class BattleMode {
             const grid = document.getElementById('battle-grid');
             if (!grid) return;
 
-            // 检查目标数字
             const targetEl = document.getElementById('battle-target-number');
             if (!targetEl) {
                 this.scheduleAIMove();
@@ -2060,7 +2061,6 @@ class BattleMode {
                 return;
             }
 
-            // 先检查是否有有效组合
             if (!this.checkGridHasValidCombination()) {
                 console.log('AI移动前发现无有效组合，刷新网格');
                 this.refreshBattleGrid();
@@ -2245,7 +2245,6 @@ class BattleMode {
                 return;
             }
             
-            // 检查是否有有效组合
             setTimeout(() => {
                 this.autoRefreshGridIfNeeded();
             }, 500);
@@ -2260,7 +2259,6 @@ class BattleMode {
                 if (card2.isConnected) card2.classList.remove('selected');
             }, 500);
             
-            // 检查是否有有效组合
             setTimeout(() => {
                 this.autoRefreshGridIfNeeded();
             }, 500);
@@ -2340,7 +2338,6 @@ class BattleMode {
 
         const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
         
-        // 如果卡片太少，直接刷新
         if (cards.length < 2) {
             if (!this.isRefreshing) {
                 this.isRefreshing = true;
@@ -2358,7 +2355,6 @@ class BattleMode {
         const target = parseInt(targetEl.textContent);
         if (isNaN(target)) return true;
 
-        // 检查是否存在任何两个数字之和等于目标
         for (let i = 0; i < cards.length; i++) {
             for (let j = i + 1; j < cards.length; j++) {
                 const num1 = parseInt(cards[i].dataset.value);
@@ -2369,7 +2365,6 @@ class BattleMode {
             }
         }
         
-        // 如果没有有效组合，触发刷新（但避免递归）
         if (!this.isRefreshing) {
             this.isRefreshing = true;
             setTimeout(() => {
@@ -2381,7 +2376,7 @@ class BattleMode {
     }
 
     /**
-     * 自动刷新网格（当无有效组合时）
+     * 自动刷新网格
      */
     autoRefreshGridIfNeeded() {
         if (!this.room.gameActive) return;
@@ -2475,6 +2470,9 @@ class BattleMode {
         this.matchQueue = this.matchQueue.filter(p => p.id !== playerId);
     }
 
+    /**
+     * 尝试匹配（修复版）
+     */
     async tryMatch() {
         if (this.matchQueue.length < 2) return;
 
@@ -2493,12 +2491,22 @@ class BattleMode {
                 const waitTime = Date.now() - this.matchQueue[j].joinTime;
                 const diff = Math.abs(this.matchQueue[i].elo - this.matchQueue[j].elo);
                 
-                const timeBonus = Math.min(this.constants.MAX_TIME_BONUS, waitTime / 1000) * this.constants.TIME_BONUS_FACTOR;
-                const maxDiff = this.constants.BASE_MATCH_RANGE + timeBonus;
+                // 放宽匹配条件
+                const timeBonus = Math.min(500, waitTime / 1000 * 50);
+                const maxDiff = 800 + timeBonus;
                 
-                if (diff < maxDiff && diff < bestDiff) {
-                    bestDiff = diff;
+                // 如果等待时间超过10秒，强制匹配
+                if (waitTime > this.constants.FORCE_MATCH_TIME) {
                     bestMatch = j;
+                    bestDiff = diff;
+                    break;
+                }
+                
+                if (diff < maxDiff) {
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        bestMatch = j;
+                    }
                 }
             }
 
@@ -2507,6 +2515,15 @@ class BattleMode {
                 used.add(i);
                 used.add(bestMatch);
             }
+        }
+
+        // 如果没有匹配成功但人数>=2，强制匹配最接近的两个人
+        if (matched.length === 0 && this.matchQueue.length >= 2) {
+            console.log('强制匹配最接近的两个人');
+            const sorted = [...this.matchQueue].sort((a, b) => a.elo - b.elo);
+            const i = this.matchQueue.findIndex(p => p.id === sorted[0].id);
+            const j = this.matchQueue.findIndex(p => p.id === sorted[1].id);
+            matched.push([i, j]);
         }
 
         for (const [i, j] of matched) {
@@ -3019,6 +3036,9 @@ class BattleMode {
         }
     }
 
+    /**
+     * 确认加入房间（修复版）
+     */
     async confirmJoin() {
         const roomCodeInput = document.getElementById('room-code-input');
         const roomCode = roomCodeInput?.value;
@@ -3047,19 +3067,38 @@ class BattleMode {
         }
 
         try {
+            // 先查询房间状态
             const { data: battle, error } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .select('*')
                 .eq('room_code', roomCode.toUpperCase())
-                .eq('status', 'waiting')
                 .single();
 
             if (error || !battle) {
-                this.showFeedback('房间不存在或已开始', '#ff4444');
+                this.showFeedback('房间不存在', '#ff4444');
                 return;
             }
 
-            await this.game.state.supabase
+            // 检查房间状态
+            if (battle.status !== 'waiting') {
+                this.showFeedback('房间已开始或已结束', '#ff4444');
+                return;
+            }
+
+            // 检查是否是自己创建的房间
+            if (battle.player1_id === this.game.state.currentUser.id) {
+                this.showFeedback('不能加入自己创建的房间', '#ff4444');
+                return;
+            }
+
+            // 检查是否已经满员
+            if (battle.player2_id) {
+                this.showFeedback('房间已满', '#ff4444');
+                return;
+            }
+
+            // 加入房间
+            const { error: updateError } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .update({
                     player2_id: this.game.state.currentUser.id,
@@ -3067,8 +3106,16 @@ class BattleMode {
                     status: 'playing',
                     started_at: new Date().toISOString()
                 })
-                .eq('id', battle.id);
+                .eq('id', battle.id)
+                .eq('status', 'waiting');
 
+            if (updateError) {
+                console.error('加入房间失败:', updateError);
+                this.showFeedback('房间已被其他人加入', '#ff4444');
+                return;
+            }
+
+            // 成功加入，开始对战
             this.startBattle({
                 battleId: battle.id,
                 roomCode: battle.room_code,
@@ -3076,6 +3123,8 @@ class BattleMode {
             });
 
             this.closeJoinModal();
+            this.showFeedback('加入房间成功', '#4CAF50');
+            
         } catch (error) {
             console.error('加入房间失败:', error);
             this.showFeedback('加入房间失败', '#ff4444');
@@ -3249,6 +3298,8 @@ class BattleMode {
                         z-index: 10001;
                         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
                         animation: slideIn 0.3s ease-out;
+                        -webkit-font-smoothing: antialiased;
+                        -moz-osx-font-smoothing: grayscale;
                     `;
                     
                     const container = document.createElement('div');
@@ -4210,7 +4261,6 @@ class BattleMode {
 
         let text = input.value.trim();
         
-        // 移除控制字符和不可见字符
         text = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
         
         if (text.length > 200) {
@@ -4687,7 +4737,6 @@ class BattleMode {
         this.safeStorage().clear();
         this.clearSoundQueue();
         
-        // 清理Promise相关
         this.activePromises.clear();
         if (this.promiseTimeouts) {
             this.promiseTimeouts.forEach(timer => clearTimeout(timer));
