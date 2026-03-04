@@ -3,10 +3,10 @@
  * 包含：快速匹配、创建房间、加入房间、实时对战、聊天系统、AI对手
  * 依赖：utils.js (需要 I18n, SoundManager, Validators, GAME_CONSTANTS)
  * 
- * 版本：6.0.0 (终极完美版)
+ * 版本：7.0.0 (终极完美版)
  * 更新说明：
  * - 修复无匹配数字时未更新目标数字的问题
- * - 添加糖果主题明亮色彩样式
+ * - 添加马卡龙色系柔和主题
  * - 增强并发控制和信号量系统
  * - 添加本地存储持久化（支持localStorage降级到内存存储）
  * - 优化性能和内存管理
@@ -23,6 +23,13 @@
  * - 添加观察者管理（ResizeObserver）
  * - 完善AI资源清理
  * - 增强输入验证
+ * - 添加声音队列管理
+ * - 添加页面可见性处理
+ * - 添加刷新防抖和计数限制
+ * - 添加递归防护
+ * - 添加长按菜单禁用
+ * - 添加页面卸载处理
+ * - 增强声音方法安全性
  * ============================================================
  */
 
@@ -71,12 +78,16 @@ class BattleMode {
         this.endTurnInProgress = false;
         this.rematchInProgress = false;
         this.scoreUpdateInProgress = false;
+        this.isLeaving = false;
+        this.isRefreshing = false;
         
         // 防抖
         this.clickDebounceTimer = null;
         this.lastClickTime = 0;
         this.CLICK_DEBOUNCE_TIME = 300;
         this.zoomTimer = null;
+        this.refreshTimer = null;
+        this.refreshCount = 0;
         
         // 信号量系统
         this.semaphores = {
@@ -90,6 +101,14 @@ class BattleMode {
         // Promise追踪
         this.activePromises = new Set();
         this.promiseCounter = 0;
+        this.promiseTimeouts = new Map();
+        
+        // 声音管理
+        this.soundQueue = [];
+        this.isPlayingSound = false;
+        this.maxSoundQueueSize = 10;
+        this.soundProcessTimer = null;
+        this.lastWrongSoundTime = 0;
         
         // 内存存储（localStorage降级用）
         this.memoryStorage = new Map();
@@ -108,6 +127,8 @@ class BattleMode {
         this.onlineHandler = null;
         this.offlineHandler = null;
         this.popStateHandler = null;
+        this.visibilityHandler = null;
+        this.beforeUnloadHandler = null;
         this.quickMatchHandler = null;
         this.joinRoomHandler = null;
         this.copyHandler = null;
@@ -120,6 +141,7 @@ class BattleMode {
         this.cancelJoinHandler = null;
         this.gridClickHandler = null;
         this.gridTouchHandler = null;
+        this.gridContextHandler = null;
         this.continueWaitingHandler = null;
         this.playWithAIHandler = null;
         
@@ -137,7 +159,11 @@ class BattleMode {
             TIME_BONUS_FACTOR: 15,
             MAX_TIME_BONUS: 200,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_EXPIRY: 3600000
+            STORAGE_EXPIRY: 3600000,
+            MAX_REFRESH_COUNT: 3,
+            REFRESH_DEBOUNCE: 300,
+            SOUND_QUEUE_MAX: 10,
+            WRONG_SOUND_COOLDOWN: 200
         };
 
         // 初始化
@@ -145,6 +171,8 @@ class BattleMode {
         this.setupHistoryHandler();
         this.setupTabCommunication();
         this.setupZoomDetection();
+        this.setupVisibilityHandler();
+        this.setupBeforeUnloadHandler();
     }
 
     // ==================== 初始化 ====================
@@ -210,13 +238,30 @@ class BattleMode {
     }
 
     /**
-     * Promise追踪
+     * Promise追踪（带超时）
      */
-    trackPromise(promise, name = 'unnamed') {
+    trackPromise(promise, name = 'unnamed', timeout = 30000) {
         const id = ++this.promiseCounter;
-        const trackedPromise = promise
+        
+        // 添加超时处理
+        const timeoutPromise = new Promise((_, reject) => {
+            const timer = setTimeout(() => {
+                reject(new Error(`Promise ${name} 超时 (${timeout}ms)`));
+            }, timeout);
+            
+            if (!this.promiseTimeouts) this.promiseTimeouts = new Map();
+            this.promiseTimeouts.set(id, timer);
+        });
+        
+        const trackedPromise = Promise.race([promise, timeoutPromise])
             .finally(() => {
                 this.activePromises.delete(trackedPromise);
+                // 清理超时timer
+                const timer = this.promiseTimeouts?.get(id);
+                if (timer) {
+                    clearTimeout(timer);
+                    this.promiseTimeouts.delete(id);
+                }
             });
         
         this.activePromises.add(trackedPromise);
@@ -243,7 +288,154 @@ class BattleMode {
     }
 
     /**
-     * 注入糖果主题CSS
+     * 停止所有声音
+     */
+    stopAllSounds() {
+        try {
+            // 安全检查每个方法
+            if (typeof SoundManager !== 'undefined') {
+                if (SoundManager.stopAll && typeof SoundManager.stopAll === 'function') {
+                    SoundManager.stopAll();
+                } else if (SoundManager.stop && typeof SoundManager.stop === 'function') {
+                    SoundManager.stop();
+                }
+            }
+            
+            // 停止所有Audio元素
+            document.querySelectorAll('audio').forEach(audio => {
+                try {
+                    audio.pause();
+                    audio.currentTime = 0;
+                } catch (e) {
+                    // 忽略单个音频的错误
+                }
+            });
+            
+            // 停止所有Howl实例
+            if (typeof Howl !== 'undefined' && Howler && Howler.stop) {
+                Howler.stop();
+            }
+        } catch (error) {
+            console.warn('停止声音失败:', error);
+        }
+    }
+
+    /**
+     * 暂停所有声音
+     */
+    pauseAllSounds() {
+        try {
+            if (typeof SoundManager !== 'undefined' && SoundManager.pauseAll && typeof SoundManager.pauseAll === 'function') {
+                SoundManager.pauseAll();
+            }
+            document.querySelectorAll('audio').forEach(audio => {
+                try {
+                    audio.pause();
+                } catch (e) {}
+            });
+        } catch (error) {
+            console.warn('暂停声音失败:', error);
+        }
+    }
+
+    /**
+     * 恢复所有声音
+     */
+    resumeAllSounds() {
+        try {
+            if (typeof SoundManager !== 'undefined' && SoundManager.resumeAll && typeof SoundManager.resumeAll === 'function') {
+                SoundManager.resumeAll();
+            }
+        } catch (error) {
+            console.warn('恢复声音失败:', error);
+        }
+    }
+
+    /**
+     * 清除声音队列
+     */
+    clearSoundQueue() {
+        this.soundQueue = [];
+        this.isPlayingSound = false;
+        this.lastWrongSoundTime = 0;
+        if (this.soundProcessTimer) {
+            clearTimeout(this.soundProcessTimer);
+            this.soundProcessTimer = null;
+        }
+    }
+
+    /**
+     * 播放声音（带队列管理）
+     */
+    playSound(soundName) {
+        // 如果游戏未激活，不播放声音
+        if (!this.room.gameActive) {
+            return;
+        }
+        
+        // 如果队列太长，丢弃新声音
+        if (this.soundQueue.length > this.maxSoundQueueSize) {
+            return;
+        }
+        
+        // 避免重复的相同声音（比如连续点击错误）
+        if (soundName === 'wrong' && this.lastWrongSoundTime) {
+            const now = Date.now();
+            if (now - this.lastWrongSoundTime < this.constants.WRONG_SOUND_COOLDOWN) {
+                return;
+            }
+            this.lastWrongSoundTime = now;
+        }
+        
+        this.soundQueue.push(soundName);
+        this.processSoundQueue();
+    }
+
+    /**
+     * 处理声音队列
+     */
+    processSoundQueue() {
+        if (this.isPlayingSound || this.soundQueue.length === 0) return;
+        
+        this.isPlayingSound = true;
+        const soundName = this.soundQueue.shift();
+        
+        try {
+            if (typeof SoundManager !== 'undefined' && SoundManager.play && typeof SoundManager.play === 'function') {
+                // 添加超时保护
+                const playPromise = Promise.resolve(SoundManager.play(soundName));
+                
+                this.soundProcessTimer = setTimeout(() => {
+                    this.isPlayingSound = false;
+                    this.processSoundQueue();
+                }, 1000); // 最多等待1秒
+                
+                playPromise
+                    .finally(() => {
+                        if (this.soundProcessTimer) {
+                            clearTimeout(this.soundProcessTimer);
+                            this.soundProcessTimer = null;
+                        }
+                        this.isPlayingSound = false;
+                        this.processSoundQueue();
+                    })
+                    .catch(() => {
+                        this.isPlayingSound = false;
+                        this.processSoundQueue();
+                    });
+            } else {
+                this.isPlayingSound = false;
+                this.processSoundQueue();
+            }
+        } catch (error) {
+            console.warn('播放声音失败:', error);
+            this.isPlayingSound = false;
+            this.processSoundQueue();
+        }
+    }
+
+    /**
+     * 注入糖果主题CSS（马卡龙色系）
      */
     injectCandyStyles() {
         const styleId = 'candy-battle-styles';
@@ -252,49 +444,48 @@ class BattleMode {
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
-            /* 糖果主题样式 */
+            /* 马卡龙色系 - 更柔和的颜色主题 */
             :root {
-                --candy-pink: #ff9a9e;
-                --candy-light-pink: #ffdde1;
-                --candy-purple: #a18cd1;
-                --candy-blue: #fbc2eb;
-                --candy-yellow: #fad0c4;
-                --candy-orange: #ff9a9e;
-                --candy-mint: #a1c4fd;
-                --candy-glow: #fbc2eb;
+                --macaron-pink: #fce4e8;
+                --macaron-peach: #ffe9e0;
+                --macaron-mint: #e0f0e5;
+                --macaron-lavender: #f0e6f2;
+                --macaron-cream: #fff9e6;
+                --macaron-rose: #f8d7e3;
             }
 
             * {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             }
 
+            /* 卡片样式优化 */
             #battle-grid {
                 display: grid;
                 grid-template-columns: repeat(5, 1fr);
                 gap: 15px;
                 padding: 20px;
-                background: linear-gradient(145deg, #fff5f7, #ffe4e8);
+                background: linear-gradient(145deg, #fff9fc, #fff5f8);
+                border: 2px solid #fad1db;
                 border-radius: 40px;
-                border: 4px solid #ffb6c1;
-                box-shadow: inset 0 2px 10px rgba(255, 182, 193, 0.3), 0 12px 0 #ff69b4;
+                box-shadow: inset 0 2px 8px rgba(255, 200, 220, 0.2), 0 8px 0 #f5b8c7;
             }
 
             #battle-grid .number-card {
-                background: linear-gradient(145deg, #ffffff, #fff0f5);
-                border: 4px solid #ffb6c1;
+                background: linear-gradient(145deg, #ffffff, #fffafc);
+                border: 2px solid #fad1db;
                 border-radius: 25px;
-                box-shadow: 0 10px 0 #ff69b4, 0 15px 25px rgba(255, 105, 180, 0.3);
-                color: #d44e8c;
-                font-size: 2.8rem;
-                font-weight: bold;
+                box-shadow: 0 4px 0 #f5b8c7, 0 6px 12px rgba(245, 184, 199, 0.15);
+                color: #b28b99;
+                font-size: 2.5rem;
+                font-weight: 400;
                 width: 90px;
                 height: 90px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                transition: all 0.2s ease;
-                text-shadow: 3px 3px 0 rgba(255, 255, 255, 0.7);
+                transition: all 0.25s ease;
+                text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.8);
                 position: relative;
                 animation: cardAppear 0.3s ease-out;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
@@ -314,38 +505,37 @@ class BattleMode {
             }
 
             #battle-grid .number-card:hover {
-                transform: translateY(-8px) scale(1.05);
-                box-shadow: 0 18px 0 #ff69b4, 0 20px 30px rgba(255, 105, 180, 0.4);
-                background: linear-gradient(145deg, #fff5fa, #ffe4f0);
+                transform: translateY(-3px);
+                box-shadow: 0 7px 0 #f5b8c7, 0 10px 18px rgba(245, 184, 199, 0.2);
+                background: linear-gradient(145deg, #ffffff, #fff0f5);
             }
 
             #battle-grid .number-card:active {
-                transform: translateY(10px);
-                box-shadow: 0 5px 0 #ff69b4;
+                transform: translateY(4px);
+                box-shadow: 0 2px 0 #f5b8c7;
             }
 
             #battle-grid .number-card.selected {
-                background: linear-gradient(145deg, #a8e6cf, #d4edda);
-                border-color: #4caf50;
-                box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.3);
-                color: #1b5e20;
-                transform: scale(1.08) translateY(-5px);
-                animation: pulse 0.5s infinite;
+                background: linear-gradient(145deg, #eaf5ed, #e0efe5);
+                border-color: #b8d9c4;
+                box-shadow: 0 4px 0 #9ec0aa, 0 6px 12px rgba(158, 192, 170, 0.15);
+                color: #5c8b6f;
+                transform: scale(1.05) translateY(-2px);
+                animation: softPulse 2s ease-in-out infinite;
             }
 
-            @keyframes pulse {
-                0% { box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.3); }
-                50% { box-shadow: 0 10px 0 #2e7d32, 0 20px 35px rgba(76, 175, 80, 0.5); }
-                100% { box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.3); }
+            @keyframes softPulse {
+                0%, 100% { box-shadow: 0 4px 0 #9ec0aa, 0 6px 12px rgba(158, 192, 170, 0.15); }
+                50% { box-shadow: 0 4px 0 #9ec0aa, 0 10px 18px rgba(158, 192, 170, 0.25); }
             }
 
             #battle-grid .number-card.matched {
                 opacity: 0.3;
                 transform: scale(0.7);
                 pointer-events: none;
-                filter: grayscale(0.6);
-                box-shadow: 0 5px 0 #999;
-                border-color: #999;
+                filter: grayscale(0.4);
+                box-shadow: 0 2px 0 #ccc;
+                border-color: #ccc;
                 animation: vanish 0.3s ease-out;
             }
 
@@ -354,40 +544,41 @@ class BattleMode {
                 100% { transform: scale(0); opacity: 0; }
             }
 
+            /* 目标数字优化 */
             .battle-target {
-                background: linear-gradient(145deg, #f9d423, #fda085);
-                border: 6px solid #ff6b6b;
+                background: linear-gradient(145deg, #fef0d7, #fee9d1);
+                border: 3px solid #fad1b3;
                 border-radius: 70px;
-                box-shadow: 0 15px 0 #c92a2a, 0 20px 30px rgba(255, 107, 107, 0.4);
-                color: white;
+                box-shadow: 0 5px 0 #e6b68f, 0 10px 20px rgba(230, 182, 143, 0.15);
+                color: #b27a58;
                 font-size: 5rem;
-                font-weight: bold;
+                font-weight: 400;
                 width: 150px;
                 height: 150px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 margin: 0 auto 25px;
-                text-shadow: 4px 4px 0 #c92a2a;
-                animation: targetGlow 1s infinite;
+                text-shadow: 1px 1px 0 #e6b68f;
+                animation: macaronGlow 4s ease-in-out infinite;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
             }
 
-            @keyframes targetGlow {
-                0% { box-shadow: 0 15px 0 #c92a2a, 0 20px 30px rgba(255, 107, 107, 0.4); }
-                50% { box-shadow: 0 15px 0 #c92a2a, 0 25px 40px rgba(255, 107, 107, 0.6); }
-                100% { box-shadow: 0 15px 0 #c92a2a, 0 20px 30px rgba(255, 107, 107, 0.4); }
+            @keyframes macaronGlow {
+                0%, 100% { opacity: 0.95; }
+                50% { opacity: 1; box-shadow: 0 5px 0 #e6b68f, 0 15px 30px rgba(230, 182, 143, 0.2); }
             }
 
+            /* 回合指示器优化 */
             .turn-indicator {
-                background: linear-gradient(145deg, #f6d5f7, #fbe9d7);
-                border: 4px solid #f48fb1;
+                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                border: 2px solid #fad1db;
                 border-radius: 50px;
                 padding: 15px 30px;
                 font-size: 1.5rem;
-                font-weight: bold;
-                color: #ad1457;
-                box-shadow: 0 8px 0 #d81b60, 0 10px 20px rgba(216, 27, 96, 0.3);
+                font-weight: 500;
+                color: #b28b99;
+                box-shadow: 0 4px 0 #f5b8c7, 0 8px 15px rgba(245, 184, 199, 0.1);
                 text-align: center;
                 margin-bottom: 25px;
                 display: flex;
@@ -404,95 +595,96 @@ class BattleMode {
                 background: white;
                 border-radius: 40px;
                 padding: 8px 20px;
-                color: #c2185b;
+                color: #b28b99;
                 font-size: 1.8rem;
-                font-weight: bold;
-                box-shadow: inset 0 3px 8px rgba(0,0,0,0.1);
-                border: 2px solid #f8bbd0;
+                font-weight: 500;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.03);
+                border: 2px solid #fad1db;
                 font-family: monospace;
             }
 
             .timer.warning {
-                color: #ff4444 !important;
-                animation: timerWarning 0.5s infinite;
+                color: #e68b8b !important;
+                animation: timerWarning 1s ease-in-out infinite;
             }
 
             @keyframes timerWarning {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.1); background: #ffebee; }
-                100% { transform: scale(1); }
+                0%, 100% { transform: scale(1); background: #fff5f5; }
+                50% { transform: scale(1.05); background: #ffe5e5; }
             }
 
+            /* 玩家卡片优化 */
             .player-card {
-                background: linear-gradient(145deg, #fff9e6, #ffe6f0);
-                border: 4px solid #f06292;
+                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                border: 2px solid #fad1db;
                 border-radius: 40px;
                 padding: 20px;
-                box-shadow: 0 10px 0 #ec407a, 0 15px 25px rgba(236, 64, 122, 0.2);
+                box-shadow: 0 4px 0 #f5b8c7, 0 8px 15px rgba(245, 184, 199, 0.1);
                 transition: all 0.3s ease;
             }
 
             .player-card.active {
-                border-color: #4caf50;
-                box-shadow: 0 10px 0 #2e7d32, 0 15px 25px rgba(76, 175, 80, 0.2);
-                transform: translateY(-5px);
+                border-color: #b8d9c4;
+                box-shadow: 0 4px 0 #9ec0aa, 0 8px 15px rgba(158, 192, 170, 0.15);
+                transform: translateY(-3px);
             }
 
             .player-avatar {
                 width: 70px;
                 height: 70px;
                 border-radius: 35px;
-                background: linear-gradient(145deg, #fccfdf, #faa0c0);
-                border: 4px solid #f48fb1;
+                background: linear-gradient(145deg, #fef0f4, #fde8ef);
+                border: 2px solid #fad1db;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 font-size: 2.5rem;
-                color: #ad1457;
-                box-shadow: 0 6px 0 #c2185b;
+                color: #b28b99;
+                box-shadow: 0 3px 0 #f5b8c7;
                 margin-bottom: 10px;
             }
 
             .player-name {
                 font-size: 1.2rem;
-                font-weight: bold;
-                color: #880e4f;
+                font-weight: 500;
+                color: #b28b99;
                 margin-bottom: 10px;
             }
 
             .player-score {
                 font-size: 2rem;
-                font-weight: bold;
-                color: #d81b60;
-                text-shadow: 2px 2px 0 #f8bbd0;
+                font-weight: 500;
+                color: #b28b99;
+                text-shadow: 1px 1px 0 #fff0f5;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
             }
 
+            /* 进度条优化 */
             .progress-bar {
-                background: rgba(255, 255, 255, 0.6);
-                border: 3px solid #f8bbd0;
+                background: rgba(245, 184, 199, 0.1);
+                border: 2px solid #fad1db;
                 border-radius: 25px;
                 height: 25px;
                 overflow: hidden;
-                box-shadow: inset 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: inset 0 1px 4px rgba(0,0,0,0.05);
                 margin: 10px 0;
             }
 
             .progress-fill {
                 height: 100%;
                 border-radius: 25px;
-                transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 0 0 15px #ffb347;
+                transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
                 position: relative;
                 overflow: hidden;
             }
 
             .progress-fill.player1 {
-                background: linear-gradient(90deg, #f9d423, #fda085, #ff6b6b);
+                background: linear-gradient(90deg, #fed9b0, #fecbad, #febdab);
             }
 
             .progress-fill.player2 {
-                background: linear-gradient(90deg, #a8e6cf, #d4edda, #4caf50);
+                background: linear-gradient(90deg, #c5e5d0, #b8ddc5, #abd5ba);
             }
 
             .progress-fill::after {
@@ -503,7 +695,7 @@ class BattleMode {
                 right: 0;
                 bottom: 0;
                 background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-                animation: shimmer 1.5s infinite;
+                animation: shimmer 2s infinite;
             }
 
             @keyframes shimmer {
@@ -511,23 +703,24 @@ class BattleMode {
                 100% { transform: translateX(100%); }
             }
 
+            /* 聊天区域优化 */
             .chat-container {
-                background: linear-gradient(145deg, #fff5f7, #ffe4e8);
-                border: 4px solid #f8bbd0;
+                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                border: 2px solid #fad1db;
                 border-radius: 40px;
                 padding: 20px;
-                box-shadow: inset 0 2px 15px rgba(255, 182, 193, 0.3), 0 10px 0 #f48fb1;
+                box-shadow: inset 0 2px 8px rgba(245, 184, 199, 0.1), 0 4px 0 #f5b8c7;
                 margin-top: 20px;
             }
 
             .chat-messages {
-                background: rgba(255, 255, 255, 0.8);
+                background: rgba(255, 255, 255, 0.7);
                 border-radius: 30px;
                 padding: 15px;
                 min-height: 180px;
                 max-height: 250px;
                 overflow-y: auto;
-                border: 3px solid #ffc1cc;
+                border: 2px solid #fad1db;
                 margin-bottom: 15px;
                 -webkit-overflow-scrolling: touch;
             }
@@ -537,14 +730,14 @@ class BattleMode {
             }
 
             .chat-messages::-webkit-scrollbar-track {
-                background: #ffe4e8;
+                background: #fef0f4;
                 border-radius: 10px;
             }
 
             .chat-messages::-webkit-scrollbar-thumb {
-                background: #ffb6c1;
+                background: #fad1db;
                 border-radius: 10px;
-                border: 2px solid #ffc1cc;
+                border: 2px solid #fef0f4;
             }
 
             .message {
@@ -570,37 +763,37 @@ class BattleMode {
             }
 
             .message.self {
-                background: linear-gradient(145deg, #b9f6ca, #a5d6a5);
+                background: linear-gradient(145deg, #eaf5ed, #e0efe5);
                 border-radius: 25px 25px 5px 25px;
                 margin-left: auto;
-                color: #1b5e20;
-                border: 3px solid #81c784;
-                box-shadow: 0 5px 0 #2e7d32;
+                color: #5c8b6f;
+                border: 2px solid #b8d9c4;
+                box-shadow: 0 2px 0 #9ec0aa;
             }
 
             .message.opponent {
-                background: linear-gradient(145deg, #ffccbc, #ffab91);
+                background: linear-gradient(145deg, #fef0f4, #fde8ef);
                 border-radius: 25px 25px 25px 5px;
                 margin-right: auto;
-                color: #bf360c;
-                border: 3px solid #ff8a65;
-                box-shadow: 0 5px 0 #e64a19;
+                color: #b28b99;
+                border: 2px solid #fad1db;
+                box-shadow: 0 2px 0 #f5b8c7;
             }
 
             .message.system {
-                background: linear-gradient(145deg, #e1bee7, #d1c4e9);
+                background: linear-gradient(145deg, #f5ebf7, #f0e4f2);
                 border-radius: 30px;
                 margin: 8px auto;
                 text-align: center;
-                color: #4a148c;
-                border: 3px solid #ba68c8;
+                color: #9b7aa3;
+                border: 2px solid #e0c9e5;
                 font-style: italic;
-                box-shadow: 0 5px 0 #7b1fa2;
+                box-shadow: 0 2px 0 #c9aed0;
                 max-width: 90%;
             }
 
             .message-sender {
-                font-weight: bold;
+                font-weight: 500;
                 margin-right: 8px;
                 color: inherit;
             }
@@ -614,40 +807,42 @@ class BattleMode {
             .chat-input-area input {
                 flex: 1;
                 padding: 15px 20px;
-                border: 3px solid #ffb6c1;
+                border: 2px solid #fad1db;
                 border-radius: 40px;
                 font-size: 1rem;
                 background: white;
-                box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 4px 0 #ff69b4;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.02), 0 3px 0 #f5b8c7;
                 transition: all 0.2s ease;
+                color: #b28b99;
             }
 
             .chat-input-area input:focus {
                 outline: none;
-                border-color: #ff69b4;
-                box-shadow: inset 0 2px 5px rgba(0,0,0,0.05), 0 6px 0 #ff1493;
-                transform: translateY(-2px);
+                border-color: #f5b8c7;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.02), 0 4px 0 #f5b8c7;
+                transform: translateY(-1px);
             }
 
             .chat-input-area input:disabled {
                 opacity: 0.6;
-                background: #f5f5f5;
-                box-shadow: 0 4px 0 #999;
-                border-color: #ccc;
+                background: #f9f9f9;
+                box-shadow: 0 2px 0 #ddd;
+                border-color: #ddd;
             }
 
+            /* 按钮优化 */
             .candy-btn {
-                background: linear-gradient(145deg, #ffdde1, #ee9ca7);
+                background: linear-gradient(145deg, #fef0f4, #fde8ef);
                 border: none;
                 border-radius: 50px;
                 padding: 15px 30px;
                 font-size: 1.2rem;
-                font-weight: bold;
-                color: #880e4f;
+                font-weight: 500;
+                color: #b28b99;
                 cursor: pointer;
-                box-shadow: 0 8px 0 #c2185b, 0 10px 20px rgba(194, 24, 91, 0.3);
-                transition: all 0.1s ease;
-                border: 3px solid #f8bbd0;
+                box-shadow: 0 3px 0 #f5b8c7, 0 6px 12px rgba(245, 184, 199, 0.1);
+                transition: all 0.2s ease;
+                border: 2px solid #fad1db;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -657,27 +852,27 @@ class BattleMode {
             }
 
             .candy-btn:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 13px 0 #c2185b, 0 15px 25px rgba(194, 24, 91, 0.4);
+                transform: translateY(-2px);
+                box-shadow: 0 5px 0 #f5b8c7, 0 8px 15px rgba(245, 184, 199, 0.15);
             }
 
             .candy-btn:active {
-                transform: translateY(8px);
-                box-shadow: 0 3px 0 #c2185b;
+                transform: translateY(3px);
+                box-shadow: 0 1px 0 #f5b8c7;
             }
 
             .candy-btn.primary {
-                background: linear-gradient(145deg, #f9d423, #fda085);
-                color: #b71c1c;
-                box-shadow: 0 8px 0 #d32f2f;
-                border-color: #ff8a80;
+                background: linear-gradient(145deg, #fef0d7, #fee9d1);
+                border-color: #fad1b3;
+                box-shadow: 0 3px 0 #e6b68f;
+                color: #b27a58;
             }
 
             .candy-btn.secondary {
-                background: linear-gradient(145deg, #b2f0e5, #7fc7d9);
-                color: #004d40;
-                box-shadow: 0 8px 0 #00796b;
-                border-color: #80cbc4;
+                background: linear-gradient(145deg, #e0f0e5, #d6eadc);
+                border-color: #b8d9c4;
+                box-shadow: 0 3px 0 #9ec0aa;
+                color: #5c8b6f;
             }
 
             .candy-btn.small {
@@ -689,15 +884,17 @@ class BattleMode {
                 opacity: 0.5;
                 cursor: not-allowed;
                 transform: translateY(0);
-                box-shadow: 0 4px 0 #999;
+                box-shadow: 0 2px 0 #ddd;
+                border-color: #ddd;
             }
 
+            /* 等待动画 */
             .waiting-spinner {
                 display: inline-block;
                 width: 50px;
                 height: 50px;
-                border: 6px solid #ffb6c1;
-                border-top-color: #ff1493;
+                border: 4px solid #fad1db;
+                border-top-color: #f5b8c7;
                 border-radius: 50%;
                 animation: spin 1s linear infinite;
                 margin: 20px auto;
@@ -707,8 +904,8 @@ class BattleMode {
                 display: inline-block;
                 width: 20px;
                 height: 20px;
-                border: 3px solid #ffb6c1;
-                border-top-color: #ff1493;
+                border: 3px solid #fad1db;
+                border-top-color: #f5b8c7;
                 border-radius: 50%;
                 animation: spinSmall 1s linear infinite;
                 margin-right: 8px;
@@ -724,13 +921,14 @@ class BattleMode {
                 to { transform: rotate(360deg); }
             }
 
+            /* 结果页面优化 */
             .battle-result {
                 text-align: center;
                 padding: 30px;
-                background: linear-gradient(145deg, #fff5f7, #ffe4e8);
+                background: linear-gradient(145deg, #fef5f8, #fef0f4);
                 border-radius: 60px;
-                border: 6px solid #ffb6c1;
-                box-shadow: 0 20px 0 #ff69b4, 0 25px 40px rgba(255, 105, 180, 0.3);
+                border: 3px solid #fad1db;
+                box-shadow: 0 8px 0 #f5b8c7, 0 15px 25px rgba(245, 184, 199, 0.15);
             }
 
             .result-title {
@@ -757,38 +955,38 @@ class BattleMode {
                 border-radius: 40px;
                 padding: 25px;
                 min-width: 150px;
-                border: 4px solid #f48fb1;
-                box-shadow: 0 8px 0 #c2185b;
+                border: 2px solid #fad1db;
+                box-shadow: 0 4px 0 #f5b8c7;
             }
 
             .result-score-card.winner {
-                border-color: #4caf50;
-                box-shadow: 0 8px 0 #2e7d32;
-                background: linear-gradient(145deg, #e8f5e9, #c8e6c9);
+                border-color: #b8d9c4;
+                box-shadow: 0 4px 0 #9ec0aa;
+                background: linear-gradient(145deg, #f0f9f2, #e8f2ea);
             }
 
             .result-score {
                 font-size: 3.5rem;
-                font-weight: bold;
-                color: #d81b60;
+                font-weight: 500;
+                color: #b28b99;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
             }
 
             .winner .result-score {
-                color: #2e7d32;
+                color: #5c8b6f;
             }
 
             .room-code-hint {
                 display: block;
                 font-size: 0.8rem;
-                color: #666;
+                color: #b28b99;
                 margin-top: 5px;
                 cursor: pointer;
                 transition: color 0.2s;
             }
 
             .room-code-hint:hover {
-                color: #ff1493;
+                color: #f5b8c7;
             }
 
             .battle-container.compact #battle-grid .number-card {
@@ -878,6 +1076,9 @@ class BattleMode {
             if (this.gridTouchHandler) {
                 battleGrid.removeEventListener('touchstart', this.gridTouchHandler);
             }
+            if (this.gridContextHandler) {
+                battleGrid.removeEventListener('contextmenu', this.gridContextHandler);
+            }
         }
     }
 
@@ -958,9 +1159,48 @@ class BattleMode {
                 e.preventDefault();
                 this.handleBattleCardClick(e);
             };
+            this.gridContextHandler = (e) => e.preventDefault();
+            
             battleGrid.addEventListener('click', this.gridClickHandler);
             battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
+            battleGrid.addEventListener('contextmenu', this.gridContextHandler);
         }
+    }
+
+    /**
+     * 设置页面可见性处理
+     */
+    setupVisibilityHandler() {
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+        }
+        
+        this.visibilityHandler = () => {
+            if (document.hidden) {
+                this.pauseAllSounds();
+            } else {
+                this.resumeAllSounds();
+            }
+        };
+        
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    /**
+     * 设置页面卸载处理
+     */
+    setupBeforeUnloadHandler() {
+        this.beforeUnloadHandler = (e) => {
+            if (this.room.gameActive) {
+                this.saveLocalBattleState();
+                
+                e.preventDefault();
+                e.returnValue = '对战正在进行，确定要离开吗？';
+                return '对战正在进行，确定要离开吗？';
+            }
+        };
+        
+        window.addEventListener('beforeunload', this.beforeUnloadHandler);
     }
 
     /**
@@ -1003,6 +1243,7 @@ class BattleMode {
                 e.preventDefault();
                 
                 if (confirm('当前对战正在进行，确定要离开吗？')) {
+                    this.stopAllSounds();
                     this.leaveBattle();
                     if (this.game.ui) {
                         this.game.ui.closeModal('battle-modal');
@@ -1066,13 +1307,13 @@ class BattleMode {
                     top: 10px;
                     left: 50%;
                     transform: translateX(-50%);
-                    background: #ff4444;
+                    background: #e68b8b;
                     color: white;
                     padding: 10px 20px;
                     border-radius: 30px;
                     z-index: 10000;
                     font-size: 14px;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
                 `;
                 warning.textContent = '检测到页面缩放可能影响显示，建议重置到100%';
                 document.body.appendChild(warning);
@@ -1152,16 +1393,6 @@ class BattleMode {
 
     releaseSemaphore(name) {
         this.semaphores[name] = false;
-    }
-
-    playSound(soundName) {
-        try {
-            if (typeof SoundManager !== 'undefined' && SoundManager.play) {
-                SoundManager.play(soundName);
-            }
-        } catch (error) {
-            console.warn('播放声音失败:', error);
-        }
     }
 
     showFeedback(message, color = '#4CAF50') {
@@ -1448,10 +1679,10 @@ class BattleMode {
         hintDiv.style.cssText = `
             margin-top: 15px;
             padding: 15px;
-            background: linear-gradient(145deg, #fff0f5, #ffe4e8);
+            background: linear-gradient(145deg, #fef5f8, #fef0f4);
             border-radius: 30px;
-            border: 3px solid #ffb6c1;
-            box-shadow: 0 8px 0 #ff69b4;
+            border: 2px solid #fad1db;
+            box-shadow: 0 4px 0 #f5b8c7;
         `;
 
         const statusContainer = document.createElement('div');
@@ -1463,7 +1694,7 @@ class BattleMode {
 
         const statusText = document.createElement('span');
         statusText.id = 'match-status-text';
-        statusText.style.cssText = 'font-size: 1.2rem; font-weight: bold; color: #d44e8c;';
+        statusText.style.cssText = 'font-size: 1.2rem; font-weight: 500; color: #b28b99;';
         statusText.textContent = '正在寻找对手...';
         statusContainer.appendChild(statusText);
 
@@ -1471,24 +1702,24 @@ class BattleMode {
 
         const queueStatus = document.createElement('div');
         queueStatus.id = 'queue-status';
-        queueStatus.style.cssText = 'font-size: 1rem; color: #666; text-align: center;';
+        queueStatus.style.cssText = 'font-size: 1rem; color: #b28b99; text-align: center;';
         queueStatus.textContent = '当前排队人数: ';
 
         const queueCount = document.createElement('span');
         queueCount.id = 'queue-count';
-        queueCount.style.cssText = 'font-weight: bold; color: #ff1493;';
+        queueCount.style.cssText = 'font-weight: 500; color: #f5b8c7;';
         queueCount.textContent = '1';
         queueStatus.appendChild(queueCount);
 
         hintDiv.appendChild(queueStatus);
 
         const waitTimeDiv = document.createElement('div');
-        waitTimeDiv.style.cssText = 'font-size: 0.9rem; color: #999; margin-top: 8px; text-align: center;';
+        waitTimeDiv.style.cssText = 'font-size: 0.9rem; color: #b28b99; margin-top: 8px; text-align: center;';
         waitTimeDiv.textContent = '等待时间: ';
 
         const waitTime = document.createElement('span');
         waitTime.id = 'wait-time';
-        waitTime.style.cssText = 'font-weight: bold;';
+        waitTime.style.cssText = 'font-weight: 500;';
         waitTime.textContent = '0';
         waitTimeDiv.appendChild(waitTime);
         waitTimeDiv.appendChild(document.createTextNode('秒'));
@@ -1514,8 +1745,8 @@ class BattleMode {
             padding: 10px;
             background: #fff3e0;
             border-radius: 20px;
-            border: 2px solid #ff9800;
-            color: #e65100;
+            border: 2px solid #e6b68f;
+            color: #b27a58;
             font-size: 0.9rem;
             text-align: center;
         `;
@@ -1622,10 +1853,10 @@ class BattleMode {
         aiDiv.style.cssText = `
             margin-top: 20px;
             padding: 25px;
-            background: linear-gradient(145deg, #fff0f5, #ffe4e1);
+            background: linear-gradient(145deg, #fef5f8, #fef0f4);
             border-radius: 40px;
-            border: 3px solid #ff69b4;
-            box-shadow: 0 10px 0 #ff1493;
+            border: 2px solid #fad1db;
+            box-shadow: 0 4px 0 #f5b8c7;
         `;
 
         const emoji = document.createElement('div');
@@ -1634,12 +1865,12 @@ class BattleMode {
         aiDiv.appendChild(emoji);
 
         const p1 = document.createElement('p');
-        p1.style.cssText = 'margin-bottom: 12px; font-weight: bold; color: #d44e8c;';
+        p1.style.cssText = 'margin-bottom: 12px; font-weight: 500; color: #b28b99;';
         p1.textContent = '当前没有其他玩家在线';
         aiDiv.appendChild(p1);
 
         const p2 = document.createElement('p');
-        p2.style.cssText = 'margin-bottom: 20px; font-size: 1rem; color: #666;';
+        p2.style.cssText = 'margin-bottom: 20px; font-size: 1rem; color: #b28b99;';
         p2.textContent = '您可以继续等待，或者与AI练习对战 (AI对战不计入排名，不消耗积分)';
         aiDiv.appendChild(p2);
 
@@ -1736,6 +1967,7 @@ class BattleMode {
         this.room.status = 'playing';
         this.room.gameActive = true;
         this.room.selectedCards = [];
+        this.refreshCount = 0;
 
         const waitingDiv = document.getElementById('battle-waiting');
         const activeDiv = document.getElementById('battle-active');
@@ -1789,6 +2021,10 @@ class BattleMode {
     }
 
     scheduleAIMove() {
+        if (!this.room.gameActive) {
+            return;
+        }
+        
         if (this.aiMoveTimer) {
             clearTimeout(this.aiMoveTimer);
         }
@@ -1802,95 +2038,119 @@ class BattleMode {
     }
 
     async makeAIMove() {
-        if (!this.room.gameActive || this.room.myTurn) return;
-
-        const grid = document.getElementById('battle-grid');
-        if (!grid) return;
-
-        const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
-        
-        if (this.aiGlobalRetryCount > 5) {
-            console.warn('AI多次失败，重置网格');
-            this.refreshBattleGrid();
-            this.generateBattleTarget();
-            this.aiGlobalRetryCount = 0;
-            this.scheduleAIMove();
-            return;
-        }
-        
-        if (!cards || cards.length < 2) {
-            this.aiGlobalRetryCount++;
-            if (this.aiMoveRetryCount >= this.constants.AI_MAX_RETRIES) {
-                this.refreshBattleGrid();
-                this.aiMoveRetryCount = 0;
-            } else {
-                this.aiMoveRetryCount++;
-            }
-            this.scheduleAIMove();
-            return;
-        }
-        
-        this.aiMoveRetryCount = 0;
-        this.aiGlobalRetryCount = 0;
-
-        const targetEl = document.getElementById('battle-target-number');
-        if (!targetEl) {
-            this.scheduleAIMove();
-            return;
-        }
-        
-        const target = parseInt(targetEl.textContent) || 0;
-        
-        let move = null;
-        
-        if (this.room.aiDifficulty === 'easy') {
-            if (Math.random() < 0.3) {
-                move = this.findCorrectMove(cards, target);
-            }
-        } else if (this.room.aiDifficulty === 'medium') {
-            if (Math.random() < 0.7) {
-                move = this.findCorrectMove(cards, target);
-            }
-        } else if (this.room.aiDifficulty === 'hard') {
-            if (Math.random() < 0.95) {
-                move = this.findCorrectMove(cards, target);
-            }
-        } else {
-            move = this.findCorrectMove(cards, target);
-            if (!move) {
-                move = this.findClosestMove(cards, target);
-            }
-        }
-
-        if (!move) {
-            const index1 = Math.floor(Math.random() * cards.length);
-            let index2;
-            do {
-                index2 = Math.floor(Math.random() * cards.length);
-            } while (index2 === index1 && cards.length > 1);
+        try {
+            await this.acquireSemaphore('ai');
             
-            if (cards.length === 1) {
-                this.refreshBattleGrid();
+            if (!this.room.gameActive || this.room.myTurn) return;
+
+            const grid = document.getElementById('battle-grid');
+            if (!grid) return;
+
+            // 检查目标数字
+            const targetEl = document.getElementById('battle-target-number');
+            if (!targetEl) {
                 this.scheduleAIMove();
                 return;
             }
             
-            move = [cards[index1], cards[index2]];
-        }
+            const target = parseInt(targetEl.textContent);
+            if (isNaN(target) || target < 2 || target > 18) {
+                this.generateBattleTarget();
+                this.scheduleAIMove();
+                return;
+            }
 
-        const [card1, card2] = move;
-        
-        if (!card1 || !card2) {
-            this.scheduleAIMove();
-            return;
+            // 先检查是否有有效组合
+            if (!this.checkGridHasValidCombination()) {
+                console.log('AI移动前发现无有效组合，刷新网格');
+                this.refreshBattleGrid();
+                this.generateBattleTarget();
+                this.scheduleAIMove();
+                return;
+            }
+
+            const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
+            
+            if (this.aiGlobalRetryCount > 5) {
+                console.warn('AI多次失败，重置网格');
+                this.refreshBattleGrid();
+                this.generateBattleTarget();
+                this.aiGlobalRetryCount = 0;
+                this.scheduleAIMove();
+                return;
+            }
+            
+            if (!cards || cards.length < 2) {
+                this.aiGlobalRetryCount++;
+                if (this.aiMoveRetryCount >= this.constants.AI_MAX_RETRIES) {
+                    this.refreshBattleGrid();
+                    this.aiMoveRetryCount = 0;
+                } else {
+                    this.aiMoveRetryCount++;
+                }
+                this.scheduleAIMove();
+                return;
+            }
+            
+            this.aiMoveRetryCount = 0;
+            this.aiGlobalRetryCount = 0;
+            
+            let move = null;
+            
+            if (this.room.aiDifficulty === 'easy') {
+                if (Math.random() < 0.3) {
+                    move = this.findCorrectMove(cards, target);
+                }
+            } else if (this.room.aiDifficulty === 'medium') {
+                if (Math.random() < 0.7) {
+                    move = this.findCorrectMove(cards, target);
+                }
+            } else if (this.room.aiDifficulty === 'hard') {
+                if (Math.random() < 0.95) {
+                    move = this.findCorrectMove(cards, target);
+                }
+            } else {
+                move = this.findCorrectMove(cards, target);
+                if (!move) {
+                    move = this.findClosestMove(cards, target);
+                }
+            }
+
+            if (!move) {
+                const index1 = Math.floor(Math.random() * cards.length);
+                let index2;
+                do {
+                    index2 = Math.floor(Math.random() * cards.length);
+                } while (index2 === index1 && cards.length > 1);
+                
+                if (cards.length === 1) {
+                    this.refreshBattleGrid();
+                    this.scheduleAIMove();
+                    return;
+                }
+                
+                move = [cards[index1], cards[index2]];
+            }
+
+            const [card1, card2] = move;
+            
+            if (!card1 || !card2) {
+                this.scheduleAIMove();
+                return;
+            }
+            
+            card1.classList.add('selected');
+            card2.classList.add('selected');
+            
+            setTimeout(() => {
+                this.executeAIMove(card1, card2, target);
+            }, 500);
+            
+        } catch (error) {
+            console.error('AI移动失败:', error);
+        } finally {
+            this.releaseSemaphore('ai');
         }
-        
-        card1.classList.add('selected');
-        card2.classList.add('selected');
-        
-        setTimeout(() => {
-            this.executeAIMove(card1, card2, target);
-        }, 500);
     }
 
     findCorrectMove(cards, target) {
@@ -1898,7 +2158,7 @@ class BattleMode {
             for (let j = i + 1; j < cards.length; j++) {
                 const num1 = parseInt(cards[i].dataset.value);
                 const num2 = parseInt(cards[j].dataset.value);
-                if (num1 + num2 === target) {
+                if (!isNaN(num1) && !isNaN(num2) && num1 + num2 === target) {
                     return [cards[i], cards[j]];
                 }
             }
@@ -1914,12 +2174,14 @@ class BattleMode {
             for (let j = i + 1; j < cards.length; j++) {
                 const num1 = parseInt(cards[i].dataset.value);
                 const num2 = parseInt(cards[j].dataset.value);
-                const sum = num1 + num2;
-                const diff = Math.abs(sum - target);
-                
-                if (diff < closestDiff) {
-                    closestDiff = diff;
-                    bestPair = [cards[i], cards[j]];
+                if (!isNaN(num1) && !isNaN(num2)) {
+                    const sum = num1 + num2;
+                    const diff = Math.abs(sum - target);
+                    
+                    if (diff < closestDiff) {
+                        closestDiff = diff;
+                        bestPair = [cards[i], cards[j]];
+                    }
                 }
             }
         }
@@ -1982,6 +2244,12 @@ class BattleMode {
                 this.endAIBattle(this.room.opponentId);
                 return;
             }
+            
+            // 检查是否有有效组合
+            setTimeout(() => {
+                this.autoRefreshGridIfNeeded();
+            }, 500);
+            
         } else {
             this.playSound('wrong');
             
@@ -1990,6 +2258,11 @@ class BattleMode {
             setTimeout(() => {
                 if (card1.isConnected) card1.classList.remove('selected');
                 if (card2.isConnected) card2.classList.remove('selected');
+            }, 500);
+            
+            // 检查是否有有效组合
+            setTimeout(() => {
+                this.autoRefreshGridIfNeeded();
             }, 500);
         }
 
@@ -2002,6 +2275,7 @@ class BattleMode {
         this.room.gameActive = false;
         this.stopTurnTimer();
         this.cleanupAIResources();
+        this.refreshCount = 0;
 
         const activeDiv = document.getElementById('battle-active');
         const resultDiv = document.getElementById('battle-result');
@@ -2055,6 +2329,93 @@ class BattleMode {
         while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
             chat.removeChild(chat.children[0]);
         }
+    }
+
+    /**
+     * 检查网格是否有有效组合
+     */
+    checkGridHasValidCombination() {
+        const grid = document.getElementById('battle-grid');
+        if (!grid) return true;
+
+        const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
+        
+        // 如果卡片太少，直接刷新
+        if (cards.length < 2) {
+            if (!this.isRefreshing) {
+                this.isRefreshing = true;
+                setTimeout(() => {
+                    this.refreshBattleGrid();
+                    this.isRefreshing = false;
+                }, 100);
+            }
+            return false;
+        }
+
+        const targetEl = document.getElementById('battle-target-number');
+        if (!targetEl) return true;
+        
+        const target = parseInt(targetEl.textContent);
+        if (isNaN(target)) return true;
+
+        // 检查是否存在任何两个数字之和等于目标
+        for (let i = 0; i < cards.length; i++) {
+            for (let j = i + 1; j < cards.length; j++) {
+                const num1 = parseInt(cards[i].dataset.value);
+                const num2 = parseInt(cards[j].dataset.value);
+                if (!isNaN(num1) && !isNaN(num2) && num1 + num2 === target) {
+                    return true;
+                }
+            }
+        }
+        
+        // 如果没有有效组合，触发刷新（但避免递归）
+        if (!this.isRefreshing) {
+            this.isRefreshing = true;
+            setTimeout(() => {
+                this.autoRefreshGridIfNeeded();
+                this.isRefreshing = false;
+            }, 100);
+        }
+        return false;
+    }
+
+    /**
+     * 自动刷新网格（当无有效组合时）
+     */
+    autoRefreshGridIfNeeded() {
+        if (!this.room.gameActive) return;
+        
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+        }
+        
+        this.refreshTimer = setTimeout(() => {
+            this.refreshTimer = null;
+            
+            if (this.refreshCount > this.constants.MAX_REFRESH_COUNT) {
+                console.warn('连续刷新多次，强制结束回合');
+                this.refreshCount = 0;
+                this.endTurn();
+                return;
+            }
+            
+            const hasValidCombination = this.checkGridHasValidCombination();
+            if (!hasValidCombination) {
+                console.log('无有效数字组合，自动刷新网格');
+                this.refreshBattleGrid();
+                this.generateBattleTarget();
+                this.refreshCount = (this.refreshCount || 0) + 1;
+                
+                this.showFeedback('✨ 重新生成数字组合', '#ff69b4');
+                
+                if (this.room.opponentIsAI && !this.room.myTurn) {
+                    this.scheduleAIMove();
+                }
+            } else {
+                this.refreshCount = 0;
+            }
+        }, this.constants.REFRESH_DEBOUNCE);
     }
 
     cleanupMatch() {
@@ -2282,6 +2643,7 @@ class BattleMode {
         this.room.status = 'playing';
         this.room.gameActive = true;
         this.room.opponentIsAI = false;
+        this.refreshCount = 0;
 
         const waitingDiv = document.getElementById('battle-waiting');
         const activeDiv = document.getElementById('battle-active');
@@ -2449,6 +2811,7 @@ class BattleMode {
     endLocalBattle(winnerId) {
         this.room.gameActive = false;
         this.stopTurnTimer();
+        this.refreshCount = 0;
 
         if (this.localPollingTimer) {
             clearTimeout(this.localPollingTimer);
@@ -2755,6 +3118,7 @@ class BattleMode {
         this.room.gameActive = true;
         this.room.selectedCards = [];
         this.room.opponentIsAI = false;
+        this.refreshCount = 0;
 
         const waitingDiv = document.getElementById('battle-waiting');
         const activeDiv = document.getElementById('battle-active');
@@ -2878,12 +3242,12 @@ class BattleMode {
                         position: fixed;
                         top: 20px;
                         right: 20px;
-                        background: #ff9800;
+                        background: #e68b8b;
                         color: white;
                         padding: 12px 20px;
                         border-radius: 30px;
                         z-index: 10001;
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
                         animation: slideIn 0.3s ease-out;
                     `;
                     
@@ -2914,7 +3278,7 @@ class BattleMode {
                         }
                     }, 3000);
                     
-                    this.showFeedback('对手已断开连接', '#ff9800');
+                    this.showFeedback('对手已断开连接', '#e68b8b');
                 })
                 .on(
                     'postgres_changes',
@@ -3054,7 +3418,7 @@ class BattleMode {
 
         if (this.room.opponentIsAI && !this.room.myTurn) {
             turnText.textContent = 'AI思考中...';
-            indicator.style.background = 'linear-gradient(145deg, #9b59b6, #8e44ad)';
+            indicator.style.background = 'linear-gradient(145deg, #f0e6f2, #e8daf0)';
             this.stopTurnTimer();
             if (timer) {
                 timer.textContent = `${this.constants.ROUND_TIME}s`;
@@ -3062,11 +3426,11 @@ class BattleMode {
             }
         } else if (this.room.myTurn) {
             turnText.textContent = this.t('yourTurn');
-            indicator.style.background = 'linear-gradient(145deg, #6ab04c, #2e7d32)';
+            indicator.style.background = 'linear-gradient(145deg, #e0f0e5, #d6eadc)';
             this.startTurnTimer();
         } else {
             turnText.textContent = this.t('opponentTurn');
-            indicator.style.background = 'linear-gradient(145deg, #e84342, #c0392b)';
+            indicator.style.background = 'linear-gradient(145deg, #fef0f4, #fde8ef)';
             this.stopTurnTimer();
             if (timer) {
                 timer.textContent = `${this.constants.ROUND_TIME}s`;
@@ -3170,6 +3534,8 @@ class BattleMode {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
+        const hadSelectedCards = this.room.selectedCards.length > 0;
+        
         const oldCards = grid.querySelectorAll('.number-card');
         oldCards.forEach(card => {
             card.style.animation = 'none';
@@ -3194,6 +3560,12 @@ class BattleMode {
         
         grid.innerHTML = '';
         grid.appendChild(fragment);
+        
+        if (hadSelectedCards) {
+            this.room.selectedCards = [];
+        }
+        
+        this.saveLocalBattleState();
     }
 
     generateBattleTarget() {
@@ -3203,11 +3575,15 @@ class BattleMode {
             targetEl.textContent = target;
             targetEl.style.animation = 'none';
             targetEl.offsetHeight;
-            targetEl.style.animation = 'targetGlow 1s infinite';
+            targetEl.style.animation = 'macaronGlow 4s ease-in-out infinite';
         }
     }
 
     async handleBattleCardClick(e) {
+        if (!this.room.gameActive) {
+            return;
+        }
+        
         const now = Date.now();
         if (now - this.lastClickTime < this.CLICK_DEBOUNCE_TIME) {
             return;
@@ -3223,8 +3599,6 @@ class BattleMode {
         if (!card) return;
 
         if (!this.room.gameActive) {
-            this.playSound('wrong');
-            this.showFeedback('游戏已结束', '#ffa500');
             return;
         }
         
@@ -3338,6 +3712,11 @@ class BattleMode {
                 if (remaining.length < 4) {
                     this.refreshBattleGrid();
                 }
+                
+                setTimeout(() => {
+                    this.autoRefreshGridIfNeeded();
+                }, 500);
+                
             } else {
                 this.playSound('wrong');
                 
@@ -3349,6 +3728,10 @@ class BattleMode {
                 }, 500);
                 
                 this.showFeedback('再试试其他组合吧！', '#ff69b4');
+                
+                setTimeout(() => {
+                    this.autoRefreshGridIfNeeded();
+                }, 500);
             }
 
             this.room.selectedCards = [];
@@ -3479,6 +3862,7 @@ class BattleMode {
         this.endTurnInProgress = true;
         
         try {
+            this.refreshCount = 0;
             this.stopTurnTimer();
             
             if (this.room.opponentIsAI) {
@@ -3527,6 +3911,7 @@ class BattleMode {
     async endBattle(winnerId) {
         this.room.gameActive = false;
         this.stopTurnTimer();
+        this.refreshCount = 0;
 
         if (this.room.opponentIsAI) return;
 
@@ -3584,6 +3969,66 @@ class BattleMode {
         
         this.disableChatInput(true);
         this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+    }
+
+    async attemptReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.showFeedback('重连失败，请重新开始对战', '#ff4444');
+            this.leaveBattle();
+            return;
+        }
+
+        this.reconnectAttempts++;
+        
+        try {
+            if (!this.isSupabaseAvailable()) {
+                throw new Error('Supabase未连接');
+            }
+
+            const { data: battle, error } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('*')
+                .eq('id', this.room.battleId)
+                .single();
+
+            if (error || !battle) throw new Error('对战不存在');
+
+            if (battle.status === 'finished') {
+                this.showBattleResult(battle);
+            } else {
+                this.subscribeToBattle(this.room.battleId);
+                
+                await this.syncScores();
+                
+                if (this.room.myTurn) {
+                    this.autoRefreshGridIfNeeded();
+                }
+                
+                this.showFeedback('重连成功', '#4CAF50');
+                this.reconnectAttempts = 0;
+            }
+        } catch (error) {
+            console.error('重连失败:', error);
+            setTimeout(() => this.attemptReconnect(), 2000);
+        }
+    }
+
+    switchToOfflineMode() {
+        const currentBattleId = this.room.battleId;
+        const currentOpponent = this.room.opponentName;
+        
+        if (this.room.channel) {
+            this.room.channel.unsubscribe();
+            this.room.channel = null;
+        }
+        
+        this.room.opponentIsAI = false;
+        this.room.battleId = 'offline_' + currentBattleId;
+        
+        this.sendLocalMessage('📴 网络断开，切换到离线模式');
+        this.sendLocalMessage('您的进度将在网络恢复后同步');
+        
+        this.startLocalPolling();
     }
 
     async updateELOAfterBattle(battle, winnerId) {
@@ -3941,53 +4386,132 @@ class BattleMode {
     // ==================== 退出清理 ====================
 
     leaveBattle() {
-        this.cleanupMatch();
+        if (this.isLeaving) return;
+        this.isLeaving = true;
+        
+        try {
+            this.clearSoundQueue();
+            this.stopAllSounds();
+            this.cleanupMatch();
 
-        if (this.game.state.currentUser) {
-            this.leaveQueue(this.game.state.currentUser.id);
-        }
-        
-        if (this.room.channel) {
-            try {
-                this.room.channel.unsubscribe();
-            } catch (e) {
-                console.warn('取消订阅失败:', e);
+            if (this.game.state.currentUser) {
+                this.leaveQueue(this.game.state.currentUser.id);
             }
-            this.room.channel = null;
+            
+            if (this.room.channel) {
+                try {
+                    this.room.channel.unsubscribe();
+                } catch (e) {
+                    console.warn('取消订阅失败:', e);
+                }
+                this.room.channel = null;
+            }
+            
+            this.stopTurnTimer();
+            this.cleanupAIResources();
+            this.stopAllTimers();
+            this.removeAllEventListeners();
+            
+            if (this.observers) {
+                Object.values(this.observers).forEach(observer => {
+                    if (observer) observer.disconnect();
+                });
+            }
+            
+            this.hideBattleUI();
+            this.resetAllState();
+            
+            this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+        } finally {
+            setTimeout(() => {
+                this.isLeaving = false;
+            }, 500);
         }
+    }
+
+    /**
+     * 停止所有定时器
+     */
+    stopAllTimers() {
+        const timers = [
+            this.aiMoveTimer,
+            this.aiResponseTimer,
+            this.localPollingTimer,
+            this.matchTimeoutId,
+            this.longWaitTimer,
+            this.reconnectTimer,
+            this.clickDebounceTimer,
+            this.zoomTimer,
+            this.refreshTimer,
+            this.heartbeatInterval,
+            this.scoreSyncInterval,
+            this.queueStatusInterval,
+            this.room.roundTimer,
+            this.soundProcessTimer
+        ];
         
-        this.stopTurnTimer();
-        this.cleanupAIResources();
-        
-        if (this.localPollingTimer) {
-            clearTimeout(this.localPollingTimer);
-            this.localPollingTimer = null;
-        }
-        
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-        
-        if (this.scoreSyncInterval) {
-            clearInterval(this.scoreSyncInterval);
-            this.scoreSyncInterval = null;
-        }
-        
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
-        
-        this.cardClickProcessing = false;
-        this.endTurnInProgress = false;
-        this.rematchInProgress = false;
-        this.scoreUpdateInProgress = false;
-        
-        Object.keys(this.semaphores).forEach(key => {
-            this.semaphores[key] = false;
+        timers.forEach(timer => {
+            if (timer) {
+                if (timer.stop) timer.stop();
+                if (timer.unref) timer.unref();
+                clearTimeout(timer);
+                clearInterval(timer);
+            }
         });
         
+        this.aiMoveTimer = null;
+        this.aiResponseTimer = null;
+        this.localPollingTimer = null;
+        this.matchTimeoutId = null;
+        this.longWaitTimer = null;
+        this.reconnectTimer = null;
+        this.clickDebounceTimer = null;
+        this.zoomTimer = null;
+        this.refreshTimer = null;
+        this.heartbeatInterval = null;
+        this.scoreSyncInterval = null;
+        this.queueStatusInterval = null;
+        this.room.roundTimer = null;
+        this.soundProcessTimer = null;
+    }
+
+    /**
+     * 隐藏所有对战UI
+     */
+    hideBattleUI() {
+        const battleModal = document.querySelector('.battle-modal');
+        if (battleModal) {
+            battleModal.style.display = 'none';
+        }
+        
+        const battleActive = document.getElementById('battle-active');
+        const battleWaiting = document.getElementById('battle-waiting');
+        const battleResult = document.getElementById('battle-result');
+        
+        if (battleActive) battleActive.style.display = 'none';
+        if (battleWaiting) battleWaiting.style.display = 'none';
+        if (battleResult) battleResult.style.display = 'none';
+        
+        const tempElements = [
+            'match-waiting-hint',
+            'ai-option',
+            'long-wait-suggestion',
+            'offline-hint',
+            'zoom-warning'
+        ];
+        
+        tempElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
+        
+        document.querySelectorAll('.offline-hint, .room-code-hint').forEach(el => el.remove());
+    }
+
+    /**
+     * 重置所有状态
+     */
+    resetAllState() {
         this.room = {
             roomCode: null,
             battleId: null,
@@ -4005,13 +4529,24 @@ class BattleMode {
             selectedCards: []
         };
         
+        this.matchQueue = [];
         this.reconnectAttempts = 0;
         this.aiMoveRetryCount = 0;
         this.aiGlobalRetryCount = 0;
-        this.cachedElements = null;
+        this.cardClickProcessing = false;
+        this.endTurnInProgress = false;
+        this.rematchInProgress = false;
+        this.scoreUpdateInProgress = false;
+        this.aiResponsePending = false;
+        this.refreshCount = 0;
+        this.isRefreshing = false;
         
-        this.disableChatInput(false);
-        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+        Object.keys(this.semaphores).forEach(key => {
+            this.semaphores[key] = false;
+        });
+        
+        this.cachedElements = null;
+        this.clearSoundQueue();
     }
 
     async rematch() {
@@ -4065,54 +4600,28 @@ class BattleMode {
         if (this.popStateHandler) {
             window.removeEventListener('popstate', this.popStateHandler);
         }
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+        }
+        if (this.beforeUnloadHandler) {
+            window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+        }
         
         if (this.broadcastChannel) {
             this.broadcastChannel.close();
             this.broadcastChannel = null;
         }
         
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
+        this.stopAllTimers();
         
-        if (this.longWaitTimer) {
-            clearTimeout(this.longWaitTimer);
-            this.longWaitTimer = null;
+        if (this.observers) {
+            Object.keys(this.observers).forEach(key => {
+                if (this.observers[key]) {
+                    this.observers[key].disconnect();
+                    this.observers[key] = null;
+                }
+            });
         }
-        
-        if (this.matchTimeoutId) {
-            clearTimeout(this.matchTimeoutId);
-            this.matchTimeoutId = null;
-        }
-        
-        if (this.queueStatusInterval) {
-            clearInterval(this.queueStatusInterval);
-            this.queueStatusInterval = null;
-        }
-        
-        if (this.room.roundTimer) {
-            clearInterval(this.room.roundTimer);
-            this.room.roundTimer = null;
-        }
-        
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-        
-        if (this.scoreSyncInterval) {
-            clearInterval(this.scoreSyncInterval);
-            this.scoreSyncInterval = null;
-        }
-        
-        // 清理观察者
-        Object.keys(this.observers).forEach(key => {
-            if (this.observers[key]) {
-                this.observers[key].disconnect();
-                this.observers[key] = null;
-            }
-        });
         
         if (this.room.channel) {
             try {
@@ -4137,11 +4646,14 @@ class BattleMode {
         this.cancelJoinHandler = null;
         this.gridClickHandler = null;
         this.gridTouchHandler = null;
+        this.gridContextHandler = null;
         this.continueWaitingHandler = null;
         this.playWithAIHandler = null;
         this.onlineHandler = null;
         this.offlineHandler = null;
         this.popStateHandler = null;
+        this.visibilityHandler = null;
+        this.beforeUnloadHandler = null;
         
         const tempElements = [
             'match-waiting-hint',
@@ -4173,6 +4685,14 @@ class BattleMode {
         
         this.cachedElements = null;
         this.safeStorage().clear();
+        this.clearSoundQueue();
+        
+        // 清理Promise相关
+        this.activePromises.clear();
+        if (this.promiseTimeouts) {
+            this.promiseTimeouts.forEach(timer => clearTimeout(timer));
+            this.promiseTimeouts.clear();
+        }
     }
 }
 
