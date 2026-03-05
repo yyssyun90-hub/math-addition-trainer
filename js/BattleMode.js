@@ -1,13 +1,11 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本：8.2.0 (实时订阅修复版)
+ * 版本：8.2.1 (快速匹配修复版)
  * 更新说明：
- * - 修复实时订阅未启动问题
- * - 修复房间码长度超限问题
- * - 添加订阅状态自动检测和恢复
- * - 优化匹配队列同步机制
- * - 修复Supabase函数检查错误
- * - 修复auth为null的初始化错误
+ * - 修复 quickMatch 中 auth 为 null 的错误
+ * - 添加 auth 模块等待机制
+ * - 完善安全检查
+ * - 优化错误处理
  * ============================================================
  */
 
@@ -25,7 +23,8 @@ class BattleMode {
         this.zoomCheckThrottle = null;
         this.cardTemplate = null;
         this.subscriptionCheckTimer = null;
-        this.initRetryTimer = null; // 新增：初始化重试定时器
+        this.initRetryTimer = null;
+        this.authCheckTimer = null; // 新增：auth检查定时器
         
         this.room = {
             roomCode: null,
@@ -138,7 +137,7 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '8.2.0',
+            STORAGE_VERSION: '8.2.1',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
@@ -150,7 +149,8 @@ class BattleMode {
             ZOOM_WARNING_COOLDOWN: 10000,
             SUBSCRIPTION_CHECK_INTERVAL: 5000,
             INIT_RETRY_DELAY: 1000,
-            MAX_INIT_RETRIES: 3
+            MAX_INIT_RETRIES: 3,
+            AUTH_WAIT_TIMEOUT: 3000 // 新增：auth等待超时
         };
 
         this.setupPromiseErrorHandler();
@@ -282,10 +282,9 @@ class BattleMode {
     }
 
     /**
-     * 初始化 - 修复版
+     * 初始化
      */
     init() {
-        // 清理之前的重试定时器
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
             this.initRetryTimer = null;
@@ -299,7 +298,6 @@ class BattleMode {
             this.setupResponsiveLayout();
             this.setupSupabaseFunctions();
             
-            // 延迟检查 auth，给 Game.js 初始化时间
             this.delayedAuthCheck(0);
             
         }).catch(error => {
@@ -309,7 +307,7 @@ class BattleMode {
     }
 
     /**
-     * 延迟检查 auth 状态（新增）
+     * 延迟检查 auth 状态
      */
     delayedAuthCheck(retryCount = 0) {
         if (retryCount >= this.constants.MAX_INIT_RETRIES) {
@@ -319,7 +317,6 @@ class BattleMode {
 
         this.initRetryTimer = setTimeout(() => {
             try {
-                // 安全地检查 auth 是否存在
                 if (!this.game) {
                     console.log('game 对象不存在，重试中...');
                     this.delayedAuthCheck(retryCount + 1);
@@ -348,6 +345,23 @@ class BattleMode {
                 this.delayedAuthCheck(retryCount + 1);
             }
         }, this.constants.INIT_RETRY_DELAY);
+    }
+
+    /**
+     * 等待 auth 模块就绪（新增）
+     */
+    async waitForAuthReady() {
+        const startTime = Date.now();
+        
+        while (!this.game?.auth || typeof this.game.auth.isLoggedIn !== 'function') {
+            if (Date.now() - startTime > this.constants.AUTH_WAIT_TIMEOUT) {
+                console.log('等待 auth 超时');
+                return false;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        return true;
     }
 
     setupResponsiveLayout() {
@@ -2098,33 +2112,78 @@ class BattleMode {
         }, 10000);
     }
 
+    /**
+     * 快速匹配 - 修复版
+     */
     async quickMatch() {
         try {
             await this.acquireSemaphore('match');
             
             console.log('开始快速匹配');
             
-            if (!this.game.auth || !this.game.auth.isLoggedIn()) {
+            // 安全检查：确保 game 存在
+            if (!this.game) {
+                console.error('game 对象不存在');
+                this.showFeedback('游戏初始化中，请稍后', '#ffa500');
+                return;
+            }
+
+            // 等待 auth 模块就绪
+            const authReady = await this.waitForAuthReady();
+            if (!authReady) {
+                console.error('auth 模块未就绪');
+                this.showFeedback('登录模块加载失败，请刷新页面', '#ff4444');
+                return;
+            }
+
+            // 检查 auth 模块
+            if (!this.game.auth) {
+                console.error('auth 模块不存在');
+                this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
+                return;
+            }
+
+            // 检查登录状态函数
+            if (typeof this.game.auth.isLoggedIn !== 'function') {
+                console.error('auth.isLoggedIn 不是函数');
+                this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
+                return;
+            }
+
+            // 检查是否已登录
+            if (!this.game.auth.isLoggedIn()) {
                 this.showFeedback('请先登录', '#ff4444');
-                if (this.game.auth) {
+                if (this.game.auth && typeof this.game.auth.showAuthModal === 'function') {
                     this.game.auth.showAuthModal('login');
+                } else {
+                    // 降级方案：直接显示登录模态框
+                    const authModal = document.getElementById('auth-modal');
+                    if (authModal) authModal.style.display = 'flex';
                 }
                 return;
             }
 
+            // 确保实时订阅已开启
             if (!this.room.channel || this.room.channel.state !== 'joined') {
                 const subscribed = this.setupRealtimeSubscription();
                 if (!subscribed) {
                     this.showFeedback('无法连接到匹配服务器', '#ff4444');
                     return;
                 }
+                // 等待订阅完成
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
+            // 清理之前的匹配状态
             this.cleanupMatch();
 
-            if (this.game.ui) {
+            // 打开对战模态框
+            if (this.game.ui && typeof this.game.ui.openModal === 'function') {
                 this.game.ui.openModal('battle-modal');
+            } else {
+                // 降级方案：直接显示模态框
+                const battleModal = document.getElementById('battle-modal');
+                if (battleModal) battleModal.style.display = 'flex';
             }
             
             const waitingDiv = document.getElementById('battle-waiting');
@@ -2135,6 +2194,7 @@ class BattleMode {
             if (activeDiv) activeDiv.style.display = 'none';
             if (resultDiv) resultDiv.style.display = 'none';
 
+            // 生成6位房间码
             const roomCode = this.generateRoomCode();
             this.room.roomCode = roomCode;
             const roomCodeSpan = document.getElementById('room-code');
@@ -2144,16 +2204,22 @@ class BattleMode {
 
             this.matchStartTime = Date.now();
 
-            if (this.room.channel) {
-                await this.room.channel.track({
-                    user_id: this.game.state.currentUser.id,
-                    user_name: this.game.state.currentUser.name,
-                    status: 'matching',
-                    room_code: roomCode,
-                    online_at: new Date().toISOString()
-                });
+            // 更新presence状态
+            if (this.room.channel && this.game.state.currentUser) {
+                try {
+                    await this.room.channel.track({
+                        user_id: this.game.state.currentUser.id,
+                        user_name: this.game.state.currentUser.name,
+                        status: 'matching',
+                        room_code: roomCode,
+                        online_at: new Date().toISOString()
+                    });
+                } catch (error) {
+                    console.warn('更新presence状态失败:', error);
+                }
             }
 
+            // 设置匹配超时
             this.matchTimeoutId = setTimeout(() => {
                 console.log('匹配超时');
                 this.handleMatchTimeout();
@@ -2163,6 +2229,9 @@ class BattleMode {
             this.pushBattleState();
             this.setupLayoutObserver();
             
+        } catch (error) {
+            console.error('quickMatch 执行失败:', error);
+            this.showFeedback('匹配失败，请重试', '#ff4444');
         } finally {
             this.releaseSemaphore('match');
         }
@@ -4911,7 +4980,8 @@ class BattleMode {
             this.soundProcessTimer,
             this.zoomCheckThrottle,
             this.subscriptionCheckTimer,
-            this.initRetryTimer
+            this.initRetryTimer,
+            this.authCheckTimer
         ];
         
         timers.forEach(timer => {
@@ -4942,6 +5012,7 @@ class BattleMode {
         this.zoomCheckThrottle = null;
         this.subscriptionCheckTimer = null;
         this.initRetryTimer = null;
+        this.authCheckTimer = null;
     }
 
     hideBattleUI() {
@@ -4994,7 +5065,8 @@ class BattleMode {
             this.soundProcessTimer,
             this.zoomCheckThrottle,
             this.subscriptionCheckTimer,
-            this.initRetryTimer
+            this.initRetryTimer,
+            this.authCheckTimer
         ].filter(Boolean).length;
     }
 
@@ -5089,6 +5161,11 @@ class BattleMode {
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
             this.initRetryTimer = null;
+        }
+
+        if (this.authCheckTimer) {
+            clearTimeout(this.authCheckTimer);
+            this.authCheckTimer = null;
         }
         
         const beforeCleanup = {
