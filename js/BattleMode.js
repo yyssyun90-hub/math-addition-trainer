@@ -7,6 +7,7 @@
  * - 添加订阅状态自动检测和恢复
  * - 优化匹配队列同步机制
  * - 修复Supabase函数检查错误
+ * - 修复auth为null的初始化错误
  * ============================================================
  */
 
@@ -24,6 +25,7 @@ class BattleMode {
         this.zoomCheckThrottle = null;
         this.cardTemplate = null;
         this.subscriptionCheckTimer = null;
+        this.initRetryTimer = null; // 新增：初始化重试定时器
         
         this.room = {
             roomCode: null,
@@ -146,7 +148,9 @@ class BattleMode {
             MAX_QUEUE_SIZE: 20,
             SOUND_TIMEOUT: 3000,
             ZOOM_WARNING_COOLDOWN: 10000,
-            SUBSCRIPTION_CHECK_INTERVAL: 5000
+            SUBSCRIPTION_CHECK_INTERVAL: 5000,
+            INIT_RETRY_DELAY: 1000,
+            MAX_INIT_RETRIES: 3
         };
 
         this.setupPromiseErrorHandler();
@@ -277,7 +281,16 @@ class BattleMode {
         });
     }
 
+    /**
+     * 初始化 - 修复版
+     */
     init() {
+        // 清理之前的重试定时器
+        if (this.initRetryTimer) {
+            clearTimeout(this.initRetryTimer);
+            this.initRetryTimer = null;
+        }
+
         this.destroy().then(() => {
             this.leaveBattle();
             this.bindEvents();
@@ -285,13 +298,56 @@ class BattleMode {
             this.injectCandyStyles();
             this.setupResponsiveLayout();
             this.setupSupabaseFunctions();
-            if (this.game.auth?.isLoggedIn()) {
-                this.setupRealtimeSubscription();
-            }
+            
+            // 延迟检查 auth，给 Game.js 初始化时间
+            this.delayedAuthCheck(0);
+            
         }).catch(error => {
             console.error('初始化失败:', error);
             this.showFeedback('初始化失败，请刷新页面', '#ff4444');
         });
+    }
+
+    /**
+     * 延迟检查 auth 状态（新增）
+     */
+    delayedAuthCheck(retryCount = 0) {
+        if (retryCount >= this.constants.MAX_INIT_RETRIES) {
+            console.log('达到最大重试次数，跳过实时订阅初始化');
+            return;
+        }
+
+        this.initRetryTimer = setTimeout(() => {
+            try {
+                // 安全地检查 auth 是否存在
+                if (!this.game) {
+                    console.log('game 对象不存在，重试中...');
+                    this.delayedAuthCheck(retryCount + 1);
+                    return;
+                }
+
+                if (!this.game.auth) {
+                    console.log('auth 模块未就绪，重试中...');
+                    this.delayedAuthCheck(retryCount + 1);
+                    return;
+                }
+
+                if (typeof this.game.auth.isLoggedIn !== 'function') {
+                    console.warn('auth.isLoggedIn 不是函数');
+                    return;
+                }
+
+                if (this.game.auth.isLoggedIn()) {
+                    console.log('用户已登录，初始化实时订阅');
+                    this.setupRealtimeSubscription();
+                } else {
+                    console.log('用户未登录，跳过实时订阅');
+                }
+            } catch (error) {
+                console.error('检查登录状态失败:', error);
+                this.delayedAuthCheck(retryCount + 1);
+            }
+        }, this.constants.INIT_RETRY_DELAY);
     }
 
     setupResponsiveLayout() {
@@ -4854,7 +4910,8 @@ class BattleMode {
             this.room.roundTimer,
             this.soundProcessTimer,
             this.zoomCheckThrottle,
-            this.subscriptionCheckTimer
+            this.subscriptionCheckTimer,
+            this.initRetryTimer
         ];
         
         timers.forEach(timer => {
@@ -4884,6 +4941,7 @@ class BattleMode {
         this.soundProcessTimer = null;
         this.zoomCheckThrottle = null;
         this.subscriptionCheckTimer = null;
+        this.initRetryTimer = null;
     }
 
     hideBattleUI() {
@@ -4935,7 +4993,8 @@ class BattleMode {
             this.room.roundTimer,
             this.soundProcessTimer,
             this.zoomCheckThrottle,
-            this.subscriptionCheckTimer
+            this.subscriptionCheckTimer,
+            this.initRetryTimer
         ].filter(Boolean).length;
     }
 
@@ -5025,6 +5084,11 @@ class BattleMode {
         if (this.subscriptionCheckTimer) {
             clearInterval(this.subscriptionCheckTimer);
             this.subscriptionCheckTimer = null;
+        }
+
+        if (this.initRetryTimer) {
+            clearTimeout(this.initRetryTimer);
+            this.initRetryTimer = null;
         }
         
         const beforeCleanup = {
