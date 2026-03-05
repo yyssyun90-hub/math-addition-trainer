@@ -38,7 +38,7 @@ class CandyMathGame {
             // Supabase
             supabase: null,
             supabaseReady: false,
-            supabaseError: null, // 新增：存储错误信息
+            supabaseError: null,
             
             // 冷却
             hintCooldown: 0,
@@ -52,9 +52,13 @@ class CandyMathGame {
         this.currentConfig = this.difficultyConfig[this.state.currentDifficulty];
         
         // ==================== Supabase配置 ====================
+        // 从HTML读取配置
+        const configScript = document.getElementById('supabase-config');
+        const config = configScript ? JSON.parse(configScript.textContent) : {};
+        
         this.supabaseConfig = {
-            url: process.env.SUPABASE_URL || 'https://your-project.supabase.co',
-            anonKey: process.env.SUPABASE_ANON_KEY || 'your-anon-key'
+            url: config.supabaseUrl || 'https://zykqddnckhcivutcropm.supabase.co',
+            anonKey: config.supabaseKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5a3FkZG5ja2hjaXZ1dGNyb3BtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjQwNjIsImV4cCI6MjA4NzU0MDA2Mn0.hc3aROjGSUaAt7Jlcf3qqY4XeVSiKpwIxS8LHQ2LFOk'
         };
         
         // ==================== 颜色管理 ====================
@@ -1056,9 +1060,12 @@ class CandyMathGame {
 
 // ==================== 启动游戏 ====================
 document.addEventListener('DOMContentLoaded', () => {
-    // 设置Supabase配置（从环境变量或直接配置）
-    window.SUPABASE_URL = 'https://your-project.supabase.co';  // 替换为你的Supabase URL
-    window.SUPABASE_ANON_KEY = 'your-anon-key';  // 替换为你的Supabase anon key
+    // 设置Supabase配置（从HTML读取）
+    const configScript = document.getElementById('supabase-config');
+    const config = configScript ? JSON.parse(configScript.textContent) : {};
+    
+    window.SUPABASE_URL = config.supabaseUrl || 'https://zykqddnckhcivutcropm.supabase.co';
+    window.SUPABASE_ANON_KEY = config.supabaseKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5a3FkZG5ja2hjaXZ1dGNyb3BtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjQwNjIsImV4cCI6MjA4NzU0MDA2Mn0.hc3aROjGSUaAt7Jlcf3qqY4XeVSiKpwIxS8LHQ2LFOk';
     
     window.game = new CandyMathGame();
     window.game.init();
