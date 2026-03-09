@@ -1,6 +1,6 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本：8.2.1 (终极修复版)
+ * 版本：8.2.1 (终极完美版)
  * 更新说明：
  * - 修复 quickMatch 中 auth 为 null 的错误
  * - 优化 waitForAuthReady 方法，完善安全检查
@@ -308,10 +308,9 @@ class BattleMode {
     }
 
     /**
-     * 延迟检查 auth 状态 - 优化版
+     * 延迟检查 auth 状态
      */
     delayedAuthCheck(retryCount = 0) {
-        // 清除旧的定时器
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
             this.initRetryTimer = null;
@@ -356,7 +355,7 @@ class BattleMode {
     }
 
     /**
-     * 等待 auth 模块就绪 - 优化版
+     * 等待 auth 模块就绪
      */
     async waitForAuthReady() {
         const startTime = Date.now();
@@ -2131,14 +2130,12 @@ class BattleMode {
             
             console.log('开始快速匹配');
             
-            // 安全检查：确保 game 存在
             if (!this.game) {
                 console.error('game 对象不存在');
                 this.showFeedback('游戏初始化中，请稍后', '#ffa500');
                 return;
             }
 
-            // 等待 auth 模块就绪
             const authReady = await this.waitForAuthReady();
             if (!authReady) {
                 console.error('auth 模块未就绪');
@@ -2146,45 +2143,37 @@ class BattleMode {
                 return;
             }
 
-            // 检查 auth 模块和登录状态
             if (!this.game.auth || typeof this.game.auth.isLoggedIn !== 'function') {
                 console.error('auth 模块异常');
                 this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
                 return;
             }
 
-            // 检查是否已登录
             if (!this.game.auth.isLoggedIn()) {
                 this.showFeedback('请先登录', '#ff4444');
                 if (this.game.auth && typeof this.game.auth.showAuthModal === 'function') {
                     this.game.auth.showAuthModal('login');
                 } else {
-                    // 降级方案：直接显示登录模态框
                     const authModal = document.getElementById('auth-modal');
                     if (authModal) authModal.style.display = 'flex';
                 }
                 return;
             }
 
-            // 确保实时订阅已开启
             if (!this.room.channel || this.room.channel.state !== 'joined') {
                 const subscribed = this.setupRealtimeSubscription();
                 if (!subscribed) {
                     this.showFeedback('无法连接到匹配服务器', '#ff4444');
                     return;
                 }
-                // 等待订阅完成
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            // 清理之前的匹配状态
             this.cleanupMatch();
 
-            // 打开对战模态框
             if (this.game.ui && typeof this.game.ui.openModal === 'function') {
                 this.game.ui.openModal('battle-modal');
             } else {
-                // 降级方案：直接显示模态框
                 const battleModal = document.getElementById('battle-modal');
                 if (battleModal) battleModal.style.display = 'flex';
             }
@@ -2197,7 +2186,6 @@ class BattleMode {
             if (activeDiv) activeDiv.style.display = 'none';
             if (resultDiv) resultDiv.style.display = 'none';
 
-            // 生成6位房间码
             const roomCode = this.generateRoomCode();
             this.room.roomCode = roomCode;
             const roomCodeSpan = document.getElementById('room-code');
@@ -2207,7 +2195,6 @@ class BattleMode {
 
             this.matchStartTime = Date.now();
 
-            // 更新presence状态
             if (this.room.channel && this.game.state.currentUser) {
                 try {
                     await this.room.channel.track({
@@ -2222,7 +2209,6 @@ class BattleMode {
                 }
             }
 
-            // 设置匹配超时
             this.matchTimeoutId = setTimeout(() => {
                 console.log('匹配超时');
                 this.handleMatchTimeout();
