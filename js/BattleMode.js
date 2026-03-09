@@ -1,11 +1,12 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本：8.2.1 (快速匹配修复版)
+ * 版本：8.2.1 (终极修复版)
  * 更新说明：
  * - 修复 quickMatch 中 auth 为 null 的错误
- * - 添加 auth 模块等待机制
- * - 完善安全检查
- * - 优化错误处理
+ * - 优化 waitForAuthReady 方法，完善安全检查
+ * - 修复 delayedAuthCheck 重试逻辑
+ * - 添加版本迁移支持
+ * - 完善资源清理机制
  * ============================================================
  */
 
@@ -24,7 +25,7 @@ class BattleMode {
         this.cardTemplate = null;
         this.subscriptionCheckTimer = null;
         this.initRetryTimer = null;
-        this.authCheckTimer = null; // 新增：auth检查定时器
+        this.authCheckTimer = null;
         
         this.room = {
             roomCode: null,
@@ -150,7 +151,7 @@ class BattleMode {
             SUBSCRIPTION_CHECK_INTERVAL: 5000,
             INIT_RETRY_DELAY: 1000,
             MAX_INIT_RETRIES: 3,
-            AUTH_WAIT_TIMEOUT: 3000 // 新增：auth等待超时
+            AUTH_WAIT_TIMEOUT: 3000
         };
 
         this.setupPromiseErrorHandler();
@@ -307,9 +308,15 @@ class BattleMode {
     }
 
     /**
-     * 延迟检查 auth 状态
+     * 延迟检查 auth 状态 - 优化版
      */
     delayedAuthCheck(retryCount = 0) {
+        // 清除旧的定时器
+        if (this.initRetryTimer) {
+            clearTimeout(this.initRetryTimer);
+            this.initRetryTimer = null;
+        }
+
         if (retryCount >= this.constants.MAX_INIT_RETRIES) {
             console.log('达到最大重试次数，跳过实时订阅初始化');
             return;
@@ -330,7 +337,8 @@ class BattleMode {
                 }
 
                 if (typeof this.game.auth.isLoggedIn !== 'function') {
-                    console.warn('auth.isLoggedIn 不是函数');
+                    console.warn('auth.isLoggedIn 不是函数，重试中...');
+                    this.delayedAuthCheck(retryCount + 1);
                     return;
                 }
 
@@ -348,12 +356,14 @@ class BattleMode {
     }
 
     /**
-     * 等待 auth 模块就绪（新增）
+     * 等待 auth 模块就绪 - 优化版
      */
     async waitForAuthReady() {
         const startTime = Date.now();
         
-        while (!this.game?.auth || typeof this.game.auth.isLoggedIn !== 'function') {
+        while (!this.game?.auth || 
+               typeof this.game.auth.isLoggedIn !== 'function' ||
+               typeof this.game.auth.showAuthModal !== 'function') {
             if (Date.now() - startTime > this.constants.AUTH_WAIT_TIMEOUT) {
                 console.log('等待 auth 超时');
                 return false;
@@ -2113,7 +2123,7 @@ class BattleMode {
     }
 
     /**
-     * 快速匹配 - 修复版
+     * 快速匹配 - 终极修复版
      */
     async quickMatch() {
         try {
@@ -2136,16 +2146,9 @@ class BattleMode {
                 return;
             }
 
-            // 检查 auth 模块
-            if (!this.game.auth) {
-                console.error('auth 模块不存在');
-                this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
-                return;
-            }
-
-            // 检查登录状态函数
-            if (typeof this.game.auth.isLoggedIn !== 'function') {
-                console.error('auth.isLoggedIn 不是函数');
+            // 检查 auth 模块和登录状态
+            if (!this.game.auth || typeof this.game.auth.isLoggedIn !== 'function') {
+                console.error('auth 模块异常');
                 this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
                 return;
             }
@@ -3540,6 +3543,12 @@ class BattleMode {
             return {
                 ...oldState,
                 version: '8.2.0',
+            };
+        }
+        if (oldState.version === '8.2.0') {
+            return {
+                ...oldState,
+                version: '8.2.1',
             };
         }
         return null;
