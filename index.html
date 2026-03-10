@@ -7,8 +7,6 @@
     <title>🍬 糖果数学消消乐 · 终极完美版</title>
     <style>
         /* ===== 糖果可爱风 ===== */
-        /* 这里保留原有的所有CSS样式，完全不变 */
-        /* 原有CSS代码约400行，保持不变 */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -24,6 +22,14 @@
             align-items: center;
             padding: clamp(8px, 2vw, 16px);
             -webkit-tap-highlight-color: transparent;
+            /* 修复滚动条问题 - 确保滚动条始终可见 */
+            overflow-y: auto !important;
+            overflow-x: hidden;
+        }
+
+        html {
+            overflow-y: auto !important;
+            overflow-x: hidden;
         }
 
         .game-container {
@@ -36,6 +42,8 @@
             padding: clamp(20px, 4vw, 30px) clamp(15px, 3vw, 25px);
             border: 3px solid white;
             position: relative;
+            max-height: none !important;
+            overflow: visible !important;
         }
 
         /* ===== 用户信息栏 ===== */
@@ -1987,350 +1995,279 @@
         </div>
     </div>
 
-    <!-- 数据库创建说明 -->
+    <!-- ===== 修复滚动条问题的脚本 ===== -->
     <script>
-        const DB_SETUP = `
-            ================================================
-            🗄️ 请在 Supabase SQL Editor 中执行以下语句：
-            ================================================
-
-            -- 创建游戏记录表
-            CREATE TABLE candy_math_game_records (
-                id BIGSERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                score INTEGER NOT NULL,
-                completed INTEGER NOT NULL,
-                accuracy INTEGER NOT NULL,
-                mode TEXT NOT NULL,
-                difficulty TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 创建错题本表
-            CREATE TABLE candy_math_wrong_questions (
-                id BIGSERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                target INTEGER NOT NULL,
-                num1 INTEGER NOT NULL,
-                num2 INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 创建玩家ELO排名表
-            CREATE TABLE player_elo (
-                user_id UUID PRIMARY KEY,
-                elo INTEGER DEFAULT 1200,
-                win_rate DECIMAL(5,2) DEFAULT 0,
-                battles INTEGER DEFAULT 0,
-                wins INTEGER DEFAULT 0,
-                points INTEGER DEFAULT 0,
-                tournament_wins INTEGER DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 创建锦标赛表
-            CREATE TABLE candy_math_tournaments (
-                id BIGSERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                size INTEGER NOT NULL,
-                mode TEXT NOT NULL,
-                difficulty TEXT NOT NULL,
-                entry_fee INTEGER DEFAULT 0,
-                prize_pool JSONB,
-                status TEXT DEFAULT 'registering',
-                created_by UUID NOT NULL,
-                winner_id UUID,
-                rankings JSONB,
-                version INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT NOW(),
-                started_at TIMESTAMP,
-                finished_at TIMESTAMP
-            );
-
-            -- 锦标赛玩家表
-            CREATE TABLE candy_math_tournament_players (
-                id BIGSERIAL PRIMARY KEY,
-                tournament_id INTEGER REFERENCES candy_math_tournaments(id),
-                user_id UUID NOT NULL,
-                user_name TEXT NOT NULL,
-                seed INTEGER,
-                joined_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 锦标赛比赛表
-            CREATE TABLE candy_math_tournament_matches (
-                id BIGSERIAL PRIMARY KEY,
-                tournament_id INTEGER REFERENCES candy_math_tournaments(id),
-                round INTEGER NOT NULL,
-                match_order INTEGER NOT NULL,
-                player1_id UUID,
-                player2_id UUID,
-                player1_name TEXT,
-                player2_name TEXT,
-                player1_score INTEGER DEFAULT 0,
-                player2_score INTEGER DEFAULT 0,
-                winner_id UUID,
-                status TEXT DEFAULT 'pending',
-                scheduled_time TIMESTAMP,
-                finished_at TIMESTAMP,
-                battle_id INTEGER
-            );
-
-            -- 创建对战表
-            CREATE TABLE candy_math_battles (
-                id BIGSERIAL PRIMARY KEY,
-                room_code VARCHAR(6) UNIQUE NOT NULL,
-                player1_id UUID NOT NULL,
-                player2_id UUID,
-                player1_name TEXT,
-                player2_name TEXT,
-                player1_score INTEGER DEFAULT 0,
-                player2_score INTEGER DEFAULT 0,
-                player1_progress INTEGER DEFAULT 0,
-                player2_progress INTEGER DEFAULT 0,
-                player1_elo INTEGER,
-                player2_elo INTEGER,
-                mode TEXT NOT NULL,
-                difficulty TEXT NOT NULL,
-                bet_amount INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'waiting',
-                current_turn UUID,
-                winner_id UUID,
-                match_type TEXT DEFAULT 'casual',
-                tournament_match_id INTEGER,
-                created_at TIMESTAMP DEFAULT NOW(),
-                started_at TIMESTAMP,
-                finished_at TIMESTAMP
-            );
-
-            -- 对战回合表
-            CREATE TABLE candy_math_battle_rounds (
-                id BIGSERIAL PRIMARY KEY,
-                battle_id INTEGER REFERENCES candy_math_battles(id),
-                player_id UUID NOT NULL,
-                target INTEGER NOT NULL,
-                num1 INTEGER NOT NULL,
-                num2 INTEGER NOT NULL,
-                is_correct BOOLEAN,
-                score INTEGER DEFAULT 0,
-                round_time INTEGER,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 对战消息表
-            CREATE TABLE candy_math_battle_messages (
-                id BIGSERIAL PRIMARY KEY,
-                battle_id INTEGER REFERENCES candy_math_battles(id),
-                player_id UUID,
-                player_name TEXT,
-                message TEXT,
-                message_type TEXT DEFAULT 'text',
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 积分交易记录表
-            CREATE TABLE points_transactions (
-                id BIGSERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                amount INTEGER NOT NULL,
-                type TEXT NOT NULL,
-                tournament_id BIGINT,
-                reason TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-
-            -- 创建索引
-            CREATE INDEX idx_game_records_user ON candy_math_game_records(user_id);
-            CREATE INDEX idx_wrong_questions_user ON candy_math_wrong_questions(user_id);
-            CREATE INDEX idx_tournaments_status ON candy_math_tournaments(status);
-            CREATE INDEX idx_tournaments_created ON candy_math_tournaments(created_at);
-            CREATE INDEX idx_tournament_players_tournament ON candy_math_tournament_players(tournament_id);
-            CREATE INDEX idx_tournament_matches_tournament ON candy_math_tournament_matches(tournament_id);
-            CREATE INDEX idx_battles_status ON candy_math_battles(status);
-            CREATE INDEX idx_battles_room_code ON candy_math_battles(room_code);
-            CREATE INDEX idx_battle_rounds_battle ON candy_math_battle_rounds(battle_id);
-            CREATE INDEX idx_battle_messages_battle ON candy_math_battle_messages(battle_id);
-            CREATE INDEX idx_points_transactions_user ON points_transactions(user_id);
-            CREATE INDEX idx_points_transactions_tournament ON points_transactions(tournament_id);
-
-            ================================================
+        (function() {
+            // 修复滚动条问题的终极解决方案
+            console.log('滚动条修复脚本已加载');
             
-            -- 创建存储过程
-            CREATE OR REPLACE FUNCTION join_tournament(
-                p_tournament_id BIGINT,
-                p_user_id UUID,
-                p_user_name TEXT
-            ) RETURNS JSONB AS $$
-            DECLARE
-                v_tournament RECORD;
-                v_current_count INTEGER;
-                v_has_joined BOOLEAN;
-                v_result JSONB;
-            BEGIN
-                -- 锁定锦标赛记录
-                SELECT * INTO v_tournament 
-                FROM candy_math_tournaments 
-                WHERE id = p_tournament_id 
-                FOR UPDATE;
+            // 强制确保滚动条始终可见
+            function ensureScroll() {
+                document.body.style.overflow = 'auto';
+                document.documentElement.style.overflow = 'auto';
+                document.body.style.overflowY = 'auto';
+                document.documentElement.style.overflowY = 'auto';
+                document.body.classList.remove('modal-open');
+            }
+            
+            // 页面加载时执行
+            ensureScroll();
+            
+            // 监听所有可能的模态框关闭事件
+            function fixAllModals() {
+                // 所有关闭按钮
+                const closeSelectors = [
+                    '.close-btn', 
+                    '#close-auth', 
+                    '#close-tutorial', 
+                    '#close-gameover', 
+                    '#cancel-match', 
+                    '#cancel-join', 
+                    '#cancel-create-tournament',
+                    '#home-btn',
+                    '#home-from-gameover-btn',
+                    '#rematch-btn',
+                    '#close-battle-btn'
+                ];
                 
-                IF NOT FOUND THEN
-                    RETURN jsonb_build_object('success', false, 'message', '锦标赛不存在');
-                END IF;
-                
-                -- 检查状态
-                IF v_tournament.status != 'registering' THEN
-                    RETURN jsonb_build_object('success', false, 'message', '报名已结束');
-                END IF;
-                
-                -- 检查是否已报名
-                SELECT EXISTS(
-                    SELECT 1 FROM candy_math_tournament_players 
-                    WHERE tournament_id = p_tournament_id AND user_id = p_user_id
-                ) INTO v_has_joined;
-                
-                IF v_has_joined THEN
-                    RETURN jsonb_build_object('success', false, 'message', '您已报名');
-                END IF;
-                
-                -- 检查人数
-                SELECT COUNT(*) INTO v_current_count 
-                FROM candy_math_tournament_players 
-                WHERE tournament_id = p_tournament_id;
-                
-                IF v_current_count >= v_tournament.size THEN
-                    RETURN jsonb_build_object('success', false, 'message', '报名人数已满');
-                END IF;
-                
-                -- 扣除报名费（如果有）
-                IF v_tournament.entry_fee > 0 THEN
-                    UPDATE player_elo 
-                    SET points = points - v_tournament.entry_fee,
-                        updated_at = NOW()
-                    WHERE user_id = p_user_id AND points >= v_tournament.entry_fee;
+                // 为所有关闭按钮添加事件监听
+                setTimeout(() => {
+                    closeSelectors.forEach(selector => {
+                        document.querySelectorAll(selector).forEach(btn => {
+                            btn.addEventListener('click', function() {
+                                setTimeout(ensureScroll, 50);
+                            });
+                        });
+                    });
                     
-                    IF NOT FOUND THEN
-                        RETURN jsonb_build_object('success', false, 'message', '积分不足');
-                    END IF;
-                END IF;
+                    // 监听所有模态框的背景点击
+                    const modalSelectors = [
+                        '.auth-modal', 
+                        '.tutorial-modal', 
+                        '.game-over-modal', 
+                        '.tournament-modal', 
+                        '.battle-modal', 
+                        '.join-modal', 
+                        '.create-tournament-modal'
+                    ];
+                    
+                    modalSelectors.forEach(selector => {
+                        document.querySelectorAll(selector).forEach(modal => {
+                            modal.addEventListener('click', function(e) {
+                                if (e.target === modal) {
+                                    setTimeout(ensureScroll, 50);
+                                }
+                            });
+                        });
+                    });
+                }, 1000);
+            }
+            
+            // DOM加载完成后执行
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    ensureScroll();
+                    fixAllModals();
+                });
+            } else {
+                ensureScroll();
+                fixAllModals();
+            }
+            
+            // 定期检查并修复（每2秒检查一次）
+            setInterval(function() {
+                const anyModalOpen = Array.from(document.querySelectorAll(
+                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal'
+                )).some(modal => {
+                    const style = window.getComputedStyle(modal);
+                    return style.display !== 'none' && style.display !== '';
+                });
                 
-                -- 插入报名记录
-                INSERT INTO candy_math_tournament_players 
-                    (tournament_id, user_id, user_name, joined_at)
-                VALUES 
-                    (p_tournament_id, p_user_id, p_user_name, NOW());
-                
-                -- 检查是否已满
-                SELECT COUNT(*) INTO v_current_count 
-                FROM candy_math_tournament_players 
-                WHERE tournament_id = p_tournament_id;
-                
-                v_result := jsonb_build_object(
-                    'success', true,
-                    'tournament_started', (v_current_count >= v_tournament.size)
-                );
-                
-                RETURN v_result;
-            END;
-            $$ LANGUAGE plpgsql SECURITY INVOKER;
-
-            -- 扣除积分存储过程
-            CREATE OR REPLACE FUNCTION deduct_points(
-                p_user_id UUID,
-                p_amount INTEGER,
-                p_tournament_id BIGINT,
-                p_type TEXT
-            ) RETURNS BOOLEAN AS $$
-            BEGIN
-                UPDATE player_elo 
-                SET points = points - p_amount,
-                    updated_at = NOW()
-                WHERE user_id = p_user_id AND points >= p_amount;
-                
-                IF FOUND THEN
-                    INSERT INTO points_transactions 
-                        (user_id, amount, type, tournament_id, created_at)
-                    VALUES 
-                        (p_user_id, -p_amount, p_type, p_tournament_id, NOW());
-                    RETURN true;
-                END IF;
-                
-                RETURN false;
-            END;
-            $$ LANGUAGE plpgsql SECURITY INVOKER;
-
-            -- 退还积分存储过程
-            CREATE OR REPLACE FUNCTION refund_points(
-                p_user_id UUID,
-                p_amount INTEGER,
-                p_reason TEXT
-            ) RETURNS BOOLEAN AS $$
-            BEGIN
-                UPDATE player_elo 
-                SET points = points + p_amount,
-                    updated_at = NOW()
-                WHERE user_id = p_user_id;
-                
-                IF FOUND THEN
-                    INSERT INTO points_transactions 
-                        (user_id, amount, type, reason, created_at)
-                    VALUES 
-                        (p_user_id, p_amount, 'refund', p_reason, NOW());
-                    RETURN true;
-                END IF;
-                
-                RETURN false;
-            END;
-            $$ LANGUAGE plpgsql SECURITY INVOKER;
-
-            -- 增加积分存储过程（用于发放奖金）
-            CREATE OR REPLACE FUNCTION add_points(
-                p_user_id UUID,
-                p_amount INTEGER,
-                p_tournament_id BIGINT,
-                p_reason TEXT
-            ) RETURNS BOOLEAN AS $$
-            BEGIN
-                UPDATE player_elo 
-                SET points = points + p_amount,
-                    updated_at = NOW()
-                WHERE user_id = p_user_id;
-                
-                IF FOUND THEN
-                    INSERT INTO points_transactions 
-                        (user_id, amount, type, tournament_id, reason, created_at)
-                    VALUES 
-                        (p_user_id, p_amount, 'prize', p_tournament_id, p_reason, NOW());
-                    RETURN true;
-                END IF;
-                
-                RETURN false;
-            END;
-            $$ LANGUAGE plpgsql SECURITY INVOKER;
-
-            -- 增加夺冠次数存储过程
-            CREATE OR REPLACE FUNCTION increment_tournament_wins(
-                p_user_id UUID
-            ) RETURNS BOOLEAN AS $$
-            BEGIN
-                UPDATE player_elo 
-                SET tournament_wins = COALESCE(tournament_wins, 0) + 1,
-                    updated_at = NOW()
-                WHERE user_id = p_user_id;
-                
-                RETURN FOUND;
-            END;
-            $$ LANGUAGE plpgsql SECURITY INVOKER;
-        `;
-        console.log(DB_SETUP);
+                if (!anyModalOpen) {
+                    // 如果没有打开的模态框，确保滚动恢复
+                    ensureScroll();
+                }
+            }, 2000);
+            
+            // 监听可能的overflow修改
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.attributeName === 'style') {
+                        const bodyStyle = window.getComputedStyle(document.body);
+                        if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
+                            // 如果发现overflow被设为hidden，检查是否有模态框打开
+                            const anyModalOpen = Array.from(document.querySelectorAll(
+                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal'
+                            )).some(modal => {
+                                const style = window.getComputedStyle(modal);
+                                return style.display !== 'none' && style.display !== '';
+                            });
+                            
+                            if (!anyModalOpen) {
+                                // 没有打开的模态框但overflow被隐藏了，修复它
+                                ensureScroll();
+                            }
+                        }
+                    }
+                });
+            });
+            
+            // 开始观察body的style变化
+            observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+        })();
     </script>
 
-    <!-- 加载JS模块 - 注意顺序很重要 -->
+    <!-- ===== Supabase 连接修复和初始化脚本 ===== -->
+    <script>
+        (function() {
+            console.log('正在初始化 Supabase 连接...');
+            
+            // 从配置标签获取配置
+            const configTag = document.getElementById('supabase-config');
+            if (!configTag) {
+                console.error('未找到 Supabase 配置标签');
+                return;
+            }
+            
+            let supabaseConfig;
+            try {
+                supabaseConfig = JSON.parse(configTag.textContent);
+            } catch (e) {
+                console.error('解析 Supabase 配置失败:', e);
+                return;
+            }
+            
+            const { supabaseUrl, supabaseKey } = supabaseConfig;
+            
+            // 创建 Supabase 客户端
+            try {
+                if (typeof window.supabase !== 'undefined') {
+                    const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
+                        auth: {
+                            autoRefreshToken: true,
+                            persistSession: true,
+                            detectSessionInUrl: true
+                        }
+                    });
+                    console.log('Supabase 客户端创建成功');
+                    window.supabaseClient = supabaseClient;
+                    
+                    // 测试连接
+                    supabaseClient.auth.getSession().then(({ data, error }) => {
+                        if (error) {
+                            console.error('Supabase 连接测试失败:', error.message);
+                        } else {
+                            console.log('Supabase 连接成功');
+                        }
+                    }).catch(err => {
+                        console.error('Supabase 连接异常:', err.message);
+                    });
+                } else {
+                    console.error('Supabase 库未加载');
+                }
+            } catch (err) {
+                console.error('创建 Supabase 客户端失败:', err);
+            }
+        })();
+    </script>
+
+    <!-- 临时模拟登录模式（用于开发测试，默认关闭） -->
+    <script>
+        // 如果 Supabase 连接不上，可以启用这个模拟登录模式进行测试
+        const USE_MOCK_AUTH = false; // 改为 true 启用模拟登录
+        
+        if (USE_MOCK_AUTH) {
+            console.log('使用模拟登录模式');
+            
+            // 模拟登录函数
+            window.mockLogin = function(email, password) {
+                console.log('模拟登录成功:', email);
+                
+                const mockUser = {
+                    id: 'mock-user-' + Date.now(),
+                    email: email,
+                    user_metadata: {
+                        name: email.split('@')[0]
+                    }
+                };
+                
+                localStorage.setItem('mock_user', JSON.stringify(mockUser));
+                
+                // 更新 UI
+                const userName = document.getElementById('user-name');
+                const userStatus = document.getElementById('user-status');
+                const userInfo = document.getElementById('user-info');
+                const authButtons = document.getElementById('auth-buttons');
+                
+                if (userName) userName.textContent = mockUser.email.split('@')[0];
+                if (userStatus) userStatus.textContent = '已登录（模拟）';
+                if (userInfo) userInfo.style.display = 'flex';
+                
+                if (authButtons) {
+                    authButtons.innerHTML = `
+                        <button class="auth-btn logout" id="mock-logout-btn">
+                            🚪 <span class="btn-text">退出</span>
+                        </button>
+                    `;
+                    
+                    document.getElementById('mock-logout-btn')?.addEventListener('click', () => {
+                        localStorage.removeItem('mock_user');
+                        location.reload();
+                    });
+                }
+                
+                const authModal = document.getElementById('auth-modal');
+                if (authModal) authModal.style.display = 'none';
+                
+                return mockUser;
+            };
+            
+            // 拦截登录按钮
+            document.addEventListener('click', function(e) {
+                if (e.target.id === 'auth-submit' || e.target.closest('#auth-submit')) {
+                    e.preventDefault();
+                    
+                    const email = document.getElementById('auth-email')?.value || 'test@example.com';
+                    const password = document.getElementById('auth-password')?.value || '123456';
+                    
+                    window.mockLogin(email, password);
+                }
+            });
+            
+            // 检查是否已模拟登录
+            const savedMockUser = localStorage.getItem('mock_user');
+            if (savedMockUser) {
+                try {
+                    const user = JSON.parse(savedMockUser);
+                    window.mockLogin(user.email, '');
+                } catch (e) {}
+            }
+        }
+    </script>
+
+    <!-- ===== 按照正确顺序加载JS模块 ===== -->
+    <!-- 先加载核心依赖 -->
     <script src="js/utils.js"></script>
     <script src="js/Storage.js"></script>
-    <script src="js/Auth.js"></script>
+    <script src="js/Game.js"></script>  <!-- Game.js 提前加载，创建 game 对象 -->
+
+    <!-- 然后加载其他模块 -->
+    <script src="js/Auth.js"></script>   <!-- Auth.js 在 Game.js 之后，现在可以访问 game 对象 -->
     <script src="js/UI.js"></script>
     <script src="js/BattleMode.js"></script>
     <script src="js/TournamentMode.js"></script>
-    <script src="js/Game.js"></script>
+
+    <!-- 最后检查 game 对象是否创建成功 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Game 对象状态:', window.game ? '已创建' : '未创建');
+            
+            // 如果有 Supabase 客户端，尝试初始化 Auth
+            if (window.supabaseClient && window.Auth && typeof window.Auth.init === 'function') {
+                console.log('正在初始化 Auth...');
+                window.Auth.init(window.supabaseClient);
+            }
+        });
+    </script>
 </body>
 </html>
