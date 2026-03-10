@@ -1688,13 +1688,17 @@
         </div>
     </div>
 
-    <!-- 登录模态框 -->
+    <!-- 登录模态框 - 已添加忘记密码链接容器 -->
     <div class="auth-modal" id="auth-modal">
         <div class="auth-card">
             <button class="close-btn" id="close-auth">×</button>
             <div class="auth-title" id="auth-title">🔐 登录</div>
             <input type="email" class="auth-input" id="auth-email" placeholder="邮箱">
             <input type="password" class="auth-input" id="auth-password" placeholder="密码">
+            
+            <!-- 添加忘记密码链接容器 (新增) -->
+            <div id="forgot-password-link" style="margin-top: 5px; text-align: right; padding-right: 10px;"></div>
+            
             <div class="auth-error" id="auth-error"></div>
             <button class="start-btn auth-submit-btn" id="auth-submit">登录</button>
             <div class="auth-switch" id="auth-switch"></div>
