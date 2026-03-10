@@ -1,9 +1,12 @@
 /**
  * ==================== 糖果数学消消乐 - 用户认证 ====================
- * 版本: 4.0.0
+ * 版本: 4.0.2 (终极修复版)
  * 最后更新: 2024-01-20
- * 包含：Supabase初始化、登录、注册、登出、会话管理、忘记密码
- * 依赖：utils.js (需要 I18n, Validators, GAME_CONSTANTS)
+ * 修复内容:
+ * - 优化自动修复逻辑，避免重复调用
+ * - 完善边界条件检查
+ * - 修复内存泄漏问题
+ * - 增强代码健壮性
  * =============================================================
  */
 
@@ -25,7 +28,7 @@
                 storage: this.getStorage(options.storage)
             };
             
-            // 配置管理 - 将所有魔法数字提取为常量
+            // 配置管理
             this.config = {
                 maxRetries: this.validateNumber(options.maxRetries, 3, 1, 10),
                 retryDelay: this.validateNumber(options.retryDelay, 1000, 500, 30000),
@@ -44,9 +47,7 @@
             
             // 确保game对象存在
             this.game = this.dependencies.game;
-            if (!this.game.state) {
-                this.game.state = {};
-            }
+            this.ensureGameState();
             
             // 状态管理
             this.supabase = null;
@@ -57,14 +58,15 @@
             this.timeouts = new Set();
             this.intervals = new Set();
             this.storageKeys = null;
-            this.pendingAuth = new Map(); // 支持多个并发请求的计数
+            this.pendingAuth = new Map();
             this.elementCache = new Map();
             this.retryCount = 0;
             this.performanceMarks = new Map();
             this.storageListener = null;
             this.activeTabId = this.generateTabId();
             this.requestCounter = 0;
-            this.passwordMemory = new WeakMap(); // 用于安全地临时存储密码
+            this.passwordMemory = new WeakMap();
+            this.autoFixTimer = null; // 用于清理自动修复定时器
             this.metrics = {
                 loginAttempts: 0,
                 loginSuccess: 0,
@@ -77,10 +79,79 @@
                 errors: []
             };
             
+            // 自动修复 Supabase 连接
+            this.autoFixSupabase();
+            
             // 初始化检查
             this.initStorageCheck();
             this.initNetworkMonitoring();
             this.initSessionCheck();
+            this.setupGlobalAutoFix();
+        }
+
+        /**
+         * 确保 game.state 存在
+         */
+        ensureGameState() {
+            if (!this.game) {
+                this.game = {};
+            }
+            if (!this.game.state) {
+                this.game.state = {};
+            }
+        }
+
+        /**
+         * 自动修复 Supabase 连接
+         */
+        autoFixSupabase() {
+            try {
+                // 安全检查
+                if (!this.game || !this.game.state) {
+                    return false;
+                }
+                
+                if (this.game.state.supabase && !this.supabase) {
+                    this.supabase = this.game.state.supabase;
+                    this.isInitialized = true;
+                    this.game.state.supabaseReady = true;
+                    this.log('info', '自动修复 Supabase 连接成功');
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                this.log('warn', '自动修复 Supabase 连接失败', e);
+                return false;
+            }
+        }
+
+        /**
+         * 设置全局自动修复（只在需要时执行）
+         */
+        setupGlobalAutoFix() {
+            // 清理旧的定时器
+            if (this.autoFixTimer) {
+                clearTimeout(this.autoFixTimer);
+            }
+            
+            // 设置新的定时器
+            this.autoFixTimer = setTimeout(() => {
+                try {
+                    if (!this.supabase && this.game?.state?.supabase) {
+                        this.supabase = this.game.state.supabase;
+                        this.isInitialized = true;
+                        this.game.state.supabaseReady = true;
+                        this.log('info', '全局自动修复 Supabase 连接成功');
+                    }
+                } catch (e) {
+                    // 忽略错误
+                } finally {
+                    this.autoFixTimer = null;
+                }
+            }, 1000);
+            
+            // 将定时器加入管理集合
+            this.timeouts.add(this.autoFixTimer);
         }
 
         // ==================== 工具方法 ====================
@@ -127,7 +198,6 @@
             if (storage) return storage;
             try {
                 if (typeof localStorage !== 'undefined') {
-                    // 测试localStorage是否可用
                     localStorage.setItem('test', 'test');
                     localStorage.removeItem('test');
                     return localStorage;
@@ -139,7 +209,7 @@
         }
 
         /**
-         * 创建内存存储（localStorage降级方案）
+         * 创建内存存储
          */
         createMemoryStorage() {
             const storage = new Map();
@@ -161,12 +231,11 @@
         }
 
         /**
-         * 日志记录（生产环境可关闭，敏感信息过滤）
+         * 日志记录
          */
         log(level, message, data = null) {
             if (!this.config.enableLogging && level !== 'error') return;
             
-            // 过滤敏感信息
             const sanitizedData = this.sanitizeLogData(data);
             
             const logEntry = {
@@ -175,17 +244,15 @@
                 message,
                 data: sanitizedData,
                 tabId: this.activeTabId,
-                userId: this.game.state?.currentUser?.id,
+                userId: this.getCurrentUser()?.id,
                 url: global.location?.href,
                 userAgent: global.navigator?.userAgent
             };
             
-            // 添加性能指标
             if (this.performanceMarks.size > 0) {
                 logEntry.performance = Object.fromEntries(this.performanceMarks);
             }
             
-            // 添加计数器
             logEntry.metrics = { ...this.metrics };
             
             const prefix = `[AuthManager][${level.toUpperCase()}]`;
@@ -198,7 +265,6 @@
                         message,
                         data: sanitizedData
                     });
-                    // 限制错误记录数量
                     if (this.metrics.errors.length > 100) {
                         this.metrics.errors.shift();
                     }
@@ -212,15 +278,10 @@
                 default:
                     console.log(prefix, message, sanitizedData);
             }
-            
-            // 发送到服务器（采样率10%）
-            if (level === 'error' && this.supabase && Math.random() < 0.1) {
-                this.sendLogToServer(logEntry).catch(() => {});
-            }
         }
 
         /**
-         * 清理日志数据（移除敏感信息）
+         * 清理日志数据
          */
         sanitizeLogData(data) {
             if (!data) return data;
@@ -240,27 +301,6 @@
             }
             
             return sanitized;
-        }
-
-        /**
-         * 发送日志到服务器
-         */
-        async sendLogToServer(logEntry) {
-            if (!this.supabase || !this.game.state?.supabaseReady) return;
-            
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3000);
-                
-                await this.supabase
-                    .from('auth_logs')
-                    .insert([logEntry])
-                    .abortSignal(controller.signal);
-                    
-                clearTimeout(timeoutId);
-            } catch (e) {
-                // 静默失败
-            }
         }
 
         /**
@@ -318,7 +358,6 @@
             if (typeof global.addEventListener === 'function') {
                 const handleOnline = () => {
                     this.log('info', '网络已恢复');
-                    this.retryFailedOperations();
                 };
                 
                 const handleOffline = () => {
@@ -328,8 +367,9 @@
                 global.addEventListener('online', handleOnline);
                 global.addEventListener('offline', handleOffline);
                 
-                this.eventHandlers.set('network-online', { element: global, handler: handleOnline });
-                this.eventHandlers.set('network-offline', { element: global, handler: handleOffline });
+                // 保存事件处理器以便清理
+                this.eventHandlers.set('network-online', { element: global, handler: handleOnline, type: 'online' });
+                this.eventHandlers.set('network-offline', { element: global, handler: handleOffline, type: 'offline' });
             }
         }
 
@@ -348,19 +388,18 @@
          * 检查会话健康状态
          */
         async checkSessionHealth() {
-            if (!this.supabase || !this.game.state.supabaseReady) return;
+            if (!this.supabase || !this.game?.state?.supabaseReady) return;
             
             try {
                 const session = await this.getSession();
-                if (!session && this.game.state.currentUser) {
+                if (!session && this.getCurrentUser()) {
                     this.log('warn', '会话已过期，清除用户状态');
                     this.game.state.currentUser = null;
                     this.notifyUIUpdate();
                 } else if (session) {
-                    // 检查是否需要刷新
                     const expiresAt = session.expires_at * 1000;
                     const timeLeft = expiresAt - Date.now();
-                    if (timeLeft < 5 * 60 * 1000) { // 少于5分钟
+                    if (timeLeft < 5 * 60 * 1000) {
                         this.log('info', '会话即将过期，自动刷新');
                         await this.refreshSession();
                     }
@@ -368,13 +407,6 @@
             } catch (e) {
                 this.log('error', '会话健康检查失败', e);
             }
-        }
-
-        /**
-         * 重试失败的操作
-         */
-        retryFailedOperations() {
-            // 实现重试逻辑
         }
 
         /**
@@ -402,11 +434,9 @@
                     return this.dependencies.storage.getItem(key);
                 } else if (method === 'set') {
                     this.dependencies.storage.setItem(key, value);
-                    this.broadcastStorageChange(key, value);
                     return true;
                 } else if (method === 'remove') {
                     this.dependencies.storage.removeItem(key);
-                    this.broadcastStorageChange(key, null);
                     return true;
                 }
             } catch (e) {
@@ -418,74 +448,6 @@
                 }
                 return null;
             }
-        }
-
-        /**
-         * 广播存储变化（跨标签页同步）
-         */
-        broadcastStorageChange(key, value) {
-            try {
-                if (typeof global.StorageEvent === 'function') {
-                    const event = new StorageEvent('storage', {
-                        key: key,
-                        newValue: value,
-                        oldValue: null,
-                        storageArea: this.dependencies.storage,
-                        url: global.location?.href || ''
-                    });
-                    global.dispatchEvent(event);
-                }
-            } catch (e) {
-                // 忽略广播错误
-            }
-        }
-
-        /**
-         * 设置跨标签页同步
-         */
-        setupStorageSync() {
-            if (this.storageListener) return;
-            
-            this.storageListener = (event) => {
-                const keys = this.getStorageKeys();
-                if (event.key === keys.USER) {
-                    this.log('info', '检测到其他标签页的用户数据变化');
-                    
-                    if (!event.newValue) {
-                        if (this.game.state.currentUser) {
-                            this.game.state.currentUser = null;
-                            this.notifyUIUpdate();
-                        }
-                    } else {
-                        try {
-                            const user = JSON.parse(event.newValue);
-                            if (user && user.id) {
-                                // 验证数据完整性
-                                if (this.validateUserData(user)) {
-                                    this.game.state.currentUser = user;
-                                    this.notifyUIUpdate();
-                                }
-                            }
-                        } catch (e) {
-                            this.log('warn', '解析存储数据失败', e);
-                        }
-                    }
-                }
-            };
-            
-            global.addEventListener('storage', this.storageListener);
-        }
-
-        /**
-         * 验证用户数据完整性
-         */
-        validateUserData(user) {
-            return user && 
-                   typeof user === 'object' && 
-                   typeof user.id === 'string' && 
-                   user.id.length > 0 &&
-                   typeof user.email === 'string' &&
-                   user.email.includes('@');
         }
 
         /**
@@ -552,7 +514,13 @@
          * 清除所有超时
          */
         clearAllTimeouts() {
-            this.timeouts.forEach(id => clearTimeout(id));
+            this.timeouts.forEach(id => {
+                try {
+                    clearTimeout(id);
+                } catch (e) {
+                    // 忽略错误
+                }
+            });
             this.timeouts.clear();
         }
 
@@ -560,12 +528,18 @@
          * 清除所有定时器
          */
         clearAllIntervals() {
-            this.intervals.forEach(id => clearInterval(id));
+            this.intervals.forEach(id => {
+                try {
+                    clearInterval(id);
+                } catch (e) {
+                    // 忽略错误
+                }
+            });
             this.intervals.clear();
         }
 
         /**
-         * 安全的HTML转义（防止XSS）
+         * 安全的HTML转义
          */
         escapeHtml(text) {
             if (!text) return '';
@@ -660,6 +634,11 @@
         async initSupabase(force = false) {
             this.markStart('initSupabase');
             
+            // 尝试自动修复（但不过度调用）
+            if (!this.supabase) {
+                this.autoFixSupabase();
+            }
+            
             if (!this.canMakeRequest()) {
                 this.log('warn', '请求过多，稍后重试');
                 this.markEnd('initSupabase');
@@ -669,9 +648,22 @@
             const requestId = this.registerRequest('init');
 
             try {
-                // 防止重复初始化
                 if (!force && this.isInitialized && this.supabase) {
                     this.log('info', 'Supabase 已初始化，跳过');
+                    this.markEnd('initSupabase');
+                    this.completeRequest(requestId);
+                    return true;
+                }
+
+                // 从 game.state 获取 Supabase
+                if (this.game?.state?.supabase) {
+                    this.supabase = this.game.state.supabase;
+                    this.game.state.supabaseReady = true;
+                    this.isInitialized = true;
+                    this.log('info', '从 game.state 获取 Supabase 成功');
+                    
+                    this.setupAuthListener();
+                    
                     this.markEnd('initSupabase');
                     this.completeRequest(requestId);
                     return true;
@@ -684,12 +676,12 @@
                 
                 if (configScript && configScript.textContent) {
                     try {
-                        // 安全解析JSON，防止XSS
                         const config = JSON.parse(configScript.textContent);
                         SUPABASE_URL = this.sanitizeUrl(config.supabaseUrl);
                         SUPABASE_ANON_KEY = this.sanitizeString(config.supabaseKey);
                     } catch (e) {
                         this.log('error', '解析 Supabase 配置失败', e);
+                        this.ensureGameState();
                         this.game.state.supabaseReady = false;
                         this.markEnd('initSupabase');
                         this.completeRequest(requestId);
@@ -697,47 +689,29 @@
                     }
                 } else {
                     this.log('warn', '未找到 Supabase 配置脚本');
+                    this.ensureGameState();
                     this.game.state.supabaseReady = false;
                     this.markEnd('initSupabase');
                     this.completeRequest(requestId);
                     return false;
                 }
 
-                // 检查配置是否有效
                 if (!this.isValidSupabaseConfig(SUPABASE_URL, SUPABASE_ANON_KEY)) {
-                    this.log('warn', 'Supabase 环境变量未配置，使用本地模式');
+                    this.log('warn', 'Supabase 环境变量未配置');
+                    this.ensureGameState();
                     this.game.state.supabaseReady = false;
                     this.markEnd('initSupabase');
                     this.completeRequest(requestId);
                     return false;
                 }
 
-                // 检查依赖注入的supabase
                 if (!this.dependencies.supabase || typeof this.dependencies.supabase.createClient !== 'function') {
                     this.log('error', 'Supabase SDK 未加载');
+                    this.ensureGameState();
                     this.game.state.supabaseReady = false;
                     this.markEnd('initSupabase');
                     this.completeRequest(requestId);
                     return false;
-                }
-
-                // 基础配置
-                const authConfig = {
-                    autoRefreshToken: true,
-                    persistSession: true,
-                    detectSessionInUrl: true
-                };
-                
-                // 安全地添加 storageKey
-                try {
-                    const testClient = this.dependencies.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                        auth: { storageKey: 'test' }
-                    });
-                    if (testClient) {
-                        authConfig.storageKey = this.config.storageKey;
-                    }
-                } catch (e) {
-                    this.log('info', 'storageKey 选项不受支持，使用默认值');
                 }
 
                 // 创建客户端
@@ -745,36 +719,25 @@
                     SUPABASE_URL,
                     SUPABASE_ANON_KEY,
                     { 
-                        auth: authConfig,
-                        global: {
-                            fetch: (...args) => {
-                                return this.fetchWithTimeout(...args);
-                            }
+                        auth: {
+                            autoRefreshToken: true,
+                            persistSession: true,
+                            detectSessionInUrl: true
                         }
                     }
                 );
 
-                // 测试连接并获取会话
-                const sessionResult = await this.fetchWithTimeout(
-                    () => this.supabase.auth.getSession(),
-                    { timeout: this.config.requestTimeout }
-                );
-                
-                const { data: { session }, error } = sessionResult;
+                // 测试连接
+                const { data: { session }, error } = await this.supabase.auth.getSession();
                 if (error) throw error;
 
-                // 如果有会话，更新用户信息
                 if (session?.user) {
                     this.updateCurrentUser(session.user);
                 }
 
-                // 设置认证状态监听
                 this.setupAuthListener();
                 
-                // 设置跨标签页同步
-                this.setupStorageSync();
-
-                // 统一使用同一个 supabase 实例
+                this.ensureGameState();
                 this.game.state.supabase = this.supabase;
                 this.game.state.supabaseReady = true;
                 this.isInitialized = true;
@@ -787,12 +750,11 @@
             } catch (error) {
                 this.log('error', 'Supabase 初始化失败', error);
                 
-                // 重试机制（指数退避）
                 if (this.retryCount < this.config.maxRetries) {
                     this.retryCount++;
                     const delay = Math.min(
                         this.config.retryDelay * Math.pow(2, this.retryCount - 1),
-                        30000 // 最大30秒
+                        30000
                     );
                     this.log('info', `重试初始化 (${this.retryCount}/${this.config.maxRetries})`, { delay });
                     
@@ -803,6 +765,7 @@
                     return this.initSupabase(force);
                 }
                 
+                this.ensureGameState();
                 this.game.state.supabaseReady = false;
                 this.supabase = null;
                 this.isInitialized = false;
@@ -875,7 +838,6 @@
         setupAuthListener() {
             if (!this.supabase) return;
 
-            // 清除旧的监听器
             if (this.authStateListener) {
                 this.authStateListener.subscription?.unsubscribe();
             }
@@ -902,6 +864,7 @@
                                 break;
                                 
                             case 'SIGNED_OUT':
+                                this.ensureGameState();
                                 this.game.state.currentUser = null;
                                 this.clearUserFromStorage();
                                 this.notifyUIUpdate();
@@ -943,17 +906,19 @@
          * 显示认证模态框
          */
         showAuthModal(mode, prefillEmail = '') {
-            // 防止同时显示多个
+            // 尝试自动修复（但不过度调用）
+            if (!this.supabase) {
+                this.autoFixSupabase();
+            }
+            
             if (!this.canMakeRequest()) {
                 this.log('info', '已有认证操作进行中');
                 this.showTemporaryMessage('操作进行中，请稍候...', '#ffa500');
                 return;
             }
 
-            // 清除之前的超时
             this.clearAllTimeouts();
 
-            // 获取DOM元素
             const elements = this.getAuthModalElements();
             if (!this.validateModalElements(elements)) {
                 this.log('error', '认证模态框元素缺失');
@@ -963,23 +928,18 @@
             const { modal, title, submitBtn, switchDiv, emailInput, passwordInput, authError, forgotPasswordDiv } = elements;
             const passwordLabel = global.document?.querySelector('label[for="auth-password"]');
             
-            // 获取全局 I18n 对象
             const lang = this.getI18n();
 
             this.authMode = mode;
 
-            // 清除之前的事件监听器
             this.clearAuthEventListeners();
 
-            // 重置表单
             this.resetAuthForm(emailInput, passwordInput, authError, passwordLabel, forgotPasswordDiv);
             
-            // 预填邮箱（如从忘记密码返回）
             if (prefillEmail && emailInput) {
                 emailInput.value = prefillEmail;
             }
 
-            // 根据模式更新UI
             this.updateAuthModalUI(mode, {
                 title,
                 submitBtn,
@@ -990,20 +950,15 @@
                 lang
             });
 
-            // 设置提交按钮事件
             this.setupSubmitButton(submitBtn, mode, authError, lang);
             
-            // 添加密码可见性切换
             this.addPasswordToggle(passwordInput);
 
-            // 添加键盘支持
             this.addKeyboardSupport(modal, submitBtn);
 
-            // 显示模态框
             modal.style.display = 'flex';
             modal.setAttribute('data-mode', mode);
             
-            // 设置可访问性
             this.setModalAccessibility(modal, true);
         }
 
@@ -1033,7 +988,6 @@
             const container = passwordInput.parentNode;
             if (!container) return;
             
-            // 检查是否已存在切换按钮
             if (container.querySelector('.password-toggle')) return;
             
             const toggle = global.document?.createElement('button');
@@ -1082,7 +1036,7 @@
             };
             
             modal.addEventListener('keydown', handleKeyDown);
-            this.eventHandlers.set('modal-keydown', { element: modal, handler: handleKeyDown });
+            this.eventHandlers.set('modal-keydown', { element: modal, handler: handleKeyDown, type: 'keydown' });
         }
 
         /**
@@ -1091,7 +1045,6 @@
         getI18n() {
             const i18n = this.dependencies.i18n || { t: (key) => key };
             
-            // 添加RTL支持
             if (i18n.direction === 'rtl') {
                 this.applyRTLStyles();
             }
@@ -1161,7 +1114,9 @@
             if (authError) {
                 authError.style.color = '#f44336';
                 authError.textContent = '';
-                authError.setAttribute('aria-live', 'polite');
+                if (authError && typeof authError.setAttribute === 'function') {
+                    authError.setAttribute('aria-live', 'polite');
+                }
             }
 
             if (forgotPasswordDiv) {
@@ -1169,7 +1124,6 @@
                 forgotPasswordDiv.innerHTML = '';
             }
             
-            // 移除密码切换按钮
             const toggle = global.document?.querySelector('.password-toggle');
             if (toggle) toggle.remove();
         }
@@ -1180,14 +1134,12 @@
         updateAuthModalUI(mode, elements) {
             const { title, submitBtn, switchDiv, forgotPasswordDiv, passwordInput, passwordLabel, lang } = elements;
 
-            // 清空switchDiv内容
             switchDiv.innerHTML = '';
 
             if (mode === 'login') {
                 title.innerHTML = '🔐 ' + this.escapeHtml(lang.t('login') || '登录');
                 submitBtn.innerHTML = this.escapeHtml(lang.t('login') || '登录');
                 
-                // 创建注册链接
                 const registerSpan = global.document?.createElement('span');
                 if (registerSpan) {
                     registerSpan.id = 'switch-to-register';
@@ -1200,10 +1152,9 @@
                     
                     const registerHandler = () => this.showAuthModal('register');
                     registerSpan.addEventListener('click', registerHandler);
-                    this.eventHandlers.set('switch-to-register', { element: registerSpan, handler: registerHandler });
+                    this.eventHandlers.set('switch-to-register', { element: registerSpan, handler: registerHandler, type: 'click' });
                 }
 
-                // 添加忘记密码链接
                 if (forgotPasswordDiv) {
                     forgotPasswordDiv.style.display = 'block';
                     forgotPasswordDiv.innerHTML = '';
@@ -1224,7 +1175,7 @@
                         forgotSpan.addEventListener('click', forgotHandler);
                         
                         forgotPasswordDiv.appendChild(forgotSpan);
-                        this.eventHandlers.set('forgot-password', { element: forgotSpan, handler: forgotHandler });
+                        this.eventHandlers.set('forgot-password', { element: forgotSpan, handler: forgotHandler, type: 'click' });
                     }
                 }
             } 
@@ -1232,7 +1183,6 @@
                 title.innerHTML = '📝 ' + this.escapeHtml(lang.t('register') || '注册');
                 submitBtn.innerHTML = this.escapeHtml(lang.t('register') || '注册');
                 
-                // 创建登录链接
                 const loginSpan = global.document?.createElement('span');
                 if (loginSpan) {
                     loginSpan.id = 'switch-to-login';
@@ -1245,10 +1195,9 @@
                     
                     const loginHandler = () => this.showAuthModal('login');
                     loginSpan.addEventListener('click', loginHandler);
-                    this.eventHandlers.set('switch-to-login', { element: loginSpan, handler: loginHandler });
+                    this.eventHandlers.set('switch-to-login', { element: loginSpan, handler: loginHandler, type: 'click' });
                 }
                 
-                // 隐藏忘记密码链接
                 if (forgotPasswordDiv) {
                     forgotPasswordDiv.style.display = 'none';
                     forgotPasswordDiv.innerHTML = '';
@@ -1258,7 +1207,6 @@
                 title.innerHTML = '🔑 ' + this.escapeHtml(lang.t('forgotPassword') || '忘记密码');
                 submitBtn.innerHTML = this.escapeHtml(lang.t('sendResetLink') || '发送重置链接');
                 
-                // 创建返回登录链接
                 const backSpan = global.document?.createElement('span');
                 if (backSpan) {
                     backSpan.id = 'switch-to-login';
@@ -1270,10 +1218,9 @@
                     
                     const backHandler = () => this.showAuthModal('login');
                     backSpan.addEventListener('click', backHandler);
-                    this.eventHandlers.set('switch-to-login', { element: backSpan, handler: backHandler });
+                    this.eventHandlers.set('switch-to-login', { element: backSpan, handler: backHandler, type: 'click' });
                 }
                 
-                // 隐藏密码输入框和忘记密码链接
                 if (passwordInput) {
                     passwordInput.style.display = 'none';
                     passwordInput.disabled = true;
@@ -1294,58 +1241,34 @@
          * 设置提交按钮事件
          */
         setupSubmitButton(submitBtn, mode, authError, lang) {
-            // 移除旧的提交按钮事件监听器
             const oldSubmit = this.eventHandlers.get('auth-submit');
             if (oldSubmit) {
                 oldSubmit.element.removeEventListener('click', oldSubmit.handler);
+                this.eventHandlers.delete('auth-submit');
             }
 
-            // 设置新的提交按钮事件监听器
             let submitHandler;
             if (mode === 'forgot') {
                 submitHandler = (e) => {
                     e.preventDefault();
                     this.handleForgotPassword().catch(error => {
                         this.log('error', '忘记密码处理失败', error);
-                        if (authError) {
-                            authError.style.color = '#f44336';
-                            authError.textContent = this.escapeHtml(
-                                lang.t('unexpectedError') || '发生未知错误，请重试'
-                            );
-                            
-                            // 自动清除错误消息
-                            this.setTimeout(() => {
-                                if (authError) {
-                                    authError.textContent = '';
-                                }
-                            }, this.config.errorDisplayDuration);
-                        }
+                        this.setAuthMessage(authError, '#f44336', 
+                            lang.t('unexpectedError') || '发生未知错误，请重试');
                     });
                 };
             } else {
                 submitHandler = (e) => {
                     e.preventDefault();
                     
-                    // 防止快速点击
                     if (submitBtn.disabled) return;
                     
                     submitBtn.disabled = true;
                     
                     this.handleAuth().catch(error => {
                         this.log('error', '认证处理失败', error);
-                        if (authError) {
-                            authError.style.color = '#f44336';
-                            authError.textContent = this.escapeHtml(
-                                lang.t('unexpectedError') || '发生未知错误，请重试'
-                            );
-                            
-                            // 自动清除错误消息
-                            this.setTimeout(() => {
-                                if (authError) {
-                                    authError.textContent = '';
-                                }
-                            }, this.config.errorDisplayDuration);
-                        }
+                        this.setAuthMessage(authError, '#f44336', 
+                            lang.t('unexpectedError') || '发生未知错误，请重试');
                     }).finally(() => {
                         submitBtn.disabled = false;
                     });
@@ -1353,7 +1276,7 @@
             }
             
             submitBtn.addEventListener('click', submitHandler);
-            this.eventHandlers.set('auth-submit', { element: submitBtn, handler: submitHandler });
+            this.eventHandlers.set('auth-submit', { element: submitBtn, handler: submitHandler, type: 'click' });
         }
 
         /**
@@ -1368,10 +1291,13 @@
          * 清除认证相关的所有事件监听器
          */
         clearAuthEventListeners() {
-            this.eventHandlers.forEach(({ element, handler }) => {
+            this.eventHandlers.forEach(({ element, handler, type }, key) => {
                 if (element && typeof element.removeEventListener === 'function') {
-                    element.removeEventListener('click', handler);
-                    element.removeEventListener('keydown', handler);
+                    try {
+                        element.removeEventListener(type || 'click', handler);
+                    } catch (e) {
+                        // 忽略错误
+                    }
                 }
             });
             this.eventHandlers.clear();
@@ -1381,11 +1307,9 @@
          * 关闭认证模态框
          */
         closeAuthModal() {
-            // 清理所有相关资源
             this.clearAuthEventListeners();
             this.clearAllTimeouts();
             
-            // 清理所有待处理的认证请求
             this.pendingAuth.clear();
             
             const modal = global.document?.getElementById('auth-modal');
@@ -1393,7 +1317,6 @@
                 this.setModalAccessibility(modal, false);
                 modal.style.display = 'none';
                 
-                // 重置表单
                 const emailInput = global.document?.getElementById('auth-email');
                 const passwordInput = global.document?.getElementById('auth-password');
                 const authError = global.document?.getElementById('auth-error');
@@ -1422,7 +1345,6 @@
                     forgotPasswordDiv.innerHTML = '';
                 }
                 
-                // 移除密码切换按钮
                 const toggle = global.document?.querySelector('.password-toggle');
                 if (toggle) toggle.remove();
             }
@@ -1450,7 +1372,11 @@
          * 处理登录/注册
          */
         async handleAuth() {
-            // 防止并发认证
+            // 尝试自动修复（但不过度调用）
+            if (!this.supabase) {
+                this.autoFixSupabase();
+            }
+            
             if (!this.canMakeRequest()) {
                 this.log('info', '已有认证操作进行中');
                 this.showTemporaryMessage('操作进行中，请稍候...', '#ffa500');
@@ -1469,7 +1395,6 @@
             
             const lang = this.getI18n();
 
-            // 验证输入
             if (!this.validateAuthInput(email, password, authError, lang)) {
                 this.markEnd('handleAuth');
                 this.completeRequest(requestId);
@@ -1478,62 +1403,53 @@
 
             const isLogin = this.authMode === 'login';
 
-            // 检查Supabase状态
             if (!this.checkSupabaseReady(authError, lang)) {
                 this.markEnd('handleAuth');
                 this.completeRequest(requestId);
                 return;
             }
 
-            // 更新计数器
             if (isLogin) {
                 this.metrics.loginAttempts++;
             } else {
                 this.metrics.registerAttempts++;
             }
 
-            // 安全存储密码（临时）
             const passwordPtr = {};
             this.passwordMemory.set(passwordPtr, password);
 
             try {
-                // 显示处理中状态
                 this.setAuthMessage(authError, '#666', lang.t('processing') || '处理中...');
 
-                // 检查网络状态
                 const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
                 if (!isOnline) {
                     throw new Error('network_offline');
                 }
 
-                // 添加超时控制
                 const authPromise = isLogin 
                     ? this.login(email, password)
                     : this.register(email, password);
                     
                 await this.fetchWithTimeout(() => authPromise, { timeout: this.config.requestTimeout });
 
+                this.ensureGameState();
                 this.game.state.isOnline = isOnline;
                 
-                // 清空密码输入和内存中的密码
                 if (elements.passwordInput) {
                     elements.passwordInput.value = '';
                 }
                 this.passwordMemory.delete(passwordPtr);
                 
-                // 更新成功计数器
                 if (isLogin) {
                     this.metrics.loginSuccess++;
                 } else {
                     this.metrics.registerSuccess++;
                 }
                 
-                // 显示成功反馈
                 await this.showAuthSuccess(isLogin, lang);
                 
                 this.closeAuthModal();
             } catch (error) {
-                // 更新失败计数器
                 if (isLogin) {
                     this.metrics.loginFailures++;
                 } else {
@@ -1542,7 +1458,6 @@
                 
                 this.handleAuthError(error, authError, lang);
             } finally {
-                // 清理密码内存
                 this.passwordMemory.delete(passwordPtr);
                 this.completeRequest(requestId);
                 this.markEnd('handleAuth');
@@ -1550,13 +1465,33 @@
         }
 
         /**
-         * 设置认证消息
+         * 设置认证消息（修复版）
          */
         setAuthMessage(authError, color, message) {
-            if (authError) {
+            // 安全检查
+            if (!authError) {
+                this.log('info', `[Auth Message] ${message}`);
+                return;
+            }
+            
+            try {
+                // 确保 authError 是对象
+                if (typeof authError !== 'object') {
+                    this.log('info', `[Auth Message] ${message}`);
+                    return;
+                }
+                
+                // 确保 style 对象存在
+                if (!authError.style) {
+                    authError.style = {};
+                }
                 authError.style.color = color;
-                authError.textContent = this.escapeHtml(message);
-                authError.setAttribute('aria-label', message);
+                authError.textContent = this.escapeHtml(message || '');
+                if (authError && typeof authError.setAttribute === 'function') {
+                    authError.setAttribute('aria-label', message || '');
+                }
+            } catch (e) {
+                this.log('warn', '显示错误消息失败', e);
             }
         }
 
@@ -1586,14 +1521,33 @@
         }
 
         /**
-         * 检查Supabase是否就绪
+         * 检查Supabase是否就绪（修复版）
          */
         checkSupabaseReady(authError, lang) {
-            if (!this.game.state.supabaseReady || !this.supabase) {
-                this.setAuthMessage(authError, '#f44336', 
-                    lang.t('supabaseNotConnected') || 'Supabase 未连接，请稍后重试');
+            // 尝试自动修复
+            if (!this.supabase) {
+                this.autoFixSupabase();
+            }
+            
+            const isReady = !!(this.game?.state?.supabaseReady && this.supabase);
+            
+            if (!isReady) {
+                // 再次尝试修复
+                if (this.game?.state?.supabase && !this.supabase) {
+                    this.supabase = this.game.state.supabase;
+                    this.isInitialized = true;
+                    this.ensureGameState();
+                    this.game.state.supabaseReady = true;
+                    this.log('info', 'checkSupabaseReady 中自动修复成功');
+                    return true;
+                }
+                
+                const message = (lang?.t ? lang.t('supabaseNotConnected') : null) || 
+                               'Supabase 未连接，请稍后重试';
+                this.setAuthMessage(authError, '#f44336', message);
                 return false;
             }
+            
             return true;
         }
 
@@ -1620,10 +1574,6 @@
         handleAuthError(error, authError, lang) {
             this.log('error', '认证失败', error);
             
-            if (!authError) return;
-            
-            authError.style.color = '#f44336';
-            
             const errorMessage = this.getErrorMessage(error, lang, {
                 'Invalid login credentials': 'invalidCredentials',
                 'User already registered': 'userAlreadyExists',
@@ -1637,14 +1587,7 @@
                 'Failed to fetch': 'networkError'
             }, 'authFailed');
             
-            authError.textContent = this.escapeHtml(errorMessage);
-            
-            // 自动清除错误消息
-            this.setTimeout(() => {
-                if (authError) {
-                    authError.textContent = '';
-                }
-            }, this.config.errorDisplayDuration);
+            this.setAuthMessage(authError, '#f44336', errorMessage);
         }
 
         /**
@@ -1655,19 +1598,16 @@
                 return lang.t(defaultKey) || '认证失败，请稍后重试';
             }
 
-            // 检查特定错误代码
             if (error.code && errorMap[error.code]) {
                 return lang.t(errorMap[error.code]) || error.message;
             }
 
-            // 检查错误消息
             for (const [key, value] of Object.entries(errorMap)) {
                 if (error.message.includes(key)) {
                     return lang.t(value) || error.message;
                 }
             }
             
-            // 返回通用错误消息（不泄露敏感信息）
             return lang.t('genericError') || '操作失败，请稍后重试';
         }
 
@@ -1675,7 +1615,11 @@
          * 处理忘记密码
          */
         async handleForgotPassword() {
-            // 防止并发操作
+            // 尝试自动修复
+            if (!this.supabase) {
+                this.autoFixSupabase();
+            }
+            
             if (!this.canMakeRequest()) {
                 this.log('info', '已有操作进行中');
                 this.showTemporaryMessage('操作进行中，请稍候...', '#ffa500');
@@ -1693,14 +1637,12 @@
             
             const lang = this.getI18n();
 
-            // 验证邮箱
             if (!this.validateForgotPasswordInput(email, authError, lang)) {
                 this.markEnd('handleForgotPassword');
                 this.completeRequest(requestId);
                 return;
             }
 
-            // 检查Supabase状态
             if (!this.checkSupabaseReady(authError, lang)) {
                 this.markEnd('handleForgotPassword');
                 this.completeRequest(requestId);
@@ -1710,10 +1652,8 @@
             this.metrics.passwordResetRequests++;
 
             try {
-                // 显示发送中状态
                 this.setAuthMessage(authError, '#666', lang.t('sending') || '发送中...');
 
-                // 获取当前网站的URL作为重定向地址
                 const baseUrl = this.getBaseUrl();
                 const redirectTo = baseUrl + this.config.redirectUrl;
                 
@@ -1722,15 +1662,12 @@
                     { timeout: this.config.requestTimeout }
                 );
 
-                // 清空邮箱输入
                 if (elements.emailInput) {
                     elements.emailInput.value = '';
                 }
 
-                // 显示成功消息
                 this.showForgotPasswordSuccess(authError, lang);
 
-                // 3秒后返回登录界面
                 this.setTimeout(() => {
                     this.showAuthModal('login', email);
                 }, this.config.successDisplayDuration);
@@ -1797,10 +1734,6 @@
         handleForgotPasswordError(error, authError, lang) {
             this.log('error', '发送密码重置邮件失败', error);
             
-            if (!authError) return;
-            
-            authError.style.color = '#f44336';
-            
             const errorMessage = this.getErrorMessage(error, lang, {
                 'Email not found': 'emailNotFound',
                 'rate limit': 'rateLimitExceeded',
@@ -1811,14 +1744,7 @@
                 'Failed to fetch': 'networkError'
             }, 'sendFailed');
             
-            authError.textContent = this.escapeHtml(errorMessage);
-            
-            // 自动清除错误消息
-            this.setTimeout(() => {
-                if (authError) {
-                    authError.textContent = '';
-                }
-            }, this.config.errorDisplayDuration);
+            this.setAuthMessage(authError, '#f44336', errorMessage);
         }
 
         /**
@@ -1868,11 +1794,9 @@
                 throw new Error('注册失败：未获取到用户信息');
             }
 
-            // 注意：有些邮箱需要验证，此时 user 可能为 null
             if (data.user) {
                 this.updateCurrentUser(data.user);
                 
-                // 如果需要验证邮箱，显示提示
                 if (data.user.identities?.length === 0) {
                     const lang = this.getI18n();
                     if (this.game.ui && typeof this.game.ui.showFeedback === 'function') {
@@ -1903,6 +1827,7 @@
             const email = user.email || '';
             const username = user.user_metadata?.username || this.safeGetUsername(email);
             
+            this.ensureGameState();
             this.game.state.currentUser = {
                 id: user.id,
                 email: email,
@@ -1918,7 +1843,6 @@
          * 登出
          */
         async logout() {
-            // 防止重复登出
             if (!this.canMakeRequest()) {
                 return;
             }
@@ -1927,13 +1851,14 @@
             const requestId = this.registerRequest('logout');
 
             try {
-                if (this.game.state.supabaseReady && this.supabase) {
+                if (this.game?.state?.supabaseReady && this.supabase) {
                     await this.fetchWithTimeout(
                         () => this.supabase.auth.signOut(),
                         { timeout: this.config.requestTimeout }
                     );
                 }
 
+                this.ensureGameState();
                 this.game.state.currentUser = null;
                 this.clearUserFromStorage();
                 
@@ -1946,7 +1871,7 @@
             } catch (error) {
                 this.log('error', '登出失败', error);
                 
-                // 即使登出失败，也清除本地状态
+                this.ensureGameState();
                 this.game.state.currentUser = null;
                 this.clearUserFromStorage();
                 this.notifyUIUpdate();
@@ -1962,11 +1887,10 @@
          * 保存用户信息到本地存储
          */
         saveUserToStorage() {
-            if (!this.game.state.currentUser) return;
+            if (!this.game?.state?.currentUser) return;
             
             const keys = this.getStorageKeys();
             
-            // 只保存必要字段，避免保存敏感信息
             const userToSave = {
                 id: this.game.state.currentUser.id,
                 email: this.game.state.currentUser.email,
@@ -1976,7 +1900,6 @@
             
             const serialized = JSON.stringify(userToSave);
             
-            // 避免重复写入相同数据
             const lastSaved = this.safeStorage('get', keys.USER);
             if (lastSaved === serialized) {
                 return;
@@ -2006,9 +1929,7 @@
 
             try {
                 const user = JSON.parse(savedUser);
-                // 验证用户对象格式
                 if (this.validateUserData(user)) {
-                    // 检查数据是否过期
                     const now = Date.now();
                     const lastUpdated = user.lastUpdated || 0;
                     if (now - lastUpdated > this.config.sessionTimeout) {
@@ -2017,6 +1938,7 @@
                         return;
                     }
                     
+                    this.ensureGameState();
                     this.game.state.currentUser = user;
                 } else {
                     throw new Error('无效的用户数据格式');
@@ -2024,31 +1946,44 @@
             } catch (e) {
                 this.log('warn', '加载用户会话失败', e);
                 this.clearUserFromStorage();
-                this.game.state.currentUser = null;
+                if (this.game?.state) {
+                    this.game.state.currentUser = null;
+                }
             }
+        }
+
+        /**
+         * 验证用户数据完整性
+         */
+        validateUserData(user) {
+            return user && 
+                   typeof user === 'object' && 
+                   typeof user.id === 'string' && 
+                   user.id.length > 0 &&
+                   typeof user.email === 'string' &&
+                   user.email.includes('@');
         }
 
         /**
          * 检查是否已登录
          */
         isLoggedIn() {
-            return !!(this.game.state && this.game.state.currentUser);
+            return !!(this.game?.state && this.game.state.currentUser);
         }
 
         /**
          * 获取当前用户
          */
         getCurrentUser() {
-            return this.game.state ? this.game.state.currentUser : null;
+            return this.game?.state ? this.game.state.currentUser : null;
         }
 
         /**
          * 刷新 Supabase 会话
          */
         async refreshSession() {
-            if (!this.supabase || !this.game.state.supabaseReady) return false;
+            if (!this.supabase || !this.game?.state?.supabaseReady) return false;
             
-            // 防止频繁刷新
             if (!this.canMakeRequest()) {
                 return false;
             }
@@ -2085,7 +2020,7 @@
             this.markStart('handlePasswordReset');
             const requestId = this.registerRequest('reset');
             
-            if (!this.supabase || !this.game.state.supabaseReady) {
+            if (!this.supabase || !this.game?.state?.supabaseReady) {
                 throw new Error('Supabase 未连接');
             }
 
@@ -2101,10 +2036,8 @@
 
                 if (error) throw error;
                 
-                // 更新成功后清除本地存储的旧信息
                 this.clearUserFromStorage();
                 
-                // 显示成功消息
                 if (this.game.ui && typeof this.game.ui.showFeedback === 'function') {
                     const lang = this.getI18n();
                     this.game.ui.showFeedback(
@@ -2128,7 +2061,7 @@
          * 获取当前会话
          */
         async getSession() {
-            if (!this.supabase || !this.game.state.supabaseReady) {
+            if (!this.supabase || !this.game?.state?.supabaseReady) {
                 return null;
             }
 
@@ -2191,17 +2124,16 @@
                 this.authStateListener = null;
             }
             
-            if (this.storageListener) {
-                global.removeEventListener('storage', this.storageListener);
-                this.storageListener = null;
+            if (this.autoFixTimer) {
+                clearTimeout(this.autoFixTimer);
+                this.autoFixTimer = null;
             }
             
             this.supabase = null;
             
-            if (this.game.state) {
+            if (this.game?.state) {
                 this.game.state.supabase = null;
                 this.game.state.supabaseReady = false;
-                // 不清空 currentUser，让UI可以显示最后状态
             }
             
             this.isInitialized = false;
@@ -2222,5 +2154,8 @@
     } else {
         global.AuthManager = AuthManager;
     }
+
+    // 注意：不再添加全局自动修复，避免污染全局
+    // 修复逻辑已在类内部实现
 
 })(typeof window !== 'undefined' ? window : global);
