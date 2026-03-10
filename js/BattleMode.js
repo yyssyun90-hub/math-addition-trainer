@@ -1,12 +1,12 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本：8.2.1 (终极完美版)
+ * 版本：8.2.5 (终极完美版)
  * 更新说明：
- * - 修复 quickMatch 中 auth 为 null 的错误
- * - 优化 waitForAuthReady 方法，完善安全检查
- * - 修复 delayedAuthCheck 重试逻辑
- * - 添加版本迁移支持
+ * - 修复所有自查发现的问题
  * - 完善资源清理机制
+ * - 优化错误处理
+ * - 增强代码健壮性
+ * - 完善版本迁移
  * ============================================================
  */
 
@@ -17,7 +17,7 @@ class BattleMode {
         this.offlineMode = false;
         this.pendingClicks = [];
         this.maxQueueSize = 20;
-        this.activeSubscriptions = new Set();
+        this.activeSubscriptions = new Map(); // 改为 Map 存储订阅信息
         this._wrappedMethods = new WeakMap();
         this._lastCacheVersion = 0;
         this.lastZoomWarningTime = 0;
@@ -25,7 +25,11 @@ class BattleMode {
         this.cardTemplate = null;
         this.subscriptionCheckTimer = null;
         this.initRetryTimer = null;
-        this.authCheckTimer = null;
+        this.matchRetryCount = 0;
+        this.isMatching = false;
+        this.updateLayoutHandler = null;
+        this.keydownHandler = null;
+        this.aiCooldownTimer = null; // 新增：AI冷却定时器
         
         this.room = {
             roomCode: null,
@@ -138,7 +142,7 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '8.2.1',
+            STORAGE_VERSION: '8.2.5',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
@@ -151,7 +155,9 @@ class BattleMode {
             SUBSCRIPTION_CHECK_INTERVAL: 5000,
             INIT_RETRY_DELAY: 1000,
             MAX_INIT_RETRIES: 3,
-            AUTH_WAIT_TIMEOUT: 3000
+            AUTH_WAIT_TIMEOUT: 3000,
+            MAX_MATCH_RETRIES: 3,
+            AI_COOLDOWN_TIME: 2000
         };
 
         this.setupPromiseErrorHandler();
@@ -195,22 +201,28 @@ class BattleMode {
         return false;
     }
 
-    setupRealtimeSubscription() {
+    async setupRealtimeSubscription() {
         if (!this.isSupabaseAvailable()) {
             console.log('Supabase不可用，跳过实时订阅');
             return false;
         }
         
+        // 保存当前频道引用
+        const currentChannel = this.room.channel;
+        
         try {
-            if (this.room.channel) {
-                this.room.channel.unsubscribe();
-                this.room.channel = null;
+            // 先取消现有订阅
+            if (currentChannel) {
+                await currentChannel.unsubscribe();
+                if (this.room.channel === currentChannel) {
+                    this.room.channel = null;
+                }
             }
             
-            this.room.channel = this.game.state.supabase
+            const newChannel = this.game.state.supabase
                 .channel('battle-presence')
                 .on('presence', { event: 'sync' }, () => {
-                    const presenceState = this.room.channel.presenceState();
+                    const presenceState = newChannel.presenceState();
                     console.log('当前在线玩家:', presenceState);
                     this.updateMatchQueueFromPresence(presenceState);
                 })
@@ -223,21 +235,26 @@ class BattleMode {
                     this.handlePlayerLeft(leftPresences);
                 });
             
-            this.room.channel.subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log('实时订阅成功');
-                    if (this.game.state.currentUser) {
-                        await this.room.channel.track({
-                            user_id: this.game.state.currentUser.id,
-                            user_name: this.game.state.currentUser.name,
-                            status: 'idle',
-                            online_at: new Date().toISOString()
-                        });
+            // 只有在没有新频道的情况下才设置
+            if (!this.room.channel) {
+                this.room.channel = newChannel;
+                
+                this.room.channel.subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('实时订阅成功');
+                        if (this.game.state.currentUser) {
+                            await this.room.channel.track({
+                                user_id: this.game.state.currentUser.id,
+                                user_name: this.game.state.currentUser.name,
+                                status: 'idle',
+                                online_at: new Date().toISOString()
+                            });
+                        }
+                    } else {
+                        console.warn('实时订阅失败:', status);
                     }
-                } else {
-                    console.warn('实时订阅失败:', status);
-                }
-            });
+                });
+            }
             
             return true;
         } catch (error) {
@@ -247,6 +264,12 @@ class BattleMode {
     }
 
     updateMatchQueueFromPresence(presenceState) {
+        // 保存当前游戏状态
+        const gameActive = this.room.gameActive;
+        if (!gameActive) {
+            return;
+        }
+
         const players = [];
         Object.values(presenceState).forEach(presences => {
             presences.forEach(presence => {
@@ -355,26 +378,75 @@ class BattleMode {
     }
 
     /**
-     * 等待 auth 模块就绪
+     * 等待 auth 模块就绪 - 增强版
      */
     async waitForAuthReady() {
         const startTime = Date.now();
         
-        while (!this.game?.auth || 
-               typeof this.game.auth.isLoggedIn !== 'function' ||
-               typeof this.game.auth.showAuthModal !== 'function') {
+        while (true) {
             if (Date.now() - startTime > this.constants.AUTH_WAIT_TIMEOUT) {
                 console.log('等待 auth 超时');
                 return false;
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
+
+            if (!this.game) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                continue;
+            }
+
+            if (!this.game.auth) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                continue;
+            }
+
+            if (typeof this.game.auth.isLoggedIn !== 'function' ||
+                typeof this.game.auth.showAuthModal !== 'function') {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                continue;
+            }
+
+            return true;
+        }
+    }
+
+    /**
+     * 确保 game 对象存在 - 增强版
+     */
+    ensureGameObject() {
+        if (!this.game) {
+            console.log('game 对象不存在，尝试从 window.game 获取');
+            if (window.game) {
+                this.game = window.game;
+                console.log('成功从 window.game 获取 game 对象');
+                
+                if (!this.game.state) {
+                    console.warn('game.state 不存在');
+                    return false;
+                }
+                if (!this.game.auth) {
+                    console.warn('game.auth 不存在');
+                    return false;
+                }
+                return true;
+            } else {
+                console.error('无法从 window.game 获取 game 对象');
+                return false;
+            }
         }
         
+        if (!this.game.state) {
+            console.warn('game.state 不存在');
+            return false;
+        }
+        if (!this.game.auth) {
+            console.warn('game.auth 不存在');
+            return false;
+        }
         return true;
     }
 
     setupResponsiveLayout() {
-        const updateLayout = () => {
+        this.updateLayoutHandler = () => {
             const width = window.innerWidth;
             const battleContainer = document.querySelector('.battle-container');
             if (!battleContainer) return;
@@ -391,8 +463,8 @@ class BattleMode {
             }
         };
 
-        window.addEventListener('resize', updateLayout);
-        updateLayout();
+        window.addEventListener('resize', this.updateLayoutHandler);
+        this.updateLayoutHandler();
     }
 
     async setupSupabaseFunctions() {
@@ -527,6 +599,11 @@ class BattleMode {
         if (this.aiResponseTimer) {
             clearTimeout(this.aiResponseTimer);
             this.aiResponseTimer = null;
+        }
+        
+        if (this.aiCooldownTimer) {
+            clearTimeout(this.aiCooldownTimer);
+            this.aiCooldownTimer = null;
         }
         
         this.aiResponsePending = false;
@@ -669,6 +746,20 @@ class BattleMode {
                 margin: 0 auto;
                 padding: 5px;
                 overflow-x: hidden;
+            }
+
+            .battle-modal {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                backdrop-filter: blur(8px);
+                z-index: 4000;
+                display: none;
+                justify-content: center;
+                align-items: center;
             }
 
             #battle-grid {
@@ -1033,11 +1124,18 @@ class BattleMode {
                 border-radius: 12px;
                 padding: 6px;
                 min-height: 80px;
-                max-height: 120px;
+                max-height: 200px;
                 overflow-y: auto;
                 border: 2px solid #fad1db;
                 margin-bottom: 6px;
                 -webkit-overflow-scrolling: touch;
+            }
+
+            @media (max-width: 768px) {
+                .chat-messages {
+                    max-height: 150px;
+                    min-height: 100px;
+                }
             }
 
             .chat-messages::-webkit-scrollbar {
@@ -1492,6 +1590,15 @@ class BattleMode {
                 battleGrid.removeEventListener('contextmenu', this.gridContextHandler);
             }
         }
+
+        if (this.updateLayoutHandler) {
+            window.removeEventListener('resize', this.updateLayoutHandler);
+            this.updateLayoutHandler = null;
+        }
+        if (this.keydownHandler) {
+            document.removeEventListener('keydown', this.keydownHandler);
+            this.keydownHandler = null;
+        }
     }
 
     bindEvents() {
@@ -1561,6 +1668,18 @@ class BattleMode {
             cancelJoin.addEventListener('click', this.cancelJoinHandler);
         }
 
+        const continueWaitingBtn = document.getElementById('continue-waiting-btn');
+        if (continueWaitingBtn) {
+            this.continueWaitingHandler = () => this.continueWaiting();
+            continueWaitingBtn.addEventListener('click', this.continueWaitingHandler);
+        }
+
+        const playWithAIBtn = document.getElementById('play-with-ai-btn');
+        if (playWithAIBtn) {
+            this.playWithAIHandler = () => this.startAIBattle();
+            playWithAIBtn.addEventListener('click', this.playWithAIHandler);
+        }
+
         const battleGrid = document.getElementById('battle-grid');
         if (battleGrid) {
             this.gridClickHandler = (e) => this.handleBattleCardClick(e);
@@ -1579,6 +1698,23 @@ class BattleMode {
             battleGrid.addEventListener('click', this.gridClickHandler);
             battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
             battleGrid.addEventListener('contextmenu', this.gridContextHandler);
+        }
+
+        this.keydownHandler = (e) => this.handleKeydown(e);
+        document.addEventListener('keydown', this.keydownHandler);
+    }
+
+    handleKeydown(e) {
+        if (e.key === 'Escape') {
+            if (this.game?.ui) {
+                this.game.ui.closeModal('auth-modal');
+                this.game.ui.closeModal('game-over-modal');
+                this.game.ui.closeModal('tutorial-modal');
+                this.game.ui.closeModal('tournament-modal');
+                this.game.ui.closeModal('battle-modal');
+                this.game.ui.closeModal('join-modal');
+                this.game.ui.closeModal('create-tournament-modal');
+            }
         }
     }
 
@@ -1675,6 +1811,12 @@ class BattleMode {
         };
         
         window.addEventListener('popstate', this.popStateHandler);
+
+        window.addEventListener('load', () => {
+            if (this.room.gameActive) {
+                this.ensureRealtimeSubscription();
+            }
+        });
     }
 
     initBroadcastChannel() {
@@ -1870,17 +2012,21 @@ class BattleMode {
                 return;
             }
 
+            let isResolved = false;
             const timeoutId = setTimeout(() => {
-                const index = semaphore.queue.indexOf(tryAcquire);
-                if (index > -1) {
-                    semaphore.queue.splice(index, 1);
+                if (!isResolved) {
+                    const index = semaphore.queue.indexOf(tryAcquire);
+                    if (index > -1) {
+                        semaphore.queue.splice(index, 1);
+                    }
+                    reject(new Error(`获取信号量超时: ${name}`));
                 }
-                reject(new Error(`获取信号量超时: ${name}`));
             }, timeout);
 
             const tryAcquire = () => {
                 if (!semaphore.locked) {
                     semaphore.locked = true;
+                    isResolved = true;
                     clearTimeout(timeoutId);
                     resolve();
                 } else {
@@ -2125,16 +2271,41 @@ class BattleMode {
      * 快速匹配 - 终极修复版
      */
     async quickMatch() {
+        if (this.isMatching) {
+            console.log('已经在匹配中，请稍候');
+            this.showFeedback('正在匹配中，请稍候', '#ffa500');
+            return;
+        }
+
         try {
             await this.acquireSemaphore('match');
+            this.isMatching = true;
             
             console.log('开始快速匹配');
             
-            if (!this.game) {
-                console.error('game 对象不存在');
-                this.showFeedback('游戏初始化中，请稍后', '#ffa500');
+            if (!this.ensureGameObject()) {
+                console.error('无法获取 game 对象');
+                
+                if (this.matchRetryCount < this.constants.MAX_MATCH_RETRIES) {
+                    this.matchRetryCount++;
+                    console.log(`重试匹配 (${this.matchRetryCount}/${this.constants.MAX_MATCH_RETRIES})`);
+                    this.showFeedback('游戏初始化中，请稍后', '#ffa500');
+                    
+                    setTimeout(() => {
+                        if (this.isMatching) {
+                            this.releaseSemaphore('match');
+                            this.isMatching = false;
+                        }
+                        this.quickMatch();
+                    }, 2000);
+                } else {
+                    this.showFeedback('游戏初始化失败，请刷新页面', '#ff4444');
+                    this.matchRetryCount = 0;
+                }
                 return;
             }
+
+            this.matchRetryCount = 0;
 
             const authReady = await this.waitForAuthReady();
             if (!authReady) {
@@ -2161,7 +2332,7 @@ class BattleMode {
             }
 
             if (!this.room.channel || this.room.channel.state !== 'joined') {
-                const subscribed = this.setupRealtimeSubscription();
+                const subscribed = await this.setupRealtimeSubscription();
                 if (!subscribed) {
                     this.showFeedback('无法连接到匹配服务器', '#ff4444');
                     return;
@@ -2223,6 +2394,7 @@ class BattleMode {
             this.showFeedback('匹配失败，请重试', '#ff4444');
         } finally {
             this.releaseSemaphore('match');
+            this.isMatching = false;
         }
     }
 
@@ -2665,11 +2837,15 @@ class BattleMode {
             const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
             
             if (this.aiGlobalRetryCount > 5) {
-                console.warn('AI多次失败，重置网格');
-                this.refreshBattleGrid();
-                this.generateBattleTarget();
+                console.warn('AI多次失败，暂停一下再试');
                 this.aiGlobalRetryCount = 0;
-                this.scheduleAIMove();
+                if (this.aiCooldownTimer) {
+                    clearTimeout(this.aiCooldownTimer);
+                }
+                this.aiCooldownTimer = setTimeout(() => {
+                    this.aiCooldownTimer = null;
+                    this.scheduleAIMove();
+                }, this.constants.AI_COOLDOWN_TIME);
                 return;
             }
             
@@ -2718,6 +2894,14 @@ class BattleMode {
     }
 
     selectAIMove(cards, target) {
+        if (!cards || cards.length === 0) {
+            return null;
+        }
+
+        if (cards.length === 1) {
+            return null;
+        }
+
         let move = null;
         
         if (this.room.aiDifficulty === 'easy') {
@@ -2742,11 +2926,15 @@ class BattleMode {
         if (!move && cards.length >= 2) {
             const index1 = Math.floor(Math.random() * cards.length);
             let index2;
+            let attempts = 0;
+            const maxAttempts = 20;
+            
             do {
                 index2 = Math.floor(Math.random() * cards.length);
-            } while (index2 === index1);
+                attempts++;
+            } while (index2 === index1 && cards.length > 1 && attempts < maxAttempts);
             
-            if (cards[index1] && cards[index2]) {
+            if (index2 !== index1 && cards[index1] && cards[index2]) {
                 move = [cards[index1], cards[index2]];
             }
         }
@@ -2967,9 +3155,11 @@ class BattleMode {
     }
 
     limitChatMessages(chat) {
+        const fragment = document.createDocumentFragment();
         while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
-            chat.removeChild(chat.children[0]);
+            fragment.appendChild(chat.children[0]);
         }
+        // fragment 会被自动垃圾回收
     }
 
     checkGridHasValidCombination() {
@@ -3343,11 +3533,15 @@ class BattleMode {
         
         const index1 = Math.floor(Math.random() * cards.length);
         let index2;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
         do {
             index2 = Math.floor(Math.random() * cards.length);
-        } while (index2 === index1 && cards.length > 1);
+            attempts++;
+        } while (index2 === index1 && cards.length > 1 && attempts < maxAttempts);
         
-        if (index1 === index2) {
+        if (index1 === index2 || !cards[index1] || !cards[index2]) {
             this.startLocalPolling();
             return;
         }
@@ -3433,6 +3627,8 @@ class BattleMode {
                 targetNumber: document.getElementById('battle-target-number')?.textContent || '0',
                 gridCards: this.saveGridState(),
                 chatMessages: this.saveChatState(),
+                matchRetryCount: this.matchRetryCount,
+                isMatching: this.isMatching,
                 timestamp: Date.now()
             };
             
@@ -3501,6 +3697,8 @@ class BattleMode {
             this.room.myTurn = state.myTurn;
             this.room.gameActive = state.gameActive;
             this.offlineMode = state.offlineMode || false;
+            this.matchRetryCount = state.matchRetryCount || 0;
+            this.isMatching = state.isMatching || false;
             
             this.restoreUIFromState(state);
             
@@ -3535,6 +3733,34 @@ class BattleMode {
             return {
                 ...oldState,
                 version: '8.2.1',
+            };
+        }
+        if (oldState.version === '8.2.1') {
+            return {
+                ...oldState,
+                version: '8.2.2',
+            };
+        }
+        if (oldState.version === '8.2.2') {
+            return {
+                ...oldState,
+                version: '8.2.3',
+            };
+        }
+        if (oldState.version === '8.2.3') {
+            return {
+                ...oldState,
+                version: '8.2.4',
+                matchRetryCount: oldState.matchRetryCount || 0,
+                isMatching: oldState.isMatching || false
+            };
+        }
+        if (oldState.version === '8.2.4') {
+            return {
+                ...oldState,
+                version: '8.2.5',
+                matchRetryCount: oldState.matchRetryCount || 0,
+                isMatching: oldState.isMatching || false
             };
         }
         return null;
@@ -3823,7 +4049,7 @@ class BattleMode {
             this.room.subscriptionId = null;
         }
 
-        this.activeSubscriptions.add(subscriptionKey);
+        this.activeSubscriptions.set(subscriptionKey, true);
 
         try {
             this.room.channel = this.game.state.supabase
@@ -4240,7 +4466,13 @@ class BattleMode {
     async checkBattleMatch() {
         const [card1, card2] = this.room.selectedCards;
         
-        if (!card1 || !card2 || !card1.isConnected || !card2.isConnected) {
+        if (!card1 || !card2) {
+            this.room.selectedCards = [];
+            return;
+        }
+
+        if (!card1.isConnected || !card2.isConnected) {
+            console.log('卡片已被移除');
             this.room.selectedCards = [];
             return;
         }
@@ -4263,7 +4495,8 @@ class BattleMode {
         
         const isCorrect = sum === target;
         const timerText = document.getElementById('turn-timer')?.textContent || `${this.constants.ROUND_TIME}s`;
-        const roundTime = this.constants.ROUND_TIME - parseInt(timerText.replace('s', ''));
+        const timerValue = timerText ? parseInt(timerText.replace('s', '')) : this.constants.ROUND_TIME;
+        const roundTime = Math.max(0, this.constants.ROUND_TIME - timerValue);
 
         try {
             if (!this.room.opponentIsAI && this.isSupabaseAvailable()) {
@@ -4457,6 +4690,10 @@ class BattleMode {
     }
 
     async endTurn() {
+        if (!this.room.gameActive) {
+            return;
+        }
+
         if (this.endTurnInProgress) return;
         this.endTurnInProgress = true;
         
@@ -4482,6 +4719,10 @@ class BattleMode {
                 return;
             }
             
+            if (!this.room.battleId || !this.room.gameActive) {
+                return;
+            }
+
             const { data: battle, error } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .select('player1_id, player2_id')
@@ -4859,24 +5100,30 @@ class BattleMode {
         const displayMessage = message.message.length > 100 
             ? message.message.substring(0, 100) + '...' 
             : message.message;
+        const safeMessage = displayMessage || '';
         
         if (message.player_id === 'system') {
             msgDiv.className = 'message system';
-            msgDiv.textContent = displayMessage;
+            msgDiv.textContent = safeMessage;
         } else if (message.player_id === this.game.state?.currentUser?.id) {
             msgDiv.className = 'message self';
             const senderSpan = document.createElement('span');
             senderSpan.className = 'message-sender';
             senderSpan.textContent = '你:';
             msgDiv.appendChild(senderSpan);
-            msgDiv.appendChild(document.createTextNode(' ' + displayMessage));
+            
+            const textNode = document.createTextNode(' ' + safeMessage);
+            msgDiv.appendChild(textNode);
         } else {
             msgDiv.className = 'message opponent';
             const senderSpan = document.createElement('span');
             senderSpan.className = 'message-sender';
-            senderSpan.textContent = (message.player_name || '对手') + ':';
+            const senderName = (message.player_name || '对手') + ':';
+            senderSpan.textContent = senderName;
             msgDiv.appendChild(senderSpan);
-            msgDiv.appendChild(document.createTextNode(' ' + displayMessage));
+            
+            const textNode = document.createTextNode(' ' + safeMessage);
+            msgDiv.appendChild(textNode);
         }
 
         fragment.appendChild(msgDiv);
@@ -4940,7 +5187,13 @@ class BattleMode {
             
             if (this.observers) {
                 Object.values(this.observers).forEach(observer => {
-                    if (observer) observer.disconnect();
+                    if (observer) {
+                        if (observer.unobserve) {
+                            const battleContainer = document.querySelector('.battle-container');
+                            if (battleContainer) observer.unobserve(battleContainer);
+                        }
+                        observer.disconnect();
+                    }
                 });
             }
             
@@ -4959,6 +5212,7 @@ class BattleMode {
         const timers = [
             this.aiMoveTimer,
             this.aiResponseTimer,
+            this.aiCooldownTimer,
             this.localPollingTimer,
             this.matchTimeoutId,
             this.longWaitTimer,
@@ -4975,8 +5229,7 @@ class BattleMode {
             this.soundProcessTimer,
             this.zoomCheckThrottle,
             this.subscriptionCheckTimer,
-            this.initRetryTimer,
-            this.authCheckTimer
+            this.initRetryTimer
         ];
         
         timers.forEach(timer => {
@@ -4990,6 +5243,7 @@ class BattleMode {
         
         this.aiMoveTimer = null;
         this.aiResponseTimer = null;
+        this.aiCooldownTimer = null;
         this.localPollingTimer = null;
         this.matchTimeoutId = null;
         this.longWaitTimer = null;
@@ -5007,7 +5261,6 @@ class BattleMode {
         this.zoomCheckThrottle = null;
         this.subscriptionCheckTimer = null;
         this.initRetryTimer = null;
-        this.authCheckTimer = null;
     }
 
     hideBattleUI() {
@@ -5044,6 +5297,7 @@ class BattleMode {
         return [
             this.aiMoveTimer,
             this.aiResponseTimer,
+            this.aiCooldownTimer,
             this.localPollingTimer,
             this.matchTimeoutId,
             this.longWaitTimer,
@@ -5060,8 +5314,7 @@ class BattleMode {
             this.soundProcessTimer,
             this.zoomCheckThrottle,
             this.subscriptionCheckTimer,
-            this.initRetryTimer,
-            this.authCheckTimer
+            this.initRetryTimer
         ].filter(Boolean).length;
     }
 
@@ -5105,15 +5358,28 @@ class BattleMode {
         this.isRefreshing = false;
         this.offlineMode = false;
         this._lastCacheVersion = 0;
+        this.matchRetryCount = 0;
+        this.isMatching = false;
         
         Object.keys(this.semaphores).forEach(key => {
             this.semaphores[key] = { locked: false, queue: [], maxLength: this.semaphores[key].maxLength };
         });
         
-        this.activeSubscriptions.clear();
+        if (this.activeSubscriptions) {
+            this.activeSubscriptions.forEach((value, subKey) => {
+                const channel = this.game?.state?.supabase?.getChannel(subKey);
+                if (channel) {
+                    channel.unsubscribe().catch(() => {});
+                }
+            });
+            this.activeSubscriptions.clear();
+        }
+        
         this.cachedElements = null;
         this.cacheVersion = 0;
         this.clearSoundQueue();
+        
+        this._wrappedMethods = new WeakMap();
     }
 
     async rematch() {
@@ -5156,11 +5422,6 @@ class BattleMode {
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
             this.initRetryTimer = null;
-        }
-
-        if (this.authCheckTimer) {
-            clearTimeout(this.authCheckTimer);
-            this.authCheckTimer = null;
         }
         
         const beforeCleanup = {
@@ -5208,6 +5469,10 @@ class BattleMode {
         if (this.observers) {
             Object.keys(this.observers).forEach(key => {
                 if (this.observers[key]) {
+                    const battleContainer = document.querySelector('.battle-container');
+                    if (battleContainer && this.observers[key].unobserve) {
+                        this.observers[key].unobserve(battleContainer);
+                    }
                     this.observers[key].disconnect();
                     this.observers[key] = null;
                 }
@@ -5297,7 +5562,7 @@ class BattleMode {
         
         this.game = null;
         this.memoryStorage = null;
-        this._wrappedMethods = null;
+        this._wrappedMethods = new WeakMap();
         
         console.log('BattleMode 实例销毁完成');
     }
