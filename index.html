@@ -1527,6 +1527,15 @@
         }
     </style>
     
+    <!-- 全局变量声明 -->
+    <script>
+        window.currentUser = null;
+        window.BattleMode = null;
+        window.TournamentMode = null;
+        window.game = null;
+        window.supabaseClient = null;
+    </script>
+    
     <!-- 加载 Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
@@ -2223,7 +2232,7 @@
         });
     </script>
 
-    <!-- ===== 统一按钮点击处理 ===== -->
+    <!-- ===== 统一按钮点击处理（修复版）===== -->
     <script>
         // 为所有需要登录的按钮添加点击处理
         document.addEventListener('click', function(e) {
@@ -2255,24 +2264,30 @@
             
             if (action === 'quick-match') {
                 // 触发快速匹配 - 使用 BattleMode
-                if (window.BattleMode && typeof window.BattleMode.quickMatch === 'function') {
+                if (window.BattleMode) {
+                    console.log('调用 BattleMode.quickMatch()');
+                    
+                    // 确保 game 对象存在
+                    if (!window.game && window.BattleMode.game) {
+                        window.game = window.BattleMode.game;
+                    }
+                    
+                    // 调用 quickMatch
                     window.BattleMode.quickMatch();
-                } else if (window.BattleMode && typeof window.BattleMode.showQuickMatch === 'function') {
-                    window.BattleMode.showQuickMatch();
                 } else {
-                    // 如果 BattleMode 不存在，显示提示
-                    console.warn('BattleMode 未加载，尝试显示对战模态框');
-                    document.getElementById('battle-modal').style.display = 'flex';
+                    console.error('BattleMode 未找到');
+                    alert('快速匹配功能暂不可用，请刷新页面重试');
                 }
             } else if (action === 'tournament') {
                 // 触发锦标赛 - 使用 TournamentMode
-                if (window.TournamentMode && typeof window.TournamentMode.showLobby === 'function') {
-                    window.TournamentMode.showLobby();
-                } else if (window.TournamentMode && typeof window.TournamentMode.openTournamentLobby === 'function') {
-                    window.TournamentMode.openTournamentLobby();
+                if (window.TournamentMode) {
+                    console.log('调用 TournamentMode.showLobby()');
+                    if (typeof window.TournamentMode.showLobby === 'function') {
+                        window.TournamentMode.showLobby();
+                    } else {
+                        document.getElementById('tournament-modal').style.display = 'flex';
+                    }
                 } else {
-                    // 如果 TournamentMode 不存在，直接显示模态框
-                    console.warn('TournamentMode 未加载，直接显示锦标赛模态框');
                     document.getElementById('tournament-modal').style.display = 'flex';
                 }
             } else if (action === 'join-room') {
