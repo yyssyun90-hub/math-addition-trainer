@@ -280,7 +280,48 @@
             genericError: '操作失败，请稍后重试',
             showPassword: '显示密码',
             hidePassword: '隐藏密码',
-            emailVerificationRequired: '请查收邮件验证邮箱'
+            emailVerificationRequired: '请查收邮件验证邮箱',
+            
+            // ===== 新增：登录/注册模态框 =====
+            authTitle: '登录',
+            emailPlaceholder: '请输入邮箱',
+            passwordPlaceholder: '请输入密码',
+            submit: '提交',
+            
+            // ===== 新增：加入房间模态框 =====
+            enterRoomCode: '请输入6位房间码',
+            join: '加入',
+            cancel: '取消',
+            
+            // ===== 新增：锦标赛模态框 =====
+            lobby: '大厅',
+            bracket: '赛程表',
+            history: '历史',
+            ranking: '排名',
+            tournamentName: '锦标赛名称',
+            enterTournamentName: '例如：糖果杯2026',
+            playerCount: '参赛人数',
+            gameMode: '比赛模式',
+            entryFee: '报名费',
+            enterEntryFee: '输入报名费',
+            create: '创建',
+            
+            // ===== 新增：对战模态框 =====
+            findingOpponent: '正在寻找对手...',
+            roomCode: '房间码',
+            copy: '复制',
+            you: '你',
+            waiting: '等待中...',
+            vs: 'VS',
+            enterMessage: '输入消息...',
+            close: '关闭',
+            
+            // ===== 新增：通用按钮 =====
+            confirm: '确认',
+            back: '返回',
+            next: '下一步',
+            previous: '上一步',
+            done: '完成'
         },
         'en': {
             gameTitle: 'Candy Math Match',
@@ -386,7 +427,48 @@
             genericError: 'Operation failed, please try again',
             showPassword: 'Show password',
             hidePassword: 'Hide password',
-            emailVerificationRequired: 'Please check your email to verify your account'
+            emailVerificationRequired: 'Please check your email to verify your account',
+            
+            // ===== New: Login/Register Modal =====
+            authTitle: 'Login',
+            emailPlaceholder: 'Enter email',
+            passwordPlaceholder: 'Enter password',
+            submit: 'Submit',
+            
+            // ===== New: Join Room Modal =====
+            enterRoomCode: 'Enter 6-digit room code',
+            join: 'Join',
+            cancel: 'Cancel',
+            
+            // ===== New: Tournament Modal =====
+            lobby: 'Lobby',
+            bracket: 'Bracket',
+            history: 'History',
+            ranking: 'Ranking',
+            tournamentName: 'Tournament Name',
+            enterTournamentName: 'e.g., Candy Cup 2026',
+            playerCount: 'Players',
+            gameMode: 'Game Mode',
+            entryFee: 'Entry Fee',
+            enterEntryFee: 'Enter fee',
+            create: 'Create',
+            
+            // ===== New: Battle Modal =====
+            findingOpponent: 'Finding opponent...',
+            roomCode: 'Room Code',
+            copy: 'Copy',
+            you: 'You',
+            waiting: 'Waiting...',
+            vs: 'VS',
+            enterMessage: 'Enter message...',
+            close: 'Close',
+            
+            // ===== New: Common Buttons =====
+            confirm: 'Confirm',
+            back: 'Back',
+            next: 'Next',
+            previous: 'Previous',
+            done: 'Done'
         }
     };
 
