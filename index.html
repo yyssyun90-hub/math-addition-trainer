@@ -1672,17 +1672,24 @@
         </div>
     </div>
 
-    <!-- 登录模态框 -->
+    <!-- 登录模态框 - 修复忘记密码功能 -->
     <div class="auth-modal" id="auth-modal">
         <div class="auth-card">
             <button class="close-btn" id="close-auth">×</button>
             <div class="auth-title" id="auth-title">🔐 登录</div>
             <input type="email" class="auth-input" id="auth-email" placeholder="邮箱">
             <input type="password" class="auth-input" id="auth-password" placeholder="密码">
-            <div id="forgot-password-link" style="margin-top: 5px; text-align: right; padding-right: 10px;"></div>
+            
+            <!-- 忘记密码链接 -->
+            <div id="forgot-password-link" style="margin-top: 5px; text-align: right; padding-right: 10px;">
+                <a href="#" id="forgot-password-btn" style="color: #ff69b4; text-decoration: none; font-size: 0.9rem;">忘记密码？</a>
+            </div>
+            
             <div class="auth-error" id="auth-error"></div>
             <button class="start-btn auth-submit-btn" id="auth-submit">登录</button>
-            <div class="auth-switch" id="auth-switch"></div>
+            <div class="auth-switch" id="auth-switch">
+                <span id="switch-to-register">没有账号？立即注册</span>
+            </div>
         </div>
     </div>
 
@@ -2179,6 +2186,43 @@
     <script src="js/BattleMode.js"></script>
     <script src="js/TournamentMode.js"></script>
 
+    <!-- ===== 忘记密码功能 ===== -->
+    <script>
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'forgot-password-btn' || e.target.closest('#forgot-password-btn')) {
+                e.preventDefault();
+                
+                const email = document.getElementById('auth-email')?.value;
+                const errorDiv = document.getElementById('auth-error');
+                
+                if (!email) {
+                    if (errorDiv) errorDiv.textContent = '请输入邮箱地址';
+                    return;
+                }
+                
+                if (errorDiv) errorDiv.textContent = '正在发送重置邮件...';
+                
+                if (!window.supabaseClient) {
+                    if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化';
+                    return;
+                }
+                
+                window.supabaseClient.auth.resetPasswordForEmail(email, {
+                    redirectTo: window.location.origin + '/reset-password.html'
+                }).then(({ data, error }) => {
+                    if (error) {
+                        if (errorDiv) errorDiv.textContent = error.message;
+                    } else {
+                        if (errorDiv) errorDiv.textContent = '重置密码邮件已发送，请查看邮箱';
+                        setTimeout(() => {
+                            document.getElementById('auth-modal').style.display = 'none';
+                        }, 3000);
+                    }
+                });
+            }
+        });
+    </script>
+
     <!-- ===== 统一按钮点击处理 ===== -->
     <script>
         // 为所有需要登录的按钮添加点击处理
@@ -2210,15 +2254,27 @@
             console.log('用户已登录，执行操作:', action);
             
             if (action === 'quick-match') {
-                // 触发快速匹配
+                // 触发快速匹配 - 使用 BattleMode
                 if (window.BattleMode && typeof window.BattleMode.quickMatch === 'function') {
                     window.BattleMode.quickMatch();
+                } else if (window.BattleMode && typeof window.BattleMode.showQuickMatch === 'function') {
+                    window.BattleMode.showQuickMatch();
                 } else {
-                    alert('快速匹配功能准备中');
+                    // 如果 BattleMode 不存在，显示提示
+                    console.warn('BattleMode 未加载，尝试显示对战模态框');
+                    document.getElementById('battle-modal').style.display = 'flex';
                 }
             } else if (action === 'tournament') {
-                // 显示锦标赛
-                document.getElementById('tournament-modal').style.display = 'flex';
+                // 触发锦标赛 - 使用 TournamentMode
+                if (window.TournamentMode && typeof window.TournamentMode.showLobby === 'function') {
+                    window.TournamentMode.showLobby();
+                } else if (window.TournamentMode && typeof window.TournamentMode.openTournamentLobby === 'function') {
+                    window.TournamentMode.openTournamentLobby();
+                } else {
+                    // 如果 TournamentMode 不存在，直接显示模态框
+                    console.warn('TournamentMode 未加载，直接显示锦标赛模态框');
+                    document.getElementById('tournament-modal').style.display = 'flex';
+                }
             } else if (action === 'join-room') {
                 // 显示加入房间
                 document.getElementById('join-modal').style.display = 'flex';
@@ -2280,16 +2336,27 @@
                             document.getElementById('auth-modal').style.display = 'flex';
                             document.getElementById('auth-title').textContent = '🔐 登录';
                             document.getElementById('auth-submit').textContent = '登录';
+                            document.getElementById('auth-error').textContent = '';
                         });
                         
                         document.getElementById('show-register-btn')?.addEventListener('click', () => {
                             document.getElementById('auth-modal').style.display = 'flex';
                             document.getElementById('auth-title').textContent = '📝 注册';
                             document.getElementById('auth-submit').textContent = '注册';
+                            document.getElementById('auth-error').textContent = '';
                         });
                     }
                 }
             }
+            
+            // 切换登录/注册模式
+            document.addEventListener('click', function(e) {
+                if (e.target.id === 'switch-to-register' || e.target.closest('#switch-to-register')) {
+                    document.getElementById('auth-title').textContent = '📝 注册';
+                    document.getElementById('auth-submit').textContent = '注册';
+                    document.getElementById('auth-error').textContent = '';
+                }
+            });
             
             // 每隔一段时间检查用户状态
             function checkUserStatus() {
