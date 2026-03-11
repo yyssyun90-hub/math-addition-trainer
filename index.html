@@ -1534,6 +1534,8 @@
         window.TournamentMode = null;
         window.game = null;
         window.supabaseClient = null;
+        window.battleModeInstance = null;
+        window.tournamentModeInstance = null;
     </script>
     
     <!-- 加载 Supabase -->
@@ -1604,7 +1606,7 @@
                 </button>
             </div>
 
-            <!-- 对战和锦标赛按钮 - 使用data-action属性 -->
+            <!-- 对战和锦标赛按钮 -->
             <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
                 <button class="candy-btn battle" id="quick-match-btn" data-action="quick-match">
                     ⚡ <span class="btn-text">快速匹配</span>
@@ -1681,19 +1683,16 @@
         </div>
     </div>
 
-    <!-- 登录模态框 - 修复忘记密码功能 -->
+    <!-- 登录模态框 -->
     <div class="auth-modal" id="auth-modal">
         <div class="auth-card">
             <button class="close-btn" id="close-auth">×</button>
             <div class="auth-title" id="auth-title">🔐 登录</div>
             <input type="email" class="auth-input" id="auth-email" placeholder="邮箱">
             <input type="password" class="auth-input" id="auth-password" placeholder="密码">
-            
-            <!-- 忘记密码链接 -->
             <div id="forgot-password-link" style="margin-top: 5px; text-align: right; padding-right: 10px;">
                 <a href="#" id="forgot-password-btn" style="color: #ff69b4; text-decoration: none; font-size: 0.9rem;">忘记密码？</a>
             </div>
-            
             <div class="auth-error" id="auth-error"></div>
             <button class="start-btn auth-submit-btn" id="auth-submit">登录</button>
             <div class="auth-switch" id="auth-switch">
@@ -2195,6 +2194,51 @@
     <script src="js/BattleMode.js"></script>
     <script src="js/TournamentMode.js"></script>
 
+    <!-- ===== 实例化 BattleMode 和 TournamentMode ===== -->
+    <script>
+        (function() {
+            console.log('正在实例化游戏模式...');
+            
+            // 等待 game 对象就绪
+            function initModes() {
+                if (!window.game) {
+                    console.log('等待 game 对象...');
+                    setTimeout(initModes, 100);
+                    return;
+                }
+                
+                console.log('game 对象已就绪，开始实例化');
+                
+                // 实例化 BattleMode
+                if (window.BattleMode && !window.battleModeInstance) {
+                    try {
+                        window.battleModeInstance = new window.BattleMode(window.game);
+                        console.log('BattleMode 实例化成功');
+                        
+                        // 初始化
+                        if (typeof window.battleModeInstance.init === 'function') {
+                            window.battleModeInstance.init();
+                        }
+                    } catch (e) {
+                        console.error('BattleMode 实例化失败:', e);
+                    }
+                }
+                
+                // 实例化 TournamentMode
+                if (window.TournamentMode && !window.tournamentModeInstance) {
+                    try {
+                        window.tournamentModeInstance = new window.TournamentMode(window.game);
+                        console.log('TournamentMode 实例化成功');
+                    } catch (e) {
+                        console.error('TournamentMode 实例化失败:', e);
+                    }
+                }
+            }
+            
+            setTimeout(initModes, 500);
+        })();
+    </script>
+
     <!-- ===== 忘记密码功能 ===== -->
     <script>
         document.addEventListener('click', function(e) {
@@ -2232,7 +2276,7 @@
         });
     </script>
 
-    <!-- ===== 统一按钮点击处理（修复版）===== -->
+    <!-- ===== 统一按钮点击处理（最终修复版）===== -->
     <script>
         // 为所有需要登录的按钮添加点击处理
         document.addEventListener('click', function(e) {
@@ -2263,27 +2307,47 @@
             console.log('用户已登录，执行操作:', action);
             
             if (action === 'quick-match') {
-                // 触发快速匹配 - 使用 BattleMode
-                if (window.BattleMode) {
-                    console.log('调用 BattleMode.quickMatch()');
-                    
-                    // 确保 game 对象存在
-                    if (!window.game && window.BattleMode.game) {
-                        window.game = window.BattleMode.game;
-                    }
-                    
-                    // 调用 quickMatch
-                    window.BattleMode.quickMatch();
+                // 确保 game.state.currentUser 也存在
+                if (window.game && window.game.state) {
+                    window.game.state.currentUser = window.currentUser;
+                }
+                
+                // 获取 battle 实例（支持两种变量名）
+                const battleInstance = window.battleModeInstance || window.battleMode;
+                
+                if (battleInstance) {
+                    console.log('调用 battleInstance.quickMatch()');
+                    battleInstance.quickMatch();
                 } else {
-                    console.error('BattleMode 未找到');
-                    alert('快速匹配功能暂不可用，请刷新页面重试');
+                    console.error('battleInstance 未找到');
+                    
+                    // 尝试重新实例化
+                    if (window.BattleMode && window.game) {
+                        try {
+                            const newInstance = new window.BattleMode(window.game);
+                            window.battleModeInstance = newInstance;
+                            window.battleMode = newInstance;
+                            newInstance.quickMatch();
+                        } catch (e) {
+                            alert('快速匹配功能初始化失败，请刷新页面重试');
+                        }
+                    } else {
+                        alert('快速匹配功能暂不可用，请刷新页面重试');
+                    }
                 }
             } else if (action === 'tournament') {
-                // 触发锦标赛 - 使用 TournamentMode
-                if (window.TournamentMode) {
-                    console.log('调用 TournamentMode.showLobby()');
-                    if (typeof window.TournamentMode.showLobby === 'function') {
-                        window.TournamentMode.showLobby();
+                // 确保 game.state.currentUser 也存在
+                if (window.game && window.game.state) {
+                    window.game.state.currentUser = window.currentUser;
+                }
+                
+                // 获取 tournament 实例
+                const tournamentInstance = window.tournamentModeInstance;
+                
+                if (tournamentInstance) {
+                    console.log('调用 tournamentInstance.showLobby()');
+                    if (typeof tournamentInstance.showLobby === 'function') {
+                        tournamentInstance.showLobby();
                     } else {
                         document.getElementById('tournament-modal').style.display = 'flex';
                     }
@@ -2297,14 +2361,20 @@
         });
     </script>
 
-    <!-- ===== 用户界面更新脚本 ===== -->
+    <!-- ===== 用户界面更新脚本（修复版）===== -->
     <script>
         (function() {
             console.log('初始化用户界面...');
             
-            // 更新用户界面
+            // 更新用户界面和 game.state
             function updateUI() {
                 if (window.currentUser) {
+                    // 确保 game.state.currentUser 也存在
+                    if (window.game && window.game.state) {
+                        window.game.state.currentUser = window.currentUser;
+                        console.log('已同步 game.state.currentUser');
+                    }
+                    
                     // 用户已登录
                     const userName = document.getElementById('user-name');
                     const userStatus = document.getElementById('user-status');
@@ -2326,10 +2396,16 @@
                             if (window.supabaseClient) {
                                 window.supabaseClient.auth.signOut().then(() => {
                                     window.currentUser = null;
+                                    if (window.game && window.game.state) {
+                                        window.game.state.currentUser = null;
+                                    }
                                     location.reload();
                                 });
                             } else {
                                 window.currentUser = null;
+                                if (window.game && window.game.state) {
+                                    window.game.state.currentUser = null;
+                                }
                                 location.reload();
                             }
                         });
@@ -2373,17 +2449,23 @@
                 }
             });
             
-            // 每隔一段时间检查用户状态
+            // 从 Supabase 获取用户状态并同步
             function checkUserStatus() {
-                if (window.supabaseClient && !window.currentUser) {
+                if (window.supabaseClient) {
                     window.supabaseClient.auth.getSession().then(({ data }) => {
                         if (data.session) {
                             window.currentUser = data.session.user;
+                            if (window.game && window.game.state) {
+                                window.game.state.currentUser = window.currentUser;
+                            }
+                            updateUI();
+                        } else {
                             updateUI();
                         }
                     });
+                } else {
+                    updateUI();
                 }
-                updateUI();
             }
             
             // 立即执行一次
@@ -2392,7 +2474,7 @@
         })();
     </script>
 
-    <!-- ===== 登录/注册处理脚本 ===== -->
+    <!-- ===== 登录/注册处理脚本（修复版）===== -->
     <script>
         document.addEventListener('click', function(e) {
             // 处理登录/注册提交
@@ -2427,6 +2509,12 @@
                         } else {
                             if (errorDiv) errorDiv.textContent = '登录成功！';
                             window.currentUser = data.user;
+                            
+                            // 同步到 game.state
+                            if (window.game && window.game.state) {
+                                window.game.state.currentUser = data.user;
+                            }
+                            
                             setTimeout(() => {
                                 document.getElementById('auth-modal').style.display = 'none';
                                 location.reload();
@@ -2443,6 +2531,13 @@
                             if (errorDiv) errorDiv.textContent = error.message;
                         } else {
                             if (errorDiv) errorDiv.textContent = '注册成功！请查看邮箱验证';
+                            window.currentUser = data.user;
+                            
+                            // 同步到 game.state
+                            if (window.game && window.game.state) {
+                                window.game.state.currentUser = data.user;
+                            }
+                            
                             setTimeout(() => {
                                 document.getElementById('auth-modal').style.display = 'none';
                             }, 2000);
