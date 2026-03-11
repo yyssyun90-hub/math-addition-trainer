@@ -22,7 +22,6 @@
             align-items: center;
             padding: clamp(8px, 2vw, 16px);
             -webkit-tap-highlight-color: transparent;
-            /* 修复滚动条问题 - 确保滚动条始终可见 */
             overflow-y: auto !important;
             overflow-x: hidden;
         }
@@ -46,7 +45,6 @@
             overflow: visible !important;
         }
 
-        /* ===== 用户信息栏 ===== */
         .user-bar {
             display: flex;
             justify-content: space-between;
@@ -143,7 +141,6 @@
             box-shadow: 0 clamp(1px, 0.3vw, 2px) 0 #8b008b;
         }
 
-        /* ===== 语言切换 ===== */
         .language-switch {
             position: absolute;
             top: clamp(10px, 2vw, 20px);
@@ -173,7 +170,6 @@
             box-shadow: 0 clamp(1px, 0.3vw, 2px) 0 #6c3483;
         }
 
-        /* ===== 头部 ===== */
         .header {
             text-align: center;
             margin-bottom: clamp(15px, 3vw, 25px);
@@ -211,7 +207,6 @@
             50% { transform: translateY(-15px) rotate(5deg); }
         }
 
-        /* ===== 游戏设置区域 ===== */
         .settings-panel {
             background: #fff5f5;
             border: 3px solid #ffb6c1;
@@ -314,7 +309,6 @@
             box-shadow: 0 clamp(2px, 0.5vw, 4px) 0 #8b008b;
         }
 
-        /* ===== 游戏信息卡片 ===== */
         .stats-panel {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -352,7 +346,6 @@
             text-shadow: 1px 1px 0 #ffff00;
         }
 
-        /* ===== 目标和 ===== */
         .target-box {
             background: radial-gradient(circle at 30% 30%, #ffd700, #ffa500, #ff8c00);
             width: clamp(100px, 25vw, 140px);
@@ -400,7 +393,6 @@
             text-shadow: 4px 4px 0 #ff4500;
         }
 
-        /* ===== 游戏网格 ===== */
         .game-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -475,7 +467,6 @@
             100% { transform: scale(0); opacity: 0; }
         }
 
-        /* ===== 控制按钮 ===== */
         .controls {
             display: flex;
             gap: clamp(8px, 1.5vw, 15px);
@@ -517,7 +508,6 @@
         .candy-btn.battle { background: linear-gradient(145deg, #e84342, #c0392b); }
         .candy-btn.tournament { background: linear-gradient(145deg, #f1c40f, #f39c12); }
 
-        /* ===== 反馈消息 ===== */
         .feedback {
             text-align: center;
             font-size: clamp(1.5rem, 5vw, 2.2rem);
@@ -528,7 +518,6 @@
             text-shadow: 2px 2px 0 white;
         }
 
-        /* ===== 游戏结束弹窗 ===== */
         .game-over-modal {
             position: fixed;
             top: 0;
@@ -610,7 +599,6 @@
             flex-wrap: wrap;
         }
 
-        /* ===== 登录模态框 ===== */
         .auth-modal {
             position: fixed;
             top: 0;
@@ -689,7 +677,6 @@
             margin-top: 10px;
         }
 
-        /* ===== 新手引导 - 纯图标版 ===== */
         .tutorial-modal {
             position: fixed;
             top: 0;
@@ -862,7 +849,6 @@
             50% { transform: scale(1.2); }
         }
 
-        /* ===== 音效控制 ===== */
         .sound-controls {
             position: fixed;
             bottom: 20px;
@@ -919,7 +905,6 @@
             cursor: pointer;
         }
 
-        /* ===== 锦标赛样式 ===== */
         .tournament-modal {
             position: fixed;
             top: 0;
@@ -1127,7 +1112,6 @@
             margin-top: 30px;
         }
 
-        /* ===== 对战样式 ===== */
         .battle-modal {
             position: fixed;
             top: 0;
@@ -1502,7 +1486,6 @@
             justify-content: center;
         }
 
-        /* ===== 触摸优化 ===== */
         @media (hover: none) and (pointer: coarse) {
             .nav-btn:hover,
             .demo-card:hover,
@@ -1543,8 +1526,10 @@
             }
         }
     </style>
+    
     <!-- 加载 Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <!-- Supabase 配置 -->
     <script id="supabase-config" type="application/json">
         {
@@ -1554,9 +1539,7 @@
     </script>
 </head>
 <body>
-    <!-- 页面结构完全保持不变 -->
     <div class="game-container">
-        <!-- 用户栏 -->
         <div class="user-bar">
             <div class="user-info" id="user-info" style="display: none;">
                 <div class="user-avatar" id="user-avatar">🍬</div>
@@ -1565,12 +1548,9 @@
                     <span class="user-status" id="user-status">离线模式</span>
                 </div>
             </div>
-            <div class="auth-buttons" id="auth-buttons">
-                <!-- 动态生成 -->
-            </div>
+            <div class="auth-buttons" id="auth-buttons"></div>
         </div>
 
-        <!-- 语言切换按钮 -->
         <div class="language-switch">
             <button class="lang-btn" id="lang-switch">
                 <span id="lang-icon">🇨🇳</span>
@@ -1578,7 +1558,6 @@
             </button>
         </div>
 
-        <!-- 头部 -->
         <div class="header">
             <div class="candy-row">
                 <span class="candy">🍭</span>
@@ -1595,7 +1574,6 @@
             </div>
         </div>
 
-        <!-- 游戏设置区域 -->
         <div class="settings-panel" id="settings-panel">
             <div class="mode-row">
                 <button class="mode-btn active" data-mode="challenge" id="mode-challenge">⚡ <span class="mode-text">挑战模式</span></button>
@@ -1617,21 +1595,20 @@
                 </button>
             </div>
 
-            <!-- 对战和锦标赛按钮 -->
+            <!-- 对战和锦标赛按钮 - 使用data-action属性 -->
             <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
-                <button class="candy-btn battle" id="quick-match-btn">
+                <button class="candy-btn battle" id="quick-match-btn" data-action="quick-match">
                     ⚡ <span class="btn-text">快速匹配</span>
                 </button>
-                <button class="candy-btn tournament" id="tournament-btn">
+                <button class="candy-btn tournament" id="tournament-btn" data-action="tournament">
                     🏆 <span class="btn-text">锦标赛</span>
                 </button>
-                <button class="candy-btn battle" id="join-room-btn">
+                <button class="candy-btn battle" id="join-room-btn" data-action="join-room">
                     🔑 <span class="btn-text">加入房间</span>
                 </button>
             </div>
         </div>
 
-        <!-- 游戏信息 (初始隐藏) -->
         <div id="game-area" style="display: none;">
             <div class="stats-panel">
                 <div class="stat-item">
@@ -1658,7 +1635,6 @@
             </div>
 
             <div class="game-grid" id="game-grid"></div>
-
             <div class="feedback" id="feedback"></div>
 
             <div class="controls">
@@ -1696,34 +1672,29 @@
         </div>
     </div>
 
-    <!-- 登录模态框 - 已添加忘记密码链接容器 -->
+    <!-- 登录模态框 -->
     <div class="auth-modal" id="auth-modal">
         <div class="auth-card">
             <button class="close-btn" id="close-auth">×</button>
             <div class="auth-title" id="auth-title">🔐 登录</div>
             <input type="email" class="auth-input" id="auth-email" placeholder="邮箱">
             <input type="password" class="auth-input" id="auth-password" placeholder="密码">
-            
-            <!-- 添加忘记密码链接容器 (新增) -->
             <div id="forgot-password-link" style="margin-top: 5px; text-align: right; padding-right: 10px;"></div>
-            
             <div class="auth-error" id="auth-error"></div>
             <button class="start-btn auth-submit-btn" id="auth-submit">登录</button>
             <div class="auth-switch" id="auth-switch"></div>
         </div>
     </div>
 
-    <!-- 新手引导 - 纯图标版 -->
+    <!-- 新手引导 -->
     <div class="tutorial-modal" id="tutorial-modal">
         <div class="tutorial-card">
             <button class="close-btn" id="close-tutorial">×</button>
-            
             <div class="step-indicator" id="step-indicator">
                 <span class="step-dot active"></span>
                 <span class="step-dot"></span>
                 <span class="step-dot"></span>
             </div>
-
             <div class="step-container" id="step-container">
                 <div class="step active" data-step="1">
                     <div class="demo-row">
@@ -1738,11 +1709,8 @@
                         <span>👆</span>
                         <span>🎯</span>
                     </div>
-                    <div class="step-hint" id="step1-hint">
-                        ⭐ 选两张卡片，加起来等于 🎯
-                    </div>
+                    <div class="step-hint" id="step1-hint">⭐ 选两张卡片，加起来等于 🎯</div>
                 </div>
-
                 <div class="step" data-step="2" style="display: none;">
                     <div class="demo-row">
                         <div class="demo-card correct">5</div>
@@ -1756,11 +1724,8 @@
                         <span style="font-size: 2rem;">✨</span>
                         <span class="demo-check">✓</span>
                     </div>
-                    <div class="step-hint" id="step2-hint">
-                        ⭐ 正确！卡片会消失 ✨
-                    </div>
+                    <div class="step-hint" id="step2-hint">⭐ 正确！卡片会消失 ✨</div>
                 </div>
-
                 <div class="step" data-step="3" style="display: none;">
                     <div class="demo-row" style="flex-wrap: wrap;">
                         <div class="demo-card">2</div>
@@ -1774,18 +1739,14 @@
                         <span class="demo-cross">✗</span>
                     </div>
                     <div class="refresh-icon">🔄</div>
-                    <div class="step-hint" id="step3-hint">
-                        ⭐ 没得配？点刷新换一批
-                    </div>
+                    <div class="step-hint" id="step3-hint">⭐ 没得配？点刷新换一批</div>
                 </div>
             </div>
-
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
                 <button class="nav-btn" id="prev-step" style="visibility: hidden;">◀</button>
                 <div class="step-text" id="step-text">1/3</div>
                 <button class="nav-btn" id="next-step">▶</button>
             </div>
-
             <div class="dont-show">
                 <input type="checkbox" id="dont-show-tutorial">
                 <label for="dont-show-tutorial" id="dont-show-label">不再显示</label>
@@ -1805,22 +1766,16 @@
                     <button class="tab-btn" data-tab="ranking">排名</button>
                 </div>
             </div>
-
             <div class="tab-content active" id="lobby-tab">
                 <div class="tournament-list" id="tournament-list"></div>
-                <button class="create-tournament-btn" id="create-tournament-btn">
-                    ➕ 创建锦标赛
-                </button>
+                <button class="create-tournament-btn" id="create-tournament-btn">➕ 创建锦标赛</button>
             </div>
-
             <div class="tab-content" id="bracket-tab" style="display: none;">
                 <div class="bracket-container" id="bracket-container"></div>
             </div>
-
             <div class="tab-content" id="history-tab" style="display: none;">
                 <div class="history-list" id="tournament-history"></div>
             </div>
-
             <div class="tab-content" id="ranking-tab" style="display: none;">
                 <div class="ranking-list" id="tournament-ranking"></div>
             </div>
@@ -1831,12 +1786,10 @@
     <div class="create-tournament-modal" id="create-tournament-modal">
         <div class="create-card">
             <h3>🏆 创建锦标赛</h3>
-            
             <div class="form-group">
                 <label>锦标赛名称</label>
                 <input type="text" id="tournament-name-input" placeholder="例如：糖果杯 2024">
             </div>
-
             <div class="form-group">
                 <label>参赛人数</label>
                 <select id="tournament-size">
@@ -1846,7 +1799,6 @@
                     <option value="32">32人</option>
                 </select>
             </div>
-
             <div class="form-group">
                 <label>比赛模式</label>
                 <select id="tournament-mode">
@@ -1854,7 +1806,6 @@
                     <option value="standard">标准模式 (30题)</option>
                 </select>
             </div>
-
             <div class="form-group">
                 <label>难度</label>
                 <select id="tournament-difficulty">
@@ -1863,12 +1814,10 @@
                     <option value="hard">🍫 困难</option>
                 </select>
             </div>
-
             <div class="form-group">
                 <label>报名费</label>
                 <input type="number" id="tournament-entry-fee" value="0" min="0" step="10">
             </div>
-
             <div class="form-actions">
                 <button class="candy-btn primary" id="confirm-create-tournament">创建</button>
                 <button class="candy-btn" id="cancel-create-tournament">取消</button>
@@ -1879,7 +1828,6 @@
     <!-- 对战模态框 -->
     <div class="battle-modal" id="battle-modal">
         <div class="battle-card">
-            <!-- 等待匹配界面 -->
             <div class="battle-waiting" id="battle-waiting">
                 <div class="waiting-spinner">🔄</div>
                 <h3>正在寻找对手...</h3>
@@ -1900,8 +1848,6 @@
                 </div>
                 <button class="cancel-btn" id="cancel-match">取消</button>
             </div>
-
-            <!-- 对战主界面 -->
             <div class="battle-active" id="battle-active" style="display: none;">
                 <div class="battle-header">
                     <div class="battle-player" id="player1-info">
@@ -1922,20 +1868,17 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="turn-indicator" id="turn-indicator">
                     <span class="turn-light"></span>
                     <span class="turn-text">你的回合</span>
                     <span class="timer" id="turn-timer">30s</span>
                 </div>
-
                 <div class="battle-game-area">
                     <div class="target-box" id="battle-target">
                         <div class="target-number" id="battle-target-number">10</div>
                     </div>
                     <div class="game-grid" id="battle-grid"></div>
                 </div>
-
                 <div class="battle-chat">
                     <div class="chat-messages" id="chat-messages"></div>
                     <div class="chat-input">
@@ -1944,8 +1887,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- 对战结果 -->
             <div class="battle-result" id="battle-result" style="display: none;">
                 <div class="result-title" id="result-title">🏆 胜利！</div>
                 <div class="result-stats">
@@ -1995,13 +1936,11 @@
         </div>
     </div>
 
-    <!-- ===== 修复滚动条问题的脚本 ===== -->
+    <!-- 修复滚动条问题的脚本 -->
     <script>
         (function() {
-            // 修复滚动条问题的终极解决方案
             console.log('滚动条修复脚本已加载');
             
-            // 强制确保滚动条始终可见
             function ensureScroll() {
                 document.body.style.overflow = 'auto';
                 document.documentElement.style.overflow = 'auto';
@@ -2010,12 +1949,9 @@
                 document.body.classList.remove('modal-open');
             }
             
-            // 页面加载时执行
             ensureScroll();
             
-            // 监听所有可能的模态框关闭事件
             function fixAllModals() {
-                // 所有关闭按钮
                 const closeSelectors = [
                     '.close-btn', 
                     '#close-auth', 
@@ -2030,7 +1966,6 @@
                     '#close-battle-btn'
                 ];
                 
-                // 为所有关闭按钮添加事件监听
                 setTimeout(() => {
                     closeSelectors.forEach(selector => {
                         document.querySelectorAll(selector).forEach(btn => {
@@ -2040,7 +1975,6 @@
                         });
                     });
                     
-                    // 监听所有模态框的背景点击
                     const modalSelectors = [
                         '.auth-modal', 
                         '.tutorial-modal', 
@@ -2063,7 +1997,6 @@
                 }, 1000);
             }
             
-            // DOM加载完成后执行
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', function() {
                     ensureScroll();
@@ -2074,7 +2007,6 @@
                 fixAllModals();
             }
             
-            // 定期检查并修复（每2秒检查一次）
             setInterval(function() {
                 const anyModalOpen = Array.from(document.querySelectorAll(
                     '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal'
@@ -2084,18 +2016,15 @@
                 });
                 
                 if (!anyModalOpen) {
-                    // 如果没有打开的模态框，确保滚动恢复
                     ensureScroll();
                 }
             }, 2000);
             
-            // 监听可能的overflow修改
             const observer = new MutationObserver(function(mutations) {
                 mutations.forEach(function(mutation) {
                     if (mutation.attributeName === 'style') {
                         const bodyStyle = window.getComputedStyle(document.body);
                         if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
-                            // 如果发现overflow被设为hidden，检查是否有模态框打开
                             const anyModalOpen = Array.from(document.querySelectorAll(
                                 '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal'
                             )).some(modal => {
@@ -2104,7 +2033,6 @@
                             });
                             
                             if (!anyModalOpen) {
-                                // 没有打开的模态框但overflow被隐藏了，修复它
                                 ensureScroll();
                             }
                         }
@@ -2112,17 +2040,15 @@
                 });
             });
             
-            // 开始观察body的style变化
             observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
         })();
     </script>
 
-    <!-- ===== Supabase 连接修复和初始化脚本 ===== -->
+    <!-- Supabase 连接修复和初始化脚本 -->
     <script>
         (function() {
             console.log('正在初始化 Supabase 连接...');
             
-            // 从配置标签获取配置
             const configTag = document.getElementById('supabase-config');
             if (!configTag) {
                 console.error('未找到 Supabase 配置标签');
@@ -2139,7 +2065,6 @@
             
             const { supabaseUrl, supabaseKey } = supabaseConfig;
             
-            // 创建 Supabase 客户端
             try {
                 if (typeof window.supabase !== 'undefined') {
                     const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
@@ -2153,12 +2078,15 @@
                     console.log('Supabase 客户端创建成功');
                     window.supabaseClient = supabaseClient;
                     
-                    // 测试连接
                     supabaseClient.auth.getSession().then(({ data, error }) => {
                         if (error) {
                             console.error('Supabase 连接测试失败:', error.message);
                         } else {
                             console.log('Supabase 连接成功');
+                            if (data.session) {
+                                window.currentUser = data.session.user;
+                                console.log('当前登录用户:', window.currentUser.email);
+                            }
                         }
                     }).catch(err => {
                         console.error('Supabase 连接异常:', err.message);
@@ -2172,15 +2100,13 @@
         })();
     </script>
 
-    <!-- 临时模拟登录模式（用于开发测试，默认关闭） -->
+    <!-- 模拟登录模式（默认关闭） -->
     <script>
-        // 如果 Supabase 连接不上，可以启用这个模拟登录模式进行测试
-        const USE_MOCK_AUTH = false; // 改为 true 启用模拟登录
+        const USE_MOCK_AUTH = false;
         
         if (USE_MOCK_AUTH) {
             console.log('使用模拟登录模式');
             
-            // 模拟登录函数
             window.mockLogin = function(email, password) {
                 console.log('模拟登录成功:', email);
                 
@@ -2194,7 +2120,6 @@
                 
                 localStorage.setItem('mock_user', JSON.stringify(mockUser));
                 
-                // 更新 UI
                 const userName = document.getElementById('user-name');
                 const userStatus = document.getElementById('user-status');
                 const userInfo = document.getElementById('user-info');
@@ -2220,10 +2145,10 @@
                 const authModal = document.getElementById('auth-modal');
                 if (authModal) authModal.style.display = 'none';
                 
+                window.currentUser = mockUser;
                 return mockUser;
             };
             
-            // 拦截登录按钮
             document.addEventListener('click', function(e) {
                 if (e.target.id === 'auth-submit' || e.target.closest('#auth-submit')) {
                     e.preventDefault();
@@ -2235,7 +2160,6 @@
                 }
             });
             
-            // 检查是否已模拟登录
             const savedMockUser = localStorage.getItem('mock_user');
             if (savedMockUser) {
                 try {
@@ -2245,130 +2169,148 @@
             }
         }
     </script>
-    <!-- ===== 按照正确顺序加载JS模块 ===== -->
-    <!-- 先加载核心依赖 -->
+
+    <!-- 按照正确顺序加载JS模块 -->
     <script src="js/utils.js"></script>
     <script src="js/Storage.js"></script>
     <script src="js/Game.js"></script>
-
-    <!-- 然后加载其他模块 -->
     <script src="js/Auth.js"></script>
     <script src="js/UI.js"></script>
     <script src="js/BattleMode.js"></script>
     <script src="js/TournamentMode.js"></script>
 
-    <!-- ===== 新增：全局登录状态管理 ===== -->
+    <!-- ===== 统一按钮点击处理 ===== -->
+    <script>
+        // 为所有需要登录的按钮添加点击处理
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            
+            const action = btn.dataset.action;
+            
+            // 检查登录状态
+            if (!window.currentUser) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log('用户未登录，显示登录框');
+                
+                const authModal = document.getElementById('auth-modal');
+                const authTitle = document.getElementById('auth-title');
+                const authError = document.getElementById('auth-error');
+                
+                if (authModal) authModal.style.display = 'flex';
+                if (authTitle) authTitle.textContent = '🔐 登录';
+                if (authError) authError.textContent = '请先登录后再使用此功能';
+                
+                return false;
+            }
+            
+            // 已登录，执行对应操作
+            console.log('用户已登录，执行操作:', action);
+            
+            if (action === 'quick-match') {
+                // 触发快速匹配
+                if (window.BattleMode && typeof window.BattleMode.quickMatch === 'function') {
+                    window.BattleMode.quickMatch();
+                } else {
+                    alert('快速匹配功能准备中');
+                }
+            } else if (action === 'tournament') {
+                // 显示锦标赛
+                document.getElementById('tournament-modal').style.display = 'flex';
+            } else if (action === 'join-room') {
+                // 显示加入房间
+                document.getElementById('join-modal').style.display = 'flex';
+            }
+        });
+    </script>
+
+    <!-- ===== 用户界面更新脚本 ===== -->
     <script>
         (function() {
-            console.log('🎮 全局登录系统初始化中...');
+            console.log('初始化用户界面...');
             
-            // 全局登录状态
-            window.currentUser = null;
-            
-            // 等待 Supabase 客户端就绪
-            function initAuth() {
-                if (!window.supabaseClient) {
-                    console.warn('⏳ 等待 Supabase 客户端...');
-                    setTimeout(initAuth, 100);
-                    return;
-                }
-                
-                console.log('✅ Supabase 客户端已就绪');
-                
-                // 检查当前登录状态
-                window.supabaseClient.auth.getSession().then(({ data }) => {
-                    if (data.session) {
-                        // 保存全局用户
-                        window.currentUser = data.session.user;
-                        console.log('用户已登录:', window.currentUser.email);
-                        updateUIForLoggedInUser(window.currentUser);
-                        
-                        // 触发全局登录事件
-                        window.dispatchEvent(new CustomEvent('user-logged-in', { 
-                            detail: { user: window.currentUser } 
-                        }));
-                    } else {
-                        console.log('用户未登录');
-                        window.currentUser = null;
-                        showLoginButtons();
-                        
-                        // 触发全局登出事件
-                        window.dispatchEvent(new CustomEvent('user-logged-out'));
-                    }
-                }).catch(err => {
-                    console.error('获取登录状态失败:', err);
-                    window.currentUser = null;
-                });
-            }
-            
-            function updateUIForLoggedInUser(user) {
-                const userName = document.getElementById('user-name');
-                const userStatus = document.getElementById('user-status');
-                const userInfo = document.getElementById('user-info');
-                const authButtons = document.getElementById('auth-buttons');
-                
-                if (userName) userName.textContent = user.email;
-                if (userStatus) userStatus.textContent = '已登录';
-                if (userInfo) userInfo.style.display = 'flex';
-                
-                if (authButtons) {
-                    authButtons.innerHTML = `
-                        <button class="auth-btn logout" id="logout-btn">
-                            🚪 <span class="btn-text">退出</span>
-                        </button>
-                    `;
+            // 更新用户界面
+            function updateUI() {
+                if (window.currentUser) {
+                    // 用户已登录
+                    const userName = document.getElementById('user-name');
+                    const userStatus = document.getElementById('user-status');
+                    const userInfo = document.getElementById('user-info');
+                    const authButtons = document.getElementById('auth-buttons');
                     
-                    document.getElementById('logout-btn')?.addEventListener('click', () => {
-                        window.supabaseClient.auth.signOut().then(() => {
-                            window.currentUser = null;
-                            window.dispatchEvent(new CustomEvent('user-logged-out'));
-                            location.reload();
+                    if (userName) userName.textContent = window.currentUser.email;
+                    if (userStatus) userStatus.textContent = '已登录';
+                    if (userInfo) userInfo.style.display = 'flex';
+                    
+                    if (authButtons) {
+                        authButtons.innerHTML = `
+                            <button class="auth-btn logout" id="logout-btn">
+                                🚪 <span class="btn-text">退出</span>
+                            </button>
+                        `;
+                        
+                        document.getElementById('logout-btn')?.addEventListener('click', () => {
+                            if (window.supabaseClient) {
+                                window.supabaseClient.auth.signOut().then(() => {
+                                    window.currentUser = null;
+                                    location.reload();
+                                });
+                            } else {
+                                window.currentUser = null;
+                                location.reload();
+                            }
                         });
-                    });
+                    }
+                } else {
+                    // 用户未登录，显示登录/注册按钮
+                    const authButtons = document.getElementById('auth-buttons');
+                    if (authButtons) {
+                        authButtons.innerHTML = `
+                            <button class="auth-btn login" id="show-login-btn">
+                                🔐 <span class="btn-text">登录</span>
+                            </button>
+                            <button class="auth-btn register" id="show-register-btn">
+                                📝 <span class="btn-text">注册</span>
+                            </button>
+                        `;
+                        
+                        document.getElementById('show-login-btn')?.addEventListener('click', () => {
+                            document.getElementById('auth-modal').style.display = 'flex';
+                            document.getElementById('auth-title').textContent = '🔐 登录';
+                            document.getElementById('auth-submit').textContent = '登录';
+                        });
+                        
+                        document.getElementById('show-register-btn')?.addEventListener('click', () => {
+                            document.getElementById('auth-modal').style.display = 'flex';
+                            document.getElementById('auth-title').textContent = '📝 注册';
+                            document.getElementById('auth-submit').textContent = '注册';
+                        });
+                    }
                 }
             }
             
-            function showLoginButtons() {
-                const authButtons = document.getElementById('auth-buttons');
-                if (authButtons) {
-                    authButtons.innerHTML = `
-                        <button class="auth-btn login" id="show-login-btn">
-                            🔐 <span class="btn-text">登录</span>
-                        </button>
-                        <button class="auth-btn register" id="show-register-btn">
-                            📝 <span class="btn-text">注册</span>
-                        </button>
-                    `;
-                    
-                    document.getElementById('show-login-btn')?.addEventListener('click', () => {
-                        document.getElementById('auth-modal').style.display = 'flex';
-                        document.getElementById('auth-title').textContent = '🔐 登录';
-                        document.getElementById('auth-submit').textContent = '登录';
-                    });
-                    
-                    document.getElementById('show-register-btn')?.addEventListener('click', () => {
-                        document.getElementById('auth-modal').style.display = 'flex';
-                        document.getElementById('auth-title').textContent = '📝 注册';
-                        document.getElementById('auth-submit').textContent = '注册';
+            // 每隔一段时间检查用户状态
+            function checkUserStatus() {
+                if (window.supabaseClient && !window.currentUser) {
+                    window.supabaseClient.auth.getSession().then(({ data }) => {
+                        if (data.session) {
+                            window.currentUser = data.session.user;
+                            updateUI();
+                        }
                     });
                 }
+                updateUI();
             }
             
-            // 检查登录状态的函数（供其他模块调用）
-            window.checkLoginStatus = function() {
-                return window.currentUser !== null;
-            };
-            
-            // 获取当前用户（供其他模块调用）
-            window.getCurrentUser = function() {
-                return window.currentUser;
-            };
-            
-            setTimeout(initAuth, 500);
+            // 立即执行一次
+            setTimeout(checkUserStatus, 1000);
+            setTimeout(checkUserStatus, 2000);
         })();
     </script>
 
-    <!-- ===== 新增：处理登录/注册按钮点击 ===== -->
+    <!-- ===== 登录/注册处理脚本 ===== -->
     <script>
         document.addEventListener('click', function(e) {
             // 处理登录/注册提交
@@ -2402,6 +2344,7 @@
                             if (errorDiv) errorDiv.textContent = error.message;
                         } else {
                             if (errorDiv) errorDiv.textContent = '登录成功！';
+                            window.currentUser = data.user;
                             setTimeout(() => {
                                 document.getElementById('auth-modal').style.display = 'none';
                                 location.reload();
@@ -2433,86 +2376,6 @@
                 document.getElementById('auth-modal').style.display = 'none';
             }
         });
-    </script>
-
-    <!-- ===== 新增：修复按钮登录检查 ===== -->
-    <script>
-        (function() {
-            // 等待所有模块加载完成
-            function fixButtons() {
-                // 修复快速匹配按钮
-                const quickMatchBtn = document.getElementById('quick-match-btn');
-                if (quickMatchBtn) {
-                    // 保存原来的点击事件
-                    const originalHandler = quickMatchBtn.onclick;
-                    
-                    // 添加新的拦截器
-                    quickMatchBtn.addEventListener('click', function(e) {
-                        if (!window.currentUser) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            e.stopImmediatePropagation();
-                            
-                            document.getElementById('auth-modal').style.display = 'flex';
-                            document.getElementById('auth-title').textContent = '🔐 登录';
-                            document.getElementById('auth-submit').textContent = '登录';
-                            
-                            // 显示提示信息
-                            const errorDiv = document.getElementById('auth-error');
-                            if (errorDiv) errorDiv.textContent = '请先登录';
-                            
-                            return false;
-                        }
-                    }, true); // 使用捕获阶段确保先执行
-                }
-                
-                // 修复锦标赛按钮
-                const tournamentBtn = document.getElementById('tournament-btn');
-                if (tournamentBtn) {
-                    tournamentBtn.addEventListener('click', function(e) {
-                        if (!window.currentUser) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            e.stopImmediatePropagation();
-                            
-                            document.getElementById('auth-modal').style.display = 'flex';
-                            document.getElementById('auth-title').textContent = '🔐 登录';
-                            document.getElementById('auth-submit').textContent = '登录';
-                            
-                            const errorDiv = document.getElementById('auth-error');
-                            if (errorDiv) errorDiv.textContent = '请先登录';
-                            
-                            return false;
-                        }
-                    }, true);
-                }
-                
-                // 修复加入房间按钮
-                const joinRoomBtn = document.getElementById('join-room-btn');
-                if (joinRoomBtn) {
-                    joinRoomBtn.addEventListener('click', function(e) {
-                        if (!window.currentUser) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            e.stopImmediatePropagation();
-                            
-                            document.getElementById('auth-modal').style.display = 'flex';
-                            document.getElementById('auth-title').textContent = '🔐 登录';
-                            document.getElementById('auth-submit').textContent = '登录';
-                            
-                            const errorDiv = document.getElementById('auth-error');
-                            if (errorDiv) errorDiv.textContent = '请先登录';
-                            
-                            return false;
-                        }
-                    }, true);
-                }
-            }
-            
-            // 延迟执行，确保所有模块加载完成
-            setTimeout(fixButtons, 1000);
-            setTimeout(fixButtons, 2000);
-        })();
     </script>
 </body>
 </html>
