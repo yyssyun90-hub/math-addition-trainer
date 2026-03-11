@@ -146,7 +146,8 @@ class CandyMathGame {
             
             // 初始化子模块
             this.storage = new StorageManager(this);
-            this.auth = new AuthManager(this);
+            // ===== 关键修复：传递对象而不是直接传递this =====
+            this.auth = new AuthManager({ game: this });
             this.ui = new UIManager(this);
             
             // 加载本地数据
@@ -185,12 +186,14 @@ class CandyMathGame {
             
             this.initialized = true;
             
-            // 将 battle 实例暴露到全局
+            // ===== 关键修复：同时设置两个全局变量 =====
             window.battleMode = this.battle;
+            window.battleModeInstance = this.battle;
             
             console.log('游戏初始化成功', {
                 battleMode: this.battle ? '已创建' : '未创建',
                 battleModeGlobal: window.battleMode ? '已挂载' : '未挂载',
+                battleModeInstance: window.battleModeInstance ? '已挂载' : '未挂载',
                 supabaseReady: this.state.supabaseReady,
                 supabaseError: this.state.supabaseError
             });
@@ -220,6 +223,7 @@ class CandyMathGame {
             
             this.initialized = true;
             window.battleMode = this.battle;
+            window.battleModeInstance = this.battle;
             
             console.log('游戏以离线模式初始化成功');
             this.ui?.showFeedback('已切换到离线模式', '#ffa500');
@@ -340,6 +344,9 @@ class CandyMathGame {
         // 清理全局引用
         if (window.battleMode === this.battle) {
             window.battleMode = null;
+        }
+        if (window.battleModeInstance === this.battle) {
+            window.battleModeInstance = null;
         }
         
         this.initialized = false;
@@ -1076,6 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
             gameExists: !!window.game,
             battleExists: !!window.game?.battle,
             battleModeGlobal: !!window.battleMode,
+            battleModeInstance: !!window.battleModeInstance,
             supabaseReady: window.game?.state?.supabaseReady,
             supabaseError: window.game?.state?.supabaseError
         });
@@ -1083,7 +1091,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // 如果battleMode仍未挂载，手动挂载
         if (window.game?.battle && !window.battleMode) {
             window.battleMode = window.game.battle;
-            console.log('手动挂载 battleMode 成功');
+            window.battleModeInstance = window.game.battle;
+            console.log('手动挂载 battleMode 和 battleModeInstance 成功');
         }
     }, 1000);
 });
