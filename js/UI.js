@@ -170,6 +170,214 @@ class UIManager {
         
         // 更新引导内容
         this.updateTutorialContent();
+
+        // ========== 新增：登录/注册模态框 ==========
+        const authTitle = document.getElementById('auth-title');
+        if (authTitle) authTitle.textContent = lang.t('authTitle');
+        
+        const authEmail = document.getElementById('auth-email');
+        if (authEmail) authEmail.placeholder = lang.t('emailPlaceholder');
+        
+        const authPassword = document.getElementById('auth-password');
+        if (authPassword) authPassword.placeholder = lang.t('passwordPlaceholder');
+        
+        const authSubmit = document.getElementById('auth-submit');
+        if (authSubmit) authSubmit.textContent = lang.t('submit');
+        
+        const authSwitch = document.getElementById('auth-switch');
+        if (authSwitch) {
+            const isLogin = this.game.auth?.authMode === 'login';
+            authSwitch.innerHTML = isLogin ? 
+                lang.t('noAccount') : 
+                lang.t('hasAccount');
+        }
+
+        // ========== 新增：加入房间模态框 ==========
+        const joinTitle = document.querySelector('#join-modal h3');
+        if (joinTitle) joinTitle.textContent = lang.t('joinRoom');
+        
+        const joinInput = document.getElementById('room-code-input');
+        if (joinInput) joinInput.placeholder = lang.t('enterRoomCode');
+        
+        const confirmJoin = document.getElementById('confirm-join');
+        if (confirmJoin) {
+            confirmJoin.textContent = lang.t('join');
+            // 确保保留 primary 类
+            confirmJoin.classList.add('candy-btn', 'primary');
+        }
+        
+        const cancelJoin = document.getElementById('cancel-join');
+        if (cancelJoin) {
+            cancelJoin.textContent = lang.t('cancel');
+            cancelJoin.classList.add('candy-btn');
+        }
+
+        // ========== 新增：锦标赛大厅 ==========
+        const tournamentTabs = document.querySelectorAll('.tournament-tabs .tab-btn');
+        if (tournamentTabs.length >= 4) {
+            // 大厅
+            const lobbySpan = tournamentTabs[0].querySelector('span');
+            if (lobbySpan) lobbySpan.textContent = lang.t('lobby');
+            
+            // 赛程表
+            const bracketSpan = tournamentTabs[1].querySelector('span');
+            if (bracketSpan) bracketSpan.textContent = lang.t('bracket');
+            
+            // 历史
+            const historySpan = tournamentTabs[2].querySelector('span');
+            if (historySpan) historySpan.textContent = lang.t('history');
+            
+            // 排名
+            const rankingSpan = tournamentTabs[3].querySelector('span');
+            if (rankingSpan) rankingSpan.textContent = lang.t('ranking');
+        }
+        
+        const createTournamentBtn = document.getElementById('create-tournament-btn');
+        if (createTournamentBtn) {
+            createTournamentBtn.innerHTML = `➕ <span>${lang.t('createTournament')}</span>`;
+        }
+
+        // ========== 新增：创建锦标赛模态框 ==========
+        const createTitle = document.querySelector('#create-tournament-modal h3');
+        if (createTitle) createTitle.textContent = lang.t('createTournament');
+        
+        // 锦标赛名称
+        const tournamentNameLabels = document.querySelectorAll('#create-tournament-modal label');
+        if (tournamentNameLabels.length >= 1) {
+            tournamentNameLabels[0].textContent = lang.t('tournamentName');
+        }
+        
+        const tournamentNameInput = document.getElementById('tournament-name-input');
+        if (tournamentNameInput) tournamentNameInput.placeholder = lang.t('enterTournamentName');
+        
+        // 参赛人数
+        if (tournamentNameLabels.length >= 2) {
+            tournamentNameLabels[1].textContent = lang.t('playerCount');
+        }
+        
+        // 比赛模式
+        if (tournamentNameLabels.length >= 3) {
+            tournamentNameLabels[2].textContent = lang.t('gameMode');
+        }
+        
+        // 难度
+        if (tournamentNameLabels.length >= 4) {
+            tournamentNameLabels[3].textContent = lang.t('difficulty');
+        }
+        
+        // 报名费
+        if (tournamentNameLabels.length >= 5) {
+            tournamentNameLabels[4].textContent = lang.t('entryFee');
+        }
+        
+        const entryFeeInput = document.getElementById('tournament-entry-fee');
+        if (entryFeeInput) entryFeeInput.placeholder = lang.t('enterEntryFee');
+        
+        const confirmCreate = document.getElementById('confirm-create-tournament');
+        if (confirmCreate) {
+            confirmCreate.textContent = lang.t('create');
+            confirmCreate.classList.add('candy-btn', 'primary');
+        }
+        
+        const cancelCreate = document.getElementById('cancel-create-tournament');
+        if (cancelCreate) {
+            cancelCreate.textContent = lang.t('cancel');
+            cancelCreate.classList.add('candy-btn');
+        }
+
+        // ========== 新增：对战模态框 ==========
+        const battleWaitingTitle = document.querySelector('#battle-waiting h3');
+        if (battleWaitingTitle) battleWaitingTitle.textContent = lang.t('findingOpponent');
+        
+        // 房间码标签
+        const roomCodeDisplay = document.querySelector('.room-code-display');
+        if (roomCodeDisplay) {
+            const textNode = roomCodeDisplay.childNodes[0];
+            if (textNode) {
+                textNode.textContent = lang.t('roomCode') + ': ';
+            }
+        }
+        
+        const copyBtn = document.getElementById('copy-room-code');
+        if (copyBtn) copyBtn.title = lang.t('copy');
+        
+        // 等待界面的玩家名称
+        const playerSlots = document.querySelectorAll('.player-slot .player-name');
+        if (playerSlots.length >= 2) {
+            // 第一个是你
+            if (playerSlots[0]) playerSlots[0].textContent = lang.t('you');
+            // 第二个是等待中
+            if (playerSlots[1]) playerSlots[1].textContent = lang.t('waiting');
+        }
+        
+        const vsDivider = document.querySelector('.vs-divider');
+        if (vsDivider) vsDivider.textContent = lang.t('vs');
+        
+        const cancelMatchBtn = document.getElementById('cancel-match');
+        if (cancelMatchBtn) cancelMatchBtn.textContent = lang.t('cancel');
+        
+        // 对战界面的回合指示器
+        const turnText = document.querySelector('.turn-text');
+        if (turnText) {
+            const myTurn = this.game?.battle?.room?.myTurn;
+            turnText.textContent = myTurn ? lang.t('yourTurn') : lang.t('opponentTurn');
+        }
+        
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) chatInput.placeholder = lang.t('enterMessage');
+        
+        const sendBtn = document.getElementById('send-message');
+        if (sendBtn) sendBtn.textContent = lang.t('send');
+        
+        const rematchBtn = document.getElementById('rematch-btn');
+        if (rematchBtn) {
+            const span = rematchBtn.querySelector('span');
+            if (span) {
+                span.textContent = lang.t('rematch');
+            } else {
+                rematchBtn.innerHTML = `🔄 <span>${lang.t('rematch')}</span>`;
+            }
+        }
+        
+        const closeBattleBtn = document.getElementById('close-battle-btn');
+        if (closeBattleBtn) {
+            const span = closeBattleBtn.querySelector('span');
+            if (span) {
+                span.textContent = lang.t('close');
+            } else {
+                closeBattleBtn.innerHTML = `<span>${lang.t('close')}</span>`;
+            }
+        }
+
+        // ========== 新增：通用按钮 ==========
+        const confirmBtns = document.querySelectorAll('.confirm-btn, #confirm-btn');
+        confirmBtns.forEach(btn => {
+            if (btn) btn.textContent = lang.t('confirm');
+        });
+        
+        const backBtns = document.querySelectorAll('.back-btn, #back-btn');
+        backBtns.forEach(btn => {
+            if (btn) btn.textContent = lang.t('back');
+        });
+        
+        const nextBtns = document.querySelectorAll('#next-step, .next-btn');
+        nextBtns.forEach(btn => {
+            if (btn && btn.id !== 'next-step') { // 避免覆盖引导的下一个按钮
+                btn.textContent = lang.t('next');
+            }
+        });
+        
+        const prevBtns = document.querySelectorAll('#prev-step, .prev-btn');
+        prevBtns.forEach(btn => {
+            if (btn && btn.id !== 'prev-step') { // 避免覆盖引导的上一步按钮
+                btn.textContent = lang.t('previous');
+            }
+        });
+        
+        const doneBtns = document.querySelectorAll('.done-btn, #done-btn');
+        doneBtns.forEach(btn => {
+            if (btn) btn.textContent = lang.t('done');
+        });
     }
 
     /**
