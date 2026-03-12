@@ -17,7 +17,7 @@ class BattleMode {
         this.offlineMode = false;
         this.pendingClicks = [];
         this.maxQueueSize = 20;
-        this.activeSubscriptions = new Map(); // 改为 Map 存储订阅信息
+        this.activeSubscriptions = new Map();
         this._wrappedMethods = new WeakMap();
         this._lastCacheVersion = 0;
         this.lastZoomWarningTime = 0;
@@ -29,7 +29,7 @@ class BattleMode {
         this.isMatching = false;
         this.updateLayoutHandler = null;
         this.keydownHandler = null;
-        this.aiCooldownTimer = null; // 新增：AI冷却定时器
+        this.aiCooldownTimer = null;
         
         this.room = {
             roomCode: null,
@@ -207,86 +207,90 @@ class BattleMode {
             return false;
         }
         
-        // 保存当前频道引用
-        const currentChannel = this.room.channel;
-        
         try {
-            // 先取消现有订阅
-            if (currentChannel) {
-                await currentChannel.unsubscribe();
-                if (this.room.channel === currentChannel) {
-                    this.room.channel = null;
+            if (this.room.channel) {
+                try {
+                    await this.room.channel.unsubscribe();
+                } catch (e) {
+                    console.warn('取消旧订阅失败:', e);
                 }
+                this.room.channel = null;
             }
             
-            const newChannel = this.game.state.supabase
-                .channel('battle-presence')
+            console.log('开始创建实时订阅频道...');
+            
+            const channelName = 'battle-presence-' + Date.now();
+            const newChannel = this.game.state.supabase.channel(channelName);
+            
+            newChannel
                 .on('presence', { event: 'sync' }, () => {
                     const presenceState = newChannel.presenceState();
                     console.log('当前在线玩家:', presenceState);
-                    this.updateMatchQueueFromPresence(presenceState);
+                    
+                    const players = [];
+                    Object.values(presenceState).forEach(presences => {
+                        presences.forEach(presence => {
+                            if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
+                                players.push({
+                                    id: presence.user_id,
+                                    name: presence.user_name,
+                                    status: presence.status,
+                                    joinTime: new Date(presence.online_at).getTime()
+                                });
+                            }
+                        });
+                    });
+                    
+                    this.matchQueue = players;
+                    console.log('更新匹配队列:', this.matchQueue);
+                    
+                    if (this.matchQueue.length > 0 && this.isMatching) {
+                        this.tryMatch();
+                    }
                 })
                 .on('presence', { event: 'join' }, ({ key, newPresences }) => {
                     console.log('新玩家加入:', newPresences);
-                    this.handlePlayerJoined(newPresences);
+                    newPresences.forEach(presence => {
+                        if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
+                            this.showFeedback(`👋 ${presence.user_name} 进入匹配`, '#4CAF50');
+                        }
+                    });
                 })
                 .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
                     console.log('玩家离开:', leftPresences);
-                    this.handlePlayerLeft(leftPresences);
+                    leftPresences.forEach(presence => {
+                        if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
+                            this.showFeedback(`👋 ${presence.user_name} 离开匹配`, '#ffa500');
+                        }
+                    });
                 });
             
-            // 只有在没有新频道的情况下才设置
-            if (!this.room.channel) {
-                this.room.channel = newChannel;
-                
-                this.room.channel.subscribe(async (status) => {
-                    if (status === 'SUBSCRIBED') {
-                        console.log('实时订阅成功');
-                        if (this.game.state.currentUser) {
-                            await this.room.channel.track({
-                                user_id: this.game.state.currentUser.id,
-                                user_name: this.game.state.currentUser.name,
-                                status: 'idle',
-                                online_at: new Date().toISOString()
-                            });
-                        }
-                    } else {
-                        console.warn('实时订阅失败:', status);
-                    }
+            const subscribeStatus = await newChannel.subscribe();
+            console.log('订阅状态:', subscribeStatus);
+            
+            if (subscribeStatus !== 'SUBSCRIBED') {
+                console.error('订阅失败:', subscribeStatus);
+                return false;
+            }
+            
+            this.room.channel = newChannel;
+            
+            if (this.game.state.currentUser) {
+                await newChannel.track({
+                    user_id: this.game.state.currentUser.id,
+                    user_name: this.game.state.currentUser.name,
+                    status: 'idle',
+                    online_at: new Date().toISOString()
                 });
+                console.log('已跟踪当前用户');
             }
             
             return true;
+            
         } catch (error) {
             console.error('设置实时订阅失败:', error);
             return false;
         }
-    }
-
-    updateMatchQueueFromPresence(presenceState) {
-        // 保存当前游戏状态
-        const gameActive = this.room.gameActive;
-        if (!gameActive) {
-            return;
-        }
-
-        const players = [];
-        Object.values(presenceState).forEach(presences => {
-            presences.forEach(presence => {
-                if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                    players.push({
-                        id: presence.user_id,
-                        name: presence.user_name,
-                        status: presence.status,
-                        joinTime: new Date(presence.online_at).getTime()
-                    });
-                }
-            });
-        });
-        
-        this.matchQueue = players;
-        console.log('更新匹配队列:', this.matchQueue);
-        this.tryMatch();
     }
 
     handlePlayerJoined(newPresences) {
@@ -305,9 +309,6 @@ class BattleMode {
         });
     }
 
-    /**
-     * 初始化
-     */
     init() {
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
@@ -330,9 +331,6 @@ class BattleMode {
         });
     }
 
-    /**
-     * 延迟检查 auth 状态
-     */
     delayedAuthCheck(retryCount = 0) {
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
@@ -377,9 +375,6 @@ class BattleMode {
         }, this.constants.INIT_RETRY_DELAY);
     }
 
-    /**
-     * 等待 auth 模块就绪 - 增强版
-     */
     async waitForAuthReady() {
         const startTime = Date.now();
         
@@ -409,9 +404,6 @@ class BattleMode {
         }
     }
 
-    /**
-     * 确保 game 对象存在 - 增强版
-     */
     ensureGameObject() {
         if (!this.game) {
             console.log('game 对象不存在，尝试从 window.game 获取');
@@ -2267,9 +2259,6 @@ class BattleMode {
         }, 10000);
     }
 
-    /**
-     * 快速匹配 - 终极修复版
-     */
     async quickMatch() {
         if (this.isMatching) {
             console.log('已经在匹配中，请稍候');
@@ -2314,43 +2303,33 @@ class BattleMode {
                 return;
             }
 
-            // ===== 关键修复：检查登录状态并正确显示登录框 =====
             if (!this.game.auth || typeof this.game.auth.isLoggedIn !== 'function') {
                 console.error('auth 模块异常');
                 this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
                 return;
             }
 
-            // 检查用户是否已登录
             if (!this.game.auth.isLoggedIn()) {
                 this.showFeedback('请先登录才能进行对战', '#ffa500');
                 
-                // 尝试多种方式显示登录框
                 if (this.game.auth && typeof this.game.auth.showAuthModal === 'function') {
                     this.game.auth.showAuthModal('login');
                 } else {
-                    // 直接显示登录模态框
                     const authModal = document.getElementById('auth-modal');
                     if (authModal) {
                         authModal.style.display = 'flex';
-                        
-                        // 确保标题正确
                         const authTitle = document.getElementById('auth-title');
                         if (authTitle) authTitle.textContent = '🔐 登录';
-                        
-                        // 清除错误信息
                         const authError = document.getElementById('auth-error');
                         if (authError) authError.textContent = '';
                     }
                 }
                 
-                // 释放信号量
                 this.releaseSemaphore('match');
                 this.isMatching = false;
                 return;
             }
 
-            // 确保 cardTemplate 已初始化
             if (!this.cardTemplate) {
                 console.log('初始化卡片模板');
                 this.cardTemplate = document.createElement('div');
@@ -2401,6 +2380,13 @@ class BattleMode {
                         room_code: roomCode,
                         online_at: new Date().toISOString()
                     });
+                    console.log('已加入匹配队列');
+                    
+                    setTimeout(() => {
+                        const presenceState = this.room.channel.presenceState();
+                        console.log('当前presence状态:', presenceState);
+                    }, 500);
+                    
                 } catch (error) {
                     console.warn('更新presence状态失败:', error);
                 }
@@ -2469,12 +2455,12 @@ class BattleMode {
         const queueStatus = document.createElement('div');
         queueStatus.id = 'queue-status';
         queueStatus.style.cssText = 'font-size: 0.8rem; color: #b28b99; text-align: center; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
-        queueStatus.textContent = '当前排队人数: ';
+        queueStatus.textContent = '当前在线玩家: ';
 
         const queueCount = document.createElement('span');
         queueCount.id = 'queue-count';
         queueCount.style.cssText = 'font-weight: 500; color: #f5b8c7;';
-        queueCount.textContent = '1';
+        queueCount.textContent = '0';
         queueStatus.appendChild(queueCount);
 
         hintDiv.appendChild(queueStatus);
@@ -2491,6 +2477,11 @@ class BattleMode {
         waitTimeDiv.appendChild(document.createTextNode('秒'));
 
         hintDiv.appendChild(waitTimeDiv);
+        
+        const matchHint = document.createElement('div');
+        matchHint.style.cssText = 'margin-top: 5px; font-size: 0.7rem; color: #f5b8c7; text-align: center;';
+        matchHint.textContent = '✨ 检测到其他玩家时会立即匹配 ✨';
+        hintDiv.appendChild(matchHint);
 
         waitingDiv.appendChild(hintDiv);
     }
@@ -2568,9 +2559,9 @@ class BattleMode {
 
         const matchStatus = document.getElementById('match-status-text');
         if (matchStatus) {
-            if (this.matchQueue.length >= 2) {
-                matchStatus.textContent = '🎉 找到对手！准备开始对战...';
-            } else if (this.matchQueue.length === 1) {
+            if (this.matchQueue.length >= 1) {
+                matchStatus.textContent = `🎉 找到 ${this.matchQueue.length} 位在线玩家！正在匹配...`;
+            } else {
                 matchStatus.textContent = '⏳ 等待其他玩家加入...';
             }
         }
@@ -3190,7 +3181,6 @@ class BattleMode {
         while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
             fragment.appendChild(chat.children[0]);
         }
-        // fragment 会被自动垃圾回收
     }
 
     checkGridHasValidCombination() {
@@ -3346,46 +3336,47 @@ class BattleMode {
     }
 
     async tryMatch() {
-        if (this.matchQueue.length < 1) return;
-
-        const currentUser = {
-            id: this.game.state.currentUser.id,
-            name: this.game.state.currentUser.name,
-            elo: this.game.state.currentUser.elo || 1200
-        };
-
-        let bestMatch = null;
-        let bestDiff = Infinity;
-
-        for (const player of this.matchQueue) {
-            if (player.id === currentUser.id) continue;
-
-            const diff = Math.abs((player.elo || 1200) - currentUser.elo);
-            const waitTime = Date.now() - (player.joinTime || Date.now());
+        console.log('尝试匹配，当前队列:', this.matchQueue);
+        
+        const otherPlayers = this.matchQueue.filter(p => p.id !== this.game.state.currentUser?.id);
+        
+        if (otherPlayers.length === 0) {
+            console.log('没有其他玩家在线');
             
-            const timeBonus = Math.min(500, waitTime / 1000 * 50);
-            const maxDiff = 800 + timeBonus;
-
-            if (diff < maxDiff && diff < bestDiff) {
-                bestDiff = diff;
-                bestMatch = player;
+            const matchStatus = document.getElementById('match-status-text');
+            if (matchStatus) {
+                matchStatus.textContent = `⏳ 等待其他玩家加入...`;
             }
-
-            if (waitTime > this.constants.FORCE_MATCH_TIME) {
-                bestMatch = player;
-                break;
-            }
+            return;
         }
 
-        if (bestMatch) {
-            console.log('找到匹配对手:', bestMatch);
-            
-            this.cleanupMatch();
-            
-            this.matchQueue = this.matchQueue.filter(p => p.id !== bestMatch.id);
-            
-            await this.createBattleRoom(currentUser, bestMatch);
+        console.log('找到其他在线玩家:', otherPlayers.length, '人');
+        
+        const bestMatch = otherPlayers[0];
+        
+        console.log('立即匹配到对手:', bestMatch);
+        
+        this.showFeedback(`🎉 找到对手: ${bestMatch.name}`, '#4CAF50');
+        
+        const matchStatus = document.getElementById('match-status-text');
+        if (matchStatus) {
+            matchStatus.textContent = '🎉 找到对手！准备开始对战...';
         }
+        
+        this.cleanupMatch();
+        
+        this.matchQueue = this.matchQueue.filter(p => p.id !== bestMatch.id);
+        
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        await this.createBattleRoom(
+            {
+                id: this.game.state.currentUser.id,
+                name: this.game.state.currentUser.name,
+                elo: this.game.state.currentUser.elo || 1200
+            },
+            bestMatch
+        );
     }
 
     async calculatePlayerELO(userId) {
@@ -3439,16 +3430,12 @@ class BattleMode {
         }
     }
 
-    /**
-     * 创建对战房间 - 修复版
-     */
     async createBattleRoom(player1, player2) {
         if (!player1 || !player2 || !player1.id || !player2.id) {
             console.error('玩家信息不完整');
             return;
         }
 
-        // 确保 cardTemplate 已初始化
         if (!this.cardTemplate) {
             console.log('重新创建卡片模板');
             this.cardTemplate = document.createElement('div');
@@ -3507,11 +3494,7 @@ class BattleMode {
         }
     }
 
-    /**
-     * 开始本地对战 - 修复版
-     */
     async startLocalBattle(player1, player2) {
-        // 确保 cardTemplate 已初始化
         if (!this.cardTemplate) {
             console.log('重新创建卡片模板');
             this.cardTemplate = document.createElement('div');
@@ -4357,14 +4340,10 @@ class BattleMode {
         }
     }
 
-    /**
-     * 生成对战网格 - 修复版
-     */
     generateBattleGrid() {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
-        // 确保卡片模板存在
         if (!this.cardTemplate) {
             console.log('重新创建卡片模板');
             this.cardTemplate = document.createElement('div');
