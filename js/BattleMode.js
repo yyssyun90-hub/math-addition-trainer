@@ -2314,21 +2314,47 @@ class BattleMode {
                 return;
             }
 
+            // ===== 关键修复：检查登录状态并正确显示登录框 =====
             if (!this.game.auth || typeof this.game.auth.isLoggedIn !== 'function') {
                 console.error('auth 模块异常');
                 this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
                 return;
             }
 
+            // 检查用户是否已登录
             if (!this.game.auth.isLoggedIn()) {
-                this.showFeedback('请先登录', '#ff4444');
+                this.showFeedback('请先登录才能进行对战', '#ffa500');
+                
+                // 尝试多种方式显示登录框
                 if (this.game.auth && typeof this.game.auth.showAuthModal === 'function') {
                     this.game.auth.showAuthModal('login');
                 } else {
+                    // 直接显示登录模态框
                     const authModal = document.getElementById('auth-modal');
-                    if (authModal) authModal.style.display = 'flex';
+                    if (authModal) {
+                        authModal.style.display = 'flex';
+                        
+                        // 确保标题正确
+                        const authTitle = document.getElementById('auth-title');
+                        if (authTitle) authTitle.textContent = '🔐 登录';
+                        
+                        // 清除错误信息
+                        const authError = document.getElementById('auth-error');
+                        if (authError) authError.textContent = '';
+                    }
                 }
+                
+                // 释放信号量
+                this.releaseSemaphore('match');
+                this.isMatching = false;
                 return;
+            }
+
+            // 确保 cardTemplate 已初始化
+            if (!this.cardTemplate) {
+                console.log('初始化卡片模板');
+                this.cardTemplate = document.createElement('div');
+                this.cardTemplate.className = 'number-card';
             }
 
             if (!this.room.channel || this.room.channel.state !== 'joined') {
@@ -2384,6 +2410,11 @@ class BattleMode {
                 console.log('匹配超时');
                 this.handleMatchTimeout();
             }, this.constants.MATCH_TIMEOUT);
+
+            this.longWaitTimer = setTimeout(() => {
+                this.longWaitTimer = null;
+                this.showLongWaitSuggestion();
+            }, 15000);
 
             this.startQueueStatusUpdate();
             this.pushBattleState();
@@ -3408,10 +3439,20 @@ class BattleMode {
         }
     }
 
+    /**
+     * 创建对战房间 - 修复版
+     */
     async createBattleRoom(player1, player2) {
         if (!player1 || !player2 || !player1.id || !player2.id) {
             console.error('玩家信息不完整');
             return;
+        }
+
+        // 确保 cardTemplate 已初始化
+        if (!this.cardTemplate) {
+            console.log('重新创建卡片模板');
+            this.cardTemplate = document.createElement('div');
+            this.cardTemplate.className = 'number-card';
         }
 
         if (!this.isSupabaseAvailable()) {
@@ -3466,7 +3507,17 @@ class BattleMode {
         }
     }
 
+    /**
+     * 开始本地对战 - 修复版
+     */
     async startLocalBattle(player1, player2) {
+        // 确保 cardTemplate 已初始化
+        if (!this.cardTemplate) {
+            console.log('重新创建卡片模板');
+            this.cardTemplate = document.createElement('div');
+            this.cardTemplate.className = 'number-card';
+        }
+
         this.room.battleId = 'local_' + Date.now();
         this.room.roomCode = this.generateRoomCode();
         this.room.opponentId = player2.id;
@@ -4306,9 +4357,19 @@ class BattleMode {
         }
     }
 
+    /**
+     * 生成对战网格 - 修复版
+     */
     generateBattleGrid() {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
+
+        // 确保卡片模板存在
+        if (!this.cardTemplate) {
+            console.log('重新创建卡片模板');
+            this.cardTemplate = document.createElement('div');
+            this.cardTemplate.className = 'number-card';
+        }
 
         const oldCards = grid.querySelectorAll('.number-card');
         oldCards.forEach(card => {
