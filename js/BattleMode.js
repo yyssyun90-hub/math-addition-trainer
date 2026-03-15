@@ -7,6 +7,7 @@
  * - 优化错误处理
  * - 增强代码健壮性
  * - 完善版本迁移
+ * - 更新为柔和多彩配色
  * ============================================================
  */
 
@@ -252,7 +253,7 @@ class BattleMode {
                     console.log('新玩家加入:', newPresences);
                     newPresences.forEach(presence => {
                         if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                            this.showFeedback(`👋 ${presence.user_name} 进入匹配`, '#4CAF50');
+                            this.showFeedback(`👋 ${presence.user_name} 进入匹配`, '#a3d8d8');
                         }
                     });
                 })
@@ -260,7 +261,7 @@ class BattleMode {
                     console.log('玩家离开:', leftPresences);
                     leftPresences.forEach(presence => {
                         if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                            this.showFeedback(`👋 ${presence.user_name} 离开匹配`, '#ffa500');
+                            this.showFeedback(`👋 ${presence.user_name} 离开匹配`, '#fbb9c0');
                         }
                     });
                 });
@@ -296,7 +297,7 @@ class BattleMode {
     handlePlayerJoined(newPresences) {
         newPresences.forEach(presence => {
             if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                this.showFeedback(`👋 ${presence.user_name} 进入匹配`, '#4CAF50');
+                this.showFeedback(`👋 ${presence.user_name} 进入匹配`, '#a3d8d8');
             }
         });
     }
@@ -304,7 +305,7 @@ class BattleMode {
     handlePlayerLeft(leftPresences) {
         leftPresences.forEach(presence => {
             if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                this.showFeedback(`👋 ${presence.user_name} 离开匹配`, '#ffa500');
+                this.showFeedback(`👋 ${presence.user_name} 离开匹配`, '#fbb9c0');
             }
         });
     }
@@ -327,7 +328,7 @@ class BattleMode {
             
         }).catch(error => {
             console.error('初始化失败:', error);
-            this.showFeedback('初始化失败，请刷新页面', '#ff4444');
+            this.showFeedback('初始化失败，请刷新页面', '#fbb9c0');
         });
     }
 
@@ -714,18 +715,23 @@ class BattleMode {
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
-            /* 马卡龙色系 - 修复卡片溢出 */
+            /* 柔和多彩的对战样式 */
             :root {
-                --macaron-pink: #fce4e8;
-                --macaron-peach: #ffe9e0;
-                --macaron-mint: #e0f0e5;
-                --macaron-lavender: #f0e6f2;
-                --macaron-cream: #fff9e6;
-                --macaron-rose: #f8d7e3;
+                --soft-pink: #fce4e8;
+                --soft-peach: #ffe9e0;
+                --soft-mint: #e0f0e5;
+                --soft-lavender: #f0e6f2;
+                --soft-cream: #fff9e6;
+                --soft-rose: #f8d7e3;
+                --coral-pink: #feada6;
+                --candy-pink: #f5b0c5;
+                --mint-green: #a3d8d8;
+                --sunshine-yellow: #ffe194;
+                --lavender: #d9c6e6;
             }
 
             * {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                font-family: 'Comic Neue', 'Chalkboard SE', 'Quicksand', 'Segoe UI', sans-serif;
                 -webkit-font-smoothing: antialiased;
                 -moz-osx-font-smoothing: grayscale;
                 text-rendering: optimizeLegibility;
@@ -746,8 +752,9 @@ class BattleMode {
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0,0,0,0.8);
+                background: rgba(0,0,0,0.2);
                 backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
                 z-index: 4000;
                 display: none;
                 justify-content: center;
@@ -759,10 +766,12 @@ class BattleMode {
                 grid-template-columns: repeat(5, minmax(0, 1fr));
                 gap: 6px;
                 padding: 8px;
-                background: linear-gradient(145deg, #fff9fc, #fff5f8);
-                border: 2px solid #fad1db;
+                background: rgba(255, 249, 252, 0.7);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                border: 1px solid rgba(255, 220, 230, 0.6);
                 border-radius: 16px;
-                box-shadow: inset 0 2px 5px rgba(255, 200, 220, 0.2), 0 3px 0 #f5b8c7;
+                box-shadow: 0 8px 20px rgba(255, 200, 220, 0.2);
                 margin-bottom: 8px;
                 width: 100%;
                 overflow: hidden;
@@ -770,10 +779,10 @@ class BattleMode {
 
             #battle-grid .number-card {
                 background: linear-gradient(145deg, #ffffff, #fffafc);
-                border: 2px solid #fad1db;
+                border: 2px solid rgba(255, 220, 230, 0.8);
                 border-radius: 10px;
-                box-shadow: 0 2px 0 #f5b8c7, 0 3px 6px rgba(245, 184, 199, 0.15);
-                color: #b28b99;
+                box-shadow: 0 5px 10px rgba(0, 0, 0, 0.03);
+                color: #b2869c;
                 font-size: clamp(1.2rem, 5vw, 2rem);
                 font-weight: 600;
                 aspect-ratio: 1 / 1;
@@ -786,11 +795,8 @@ class BattleMode {
                 transition: all 0.2s ease;
                 position: relative;
                 animation: cardAppear 0.3s ease-out;
-                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
                 -webkit-tap-highlight-color: transparent;
                 touch-action: manipulation;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
                 text-shadow: none;
                 margin: 0;
                 padding: 0;
@@ -820,28 +826,28 @@ class BattleMode {
             }
 
             #battle-grid .number-card:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 3px 0 #f5b8c7, 0 4px 8px rgba(245, 184, 199, 0.2);
+                transform: translateY(-2px);
+                box-shadow: 0 8px 15px rgba(255, 200, 220, 0.3);
                 background: linear-gradient(145deg, #ffffff, #fff0f5);
             }
 
             #battle-grid .number-card:active {
                 transform: translateY(1px);
-                box-shadow: 0 1px 0 #f5b8c7;
+                box-shadow: 0 3px 8px rgba(255, 200, 220, 0.2);
             }
 
             #battle-grid .number-card.selected {
-                background: linear-gradient(145deg, #eaf5ed, #e0efe5);
+                background: linear-gradient(145deg, #e0f0e5, #d6eadc);
                 border-color: #b8d9c4;
-                box-shadow: 0 2px 0 #9ec0aa, 0 3px 6px rgba(158, 192, 170, 0.15);
-                color: #5c8b6f;
+                box-shadow: 0 5px 12px rgba(163, 216, 216, 0.3);
+                color: #2b6c6c;
                 transform: scale(1.02);
                 animation: softPulse 2s ease-in-out infinite;
             }
 
             @keyframes softPulse {
-                0%, 100% { box-shadow: 0 2px 0 #9ec0aa, 0 3px 6px rgba(158, 192, 170, 0.15); }
-                50% { box-shadow: 0 2px 0 #9ec0aa, 0 5px 10px rgba(158, 192, 170, 0.25); }
+                0%, 100% { box-shadow: 0 5px 12px rgba(163, 216, 216, 0.2); }
+                50% { box-shadow: 0 8px 18px rgba(163, 216, 216, 0.4); }
             }
 
             #battle-grid .number-card.matched {
@@ -849,8 +855,6 @@ class BattleMode {
                 transform: scale(0.7);
                 pointer-events: none;
                 filter: grayscale(0.4);
-                box-shadow: 0 2px 0 #ccc;
-                border-color: #ccc;
                 animation: vanish 0.3s ease-out;
             }
 
@@ -860,10 +864,10 @@ class BattleMode {
             }
 
             .battle-target {
-                background: linear-gradient(145deg, #fef0d7, #fee9d1);
-                border: 3px solid #fad1b3;
+                background: radial-gradient(circle at 30% 30%, #fede9e, #fdce7e);
+                border: 3px solid white;
                 border-radius: 50%;
-                box-shadow: 0 3px 0 #e6b68f, 0 6px 12px rgba(230, 182, 143, 0.15);
+                box-shadow: 0 10px 20px rgba(254, 190, 120, 0.2);
                 color: #b27a58;
                 font-size: clamp(2rem, 8vw, 3.5rem);
                 font-weight: 600;
@@ -876,9 +880,6 @@ class BattleMode {
                 justify-content: center;
                 margin: 5px auto 8px;
                 animation: macaronGlow 4s ease-in-out infinite;
-                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
                 text-shadow: none;
             }
 
@@ -900,7 +901,7 @@ class BattleMode {
 
             @keyframes macaronGlow {
                 0%, 100% { opacity: 0.95; }
-                50% { opacity: 1; box-shadow: 0 3px 0 #e6b68f, 0 10px 20px rgba(230, 182, 143, 0.2); }
+                50% { opacity: 1; box-shadow: 0 15px 25px rgba(254, 190, 120, 0.3); }
             }
 
             .players-info {
@@ -914,17 +915,19 @@ class BattleMode {
             .player-card {
                 flex: 1;
                 min-width: 0;
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
-                border: 2px solid #fad1db;
+                background: rgba(255, 245, 250, 0.7);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                border: 1px solid rgba(255, 220, 230, 0.6);
                 border-radius: 16px;
                 padding: 6px;
-                box-shadow: 0 2px 0 #f5b8c7, 0 3px 8px rgba(245, 184, 199, 0.1);
+                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
                 transition: all 0.3s ease;
             }
 
             .player-card.active {
                 border-color: #b8d9c4;
-                box-shadow: 0 2px 0 #9ec0aa, 0 3px 8px rgba(158, 192, 170, 0.15);
+                box-shadow: 0 8px 18px rgba(163, 216, 216, 0.2);
                 transform: translateY(-1px);
             }
 
@@ -932,38 +935,34 @@ class BattleMode {
                 width: 32px;
                 height: 32px;
                 border-radius: 50%;
-                background: linear-gradient(145deg, #fef0f4, #fde8ef);
-                border: 2px solid #fad1db;
+                background: linear-gradient(145deg, #feada6, #f5b0c5);
+                border: 2px solid white;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 font-size: 1.2rem;
-                color: #b28b99;
-                box-shadow: 0 2px 0 #f5b8c7;
+                color: white;
+                box-shadow: 0 3px 8px rgba(254, 173, 166, 0.2);
                 margin: 0 auto 3px;
             }
 
             .player-name {
                 font-size: 0.8rem;
                 font-weight: 500;
-                color: #b28b99;
+                color: #b2869c;
                 text-align: center;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
                 margin-bottom: 2px;
             }
 
             .player-score {
                 font-size: 1.2rem;
                 font-weight: 600;
-                color: #b28b99;
+                color: #d46b8d;
                 text-align: center;
-                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
+                font-family: 'Comic Sans MS', 'Chalkboard SE', cursive;
             }
 
             @media (min-width: 481px) and (max-width: 768px) {
@@ -995,12 +994,10 @@ class BattleMode {
             }
 
             .progress-bar {
-                background: rgba(245, 184, 199, 0.1);
-                border: 2px solid #fad1db;
+                background: rgba(255, 220, 230, 0.3);
                 border-radius: 12px;
                 height: 12px;
                 overflow: hidden;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
                 margin: 3px 0;
             }
 
@@ -1008,51 +1005,34 @@ class BattleMode {
                 height: 100%;
                 border-radius: 12px;
                 transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-                box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
                 position: relative;
                 overflow: hidden;
             }
 
             .progress-fill.player1 {
-                background: linear-gradient(90deg, #fed9b0, #fecbad, #febdab);
+                background: linear-gradient(90deg, #feada6, #f5b0c5);
             }
 
             .progress-fill.player2 {
-                background: linear-gradient(90deg, #c5e5d0, #b8ddc5, #abd5ba);
-            }
-
-            .progress-fill::after {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-                animation: shimmer 2s infinite;
-            }
-
-            @keyframes shimmer {
-                0% { transform: translateX(-100%); }
-                100% { transform: translateX(100%); }
+                background: linear-gradient(90deg, #a3d8d8, #b8e2e2);
             }
 
             .turn-indicator {
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
-                border: 2px solid #fad1db;
+                background: rgba(255, 245, 250, 0.8);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                border: 1px solid rgba(255, 220, 230, 0.6);
                 border-radius: 25px;
                 padding: 6px 12px;
                 font-size: 0.9rem;
                 font-weight: 500;
-                color: #b28b99;
-                box-shadow: 0 2px 0 #f5b8c7, 0 3px 8px rgba(245, 184, 199, 0.1);
+                color: #b2869c;
+                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
                 text-align: center;
                 margin-bottom: 8px;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
             }
 
             .turn-indicator .turn-text {
@@ -1064,16 +1044,15 @@ class BattleMode {
                 background: white;
                 border-radius: 15px;
                 padding: 4px 10px;
-                color: #b28b99;
+                color: #d46b8d;
                 font-size: 1rem;
                 font-weight: 600;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.03);
-                border: 2px solid #fad1db;
+                border: 1px solid rgba(255, 220, 230, 0.6);
                 font-family: monospace;
             }
 
             .timer.warning {
-                color: #e68b8b !important;
+                color: #fbb9c0 !important;
                 animation: timerWarning 1s ease-in-out infinite;
             }
 
@@ -1103,22 +1082,24 @@ class BattleMode {
             }
 
             .chat-container {
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
-                border: 2px solid #fad1db;
+                background: rgba(255, 245, 250, 0.7);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
+                border: 1px solid rgba(255, 220, 230, 0.6);
                 border-radius: 16px;
                 padding: 8px;
-                box-shadow: inset 0 2px 5px rgba(245, 184, 199, 0.1), 0 2px 0 #f5b8c7;
+                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
                 margin-top: 8px;
             }
 
             .chat-messages {
-                background: rgba(255, 255, 255, 0.7);
+                background: rgba(255, 255, 255, 0.5);
                 border-radius: 12px;
                 padding: 6px;
                 min-height: 80px;
                 max-height: 200px;
                 overflow-y: auto;
-                border: 2px solid #fad1db;
+                border: 1px solid rgba(255, 220, 230, 0.6);
                 margin-bottom: 6px;
                 -webkit-overflow-scrolling: touch;
             }
@@ -1140,7 +1121,7 @@ class BattleMode {
             }
 
             .chat-messages::-webkit-scrollbar-thumb {
-                background: #fad1db;
+                background: #fba9c4;
                 border-radius: 4px;
             }
 
@@ -1153,8 +1134,6 @@ class BattleMode {
                 font-size: 0.8rem;
                 line-height: 1.2;
                 animation: messageAppear 0.2s ease-out;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
             }
 
             @keyframes messageAppear {
@@ -1169,34 +1148,31 @@ class BattleMode {
             }
 
             .message.self {
-                background: linear-gradient(145deg, #eaf5ed, #e0efe5);
+                background: linear-gradient(135deg, #feada6, #f5b0c5);
                 border-radius: 12px 12px 3px 12px;
                 margin-left: auto;
-                color: #5c8b6f;
-                border: 2px solid #b8d9c4;
-                box-shadow: 0 2px 0 #9ec0aa;
+                color: white;
+                border: 1px solid white;
             }
 
             .message.opponent {
-                background: linear-gradient(145deg, #fef0f4, #fde8ef);
+                background: white;
                 border-radius: 12px 12px 12px 3px;
                 margin-right: auto;
-                color: #b28b99;
-                border: 2px solid #fad1db;
-                box-shadow: 0 2px 0 #f5b8c7;
+                color: #b2869c;
+                border: 1px solid rgba(255, 200, 220, 0.6);
             }
 
             .message.system {
-                background: linear-gradient(145deg, #f5ebf7, #f0e4f2);
+                background: linear-gradient(135deg, #ffe194, #ffd966);
                 border-radius: 15px;
                 margin: 3px auto;
                 text-align: center;
-                color: #9b7aa3;
-                border: 2px solid #e0c9e5;
+                color: #946f2b;
                 font-style: italic;
-                box-shadow: 0 2px 0 #c9aed0;
                 max-width: 95%;
                 font-size: 0.75rem;
+                border: 1px solid white;
             }
 
             .message-sender {
@@ -1215,76 +1191,90 @@ class BattleMode {
                 flex: 1;
                 min-width: 0;
                 padding: 6px 10px;
-                border: 2px solid #fad1db;
+                border: 2px solid rgba(255, 200, 220, 0.6);
                 border-radius: 20px;
                 font-size: 0.8rem;
                 background: white;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.02), 0 2px 0 #f5b8c7;
                 transition: all 0.2s ease;
-                color: #b28b99;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
+                color: #b2869c;
             }
 
             .chat-input-area input:focus {
                 outline: none;
-                border-color: #f5b8c7;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.02), 0 3px 0 #f5b8c7;
-                transform: translateY(-1px);
+                border-color: #fba9c4;
+                box-shadow: 0 0 0 3px rgba(255, 200, 220, 0.3);
             }
 
             .chat-input-area input:disabled {
                 opacity: 0.6;
                 background: #f9f9f9;
-                box-shadow: 0 2px 0 #ddd;
                 border-color: #ddd;
             }
 
+            /* 柔和多彩的按钮样式 */
             .candy-btn {
-                background: linear-gradient(145deg, #fef0f4, #fde8ef);
+                background: rgba(255, 245, 250, 0.8);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
                 border: none;
-                border-radius: 25px;
-                padding: 6px 12px;
-                font-size: 0.8rem;
-                font-weight: 500;
-                color: #b28b99;
+                border-radius: 30px;
+                padding: 8px 16px;
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #9b7b88;
                 cursor: pointer;
-                box-shadow: 0 2px 0 #f5b8c7, 0 3px 6px rgba(245, 184, 199, 0.1);
-                transition: all 0.2s ease;
-                border: 2px solid #fad1db;
+                box-shadow: 0 8px 15px rgba(230, 200, 210, 0.2);
+                transition: all 0.3s ease;
+                border: 1px solid rgba(255, 255, 255, 0.8);
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                gap: 4px;
-                -webkit-tap-highlight-color: transparent;
-                touch-action: manipulation;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
-                white-space: nowrap;
+                gap: 6px;
             }
 
             .candy-btn:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 3px 0 #f5b8c7, 0 4px 8px rgba(245, 184, 199, 0.15);
+                transform: translateY(-2px);
+                box-shadow: 0 12px 20px rgba(230, 200, 210, 0.3);
             }
 
             .candy-btn:active {
                 transform: translateY(1px);
-                box-shadow: 0 1px 0 #f5b8c7;
+                box-shadow: 0 5px 10px rgba(230, 200, 210, 0.15);
             }
 
             .candy-btn.primary {
-                background: linear-gradient(145deg, #fef0d7, #fee9d1);
-                border-color: #fad1b3;
-                box-shadow: 0 2px 0 #e6b68f;
-                color: #b27a58;
+                background: linear-gradient(135deg, #feada6, #f5b0c5);
+                color: white;
             }
 
             .candy-btn.secondary {
-                background: linear-gradient(145deg, #e0f0e5, #d6eadc);
-                border-color: #b8d9c4;
-                box-shadow: 0 2px 0 #9ec0aa;
-                color: #5c8b6f;
+                background: linear-gradient(135deg, #ffcdb1, #febf9f);
+                color: #8b5a44;
+            }
+
+            .candy-btn.warning {
+                background: linear-gradient(135deg, #fbb9c0, #faa7b0);
+                color: white;
+            }
+
+            .candy-btn.home {
+                background: linear-gradient(135deg, #d9c6e6, #cbafdf);
+                color: white;
+            }
+
+            .candy-btn.pause {
+                background: linear-gradient(135deg, #a5dff9, #8ac4e8);
+                color: #2b6c6c;
+            }
+
+            .candy-btn.battle {
+                background: linear-gradient(135deg, #a3d8d8, #b8e2e2);
+                color: #2b6c6c;
+            }
+
+            .candy-btn.tournament {
+                background: linear-gradient(135deg, #ffe194, #ffd966);
+                color: #946f2b;
             }
 
             .candy-btn.small {
@@ -1296,8 +1286,6 @@ class BattleMode {
                 opacity: 0.5;
                 cursor: not-allowed;
                 transform: translateY(0);
-                box-shadow: 0 2px 0 #ddd;
-                border-color: #ddd;
             }
 
             @media (min-width: 481px) and (max-width: 768px) {
@@ -1318,8 +1306,8 @@ class BattleMode {
                 display: inline-block;
                 width: 25px;
                 height: 25px;
-                border: 3px solid #fad1db;
-                border-top-color: #f5b8c7;
+                border: 3px solid rgba(255, 200, 220, 0.3);
+                border-top-color: #fba9c4;
                 border-radius: 50%;
                 animation: spin 1s linear infinite;
                 margin: 8px auto;
@@ -1329,8 +1317,8 @@ class BattleMode {
                 display: inline-block;
                 width: 12px;
                 height: 12px;
-                border: 2px solid #fad1db;
-                border-top-color: #f5b8c7;
+                border: 2px solid rgba(255, 200, 220, 0.3);
+                border-top-color: #fba9c4;
                 border-radius: 50%;
                 animation: spinSmall 1s linear infinite;
                 margin-right: 4px;
@@ -1349,18 +1337,19 @@ class BattleMode {
             .battle-result {
                 text-align: center;
                 padding: 12px;
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                background: rgba(255, 245, 250, 0.8);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
                 border-radius: 25px;
-                border: 3px solid #fad1db;
-                box-shadow: 0 4px 0 #f5b8c7, 0 8px 15px rgba(245, 184, 199, 0.15);
+                border: 2px solid white;
+                box-shadow: 0 15px 25px rgba(0, 0, 0, 0.05);
             }
 
             .result-title {
                 font-size: 1.8rem;
                 margin-bottom: 10px;
                 animation: resultPop 0.5s ease-out;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
+                color: #d46b8d;
             }
 
             @keyframes resultPop {
@@ -1381,84 +1370,64 @@ class BattleMode {
                 border-radius: 16px;
                 padding: 10px;
                 min-width: 80px;
-                border: 2px solid #fad1db;
-                box-shadow: 0 2px 0 #f5b8c7;
+                border: 1px solid rgba(255, 200, 220, 0.6);
+                box-shadow: 0 5px 10px rgba(0, 0, 0, 0.02);
             }
 
             .result-score-card.winner {
                 border-color: #b8d9c4;
-                box-shadow: 0 2px 0 #9ec0aa;
                 background: linear-gradient(145deg, #f0f9f2, #e8f2ea);
             }
 
             .result-score {
                 font-size: 2rem;
                 font-weight: 600;
-                color: #b28b99;
-                font-family: 'Comic Sans MS', 'Chalkboard SE', 'Arial Rounded', cursive, sans-serif;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
+                color: #d46b8d;
             }
 
             .winner .result-score {
-                color: #5c8b6f;
+                color: #2b6c6c;
             }
 
             .room-code-hint {
                 display: block;
                 font-size: 0.6rem;
-                color: #b28b99;
+                color: #b2869c;
                 margin-top: 2px;
                 cursor: pointer;
                 transition: color 0.2s;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
             }
 
             .room-code-hint:hover {
-                color: #f5b8c7;
-            }
-
-            .modal {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.5);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 1000;
-                padding: 10px;
-                overflow-y: auto;
+                color: #fba9c4;
             }
 
             .modal-content {
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                background: rgba(255, 255, 255, 0.85);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
                 border-radius: 25px;
                 padding: 15px;
                 max-width: 350px;
                 width: 100%;
-                border: 3px solid #fad1db;
-                box-shadow: 0 5px 0 #f5b8c7;
+                border: 2px solid white;
+                box-shadow: 0 20px 30px rgba(0, 0, 0, 0.1);
             }
 
             .modal-content input {
                 width: 100%;
                 padding: 10px;
-                border: 2px solid #fad1db;
+                border: 2px solid rgba(255, 200, 220, 0.6);
                 border-radius: 20px;
                 font-size: 0.9rem;
                 background: white;
-                box-shadow: inset 0 1px 3px rgba(0,0,0,0.02), 0 2px 0 #f5b8c7;
-                color: #b28b99;
+                color: #b2869c;
                 margin: 8px 0;
             }
 
             .modal-content input:focus {
                 outline: none;
-                border-color: #f5b8c7;
+                border-color: #fba9c4;
             }
 
             .modal-buttons {
@@ -1471,35 +1440,38 @@ class BattleMode {
             #match-waiting-hint {
                 margin-top: 8px;
                 padding: 10px;
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                background: rgba(255, 245, 250, 0.7);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
                 border-radius: 16px;
-                border: 2px solid #fad1db;
-                box-shadow: 0 2px 0 #f5b8c7;
+                border: 1px solid rgba(255, 220, 230, 0.6);
+                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
             }
 
             #ai-option {
                 margin-top: 10px;
                 padding: 12px;
-                background: linear-gradient(145deg, #fef5f8, #fef0f4);
+                background: rgba(255, 245, 250, 0.7);
+                backdrop-filter: blur(5px);
+                -webkit-backdrop-filter: blur(5px);
                 border-radius: 20px;
-                border: 2px solid #fad1db;
-                box-shadow: 0 2px 0 #f5b8c7;
+                border: 1px solid rgba(255, 220, 230, 0.6);
+                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
             }
 
             .offline-hint {
                 position: fixed;
                 top: 8px;
                 right: 8px;
-                background: #e68b8b;
+                background: #fbb9c0;
                 color: white;
                 padding: 6px 12px;
                 border-radius: 16px;
                 z-index: 10001;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: 0 5px 15px rgba(251, 185, 192, 0.3);
                 animation: slideIn 0.3s ease-out;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
                 font-size: 0.8rem;
+                border: 1px solid white;
             }
 
             #zoom-warning {
@@ -1507,15 +1479,14 @@ class BattleMode {
                 top: 8px;
                 left: 50%;
                 transform: translateX(-50%);
-                background: #e68b8b;
+                background: #fbb9c0;
                 color: white;
                 padding: 6px 12px;
                 border-radius: 20px;
                 z-index: 10000;
                 font-size: 0.8rem;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
+                box-shadow: 0 5px 15px rgba(251, 185, 192, 0.3);
+                border: 1px solid white;
                 white-space: nowrap;
             }
 
@@ -1534,11 +1505,35 @@ class BattleMode {
                 display: inline-block;
                 width: 12px;
                 height: 12px;
-                border: 2px solid #f5b8c7;
-                border-top-color: transparent;
+                border: 2px solid rgba(255, 200, 220, 0.3);
+                border-top-color: #fba9c4;
                 border-radius: 50%;
                 animation: spin 0.6s linear infinite;
                 margin-left: 4px;
+            }
+
+            /* 发送按钮样式 */
+            .send-btn {
+                background: linear-gradient(135deg, #a3d8d8, #b8e2e2);
+                border: none;
+                border-radius: 30px;
+                padding: 8px 20px;
+                color: #2b6c6c;
+                font-weight: 600;
+                box-shadow: 0 8px 15px rgba(163, 216, 216, 0.2);
+                transition: all 0.3s ease;
+                border: 1px solid white;
+                cursor: pointer;
+            }
+
+            .send-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 12px 20px rgba(163, 216, 216, 0.3);
+            }
+
+            .send-btn:active {
+                transform: translateY(1px);
+                box-shadow: 0 5px 10px rgba(163, 216, 216, 0.15);
             }
         `;
 
@@ -1749,7 +1744,7 @@ class BattleMode {
         }
         
         this.onlineHandler = () => {
-            this.showFeedback('网络已连接', '#4CAF50');
+            this.showFeedback('网络已连接', '#a3d8d8');
             this.offlineMode = false;
             if (this.room.status === 'playing' && this.room.battleId && !this.room.opponentIsAI) {
                 this.attemptReconnect();
@@ -1757,7 +1752,7 @@ class BattleMode {
         };
         
         this.offlineHandler = () => {
-            this.showFeedback('网络已断开，正在使用离线模式', '#ffa500');
+            this.showFeedback('网络已断开，正在使用离线模式', '#fbb9c0');
             this.offlineMode = true;
             if (!this.room.opponentIsAI && this.room.status === 'playing') {
                 this.switchToOfflineMode();
@@ -1779,7 +1774,7 @@ class BattleMode {
         }
         
         this.updateTurnIndicator();
-        this.showFeedback('已恢复在线状态', '#4CAF50');
+        this.showFeedback('已恢复在线状态', '#a3d8d8');
     }
 
     setupHistoryHandler() {
@@ -1824,7 +1819,7 @@ class BattleMode {
                 
                 if (type === 'BATTLE_STARTED' && data.userId === this.game.state?.currentUser?.id) {
                     if (this.room.status !== 'playing') {
-                        this.showFeedback('您已在其他标签页开始对战', '#ffa500');
+                        this.showFeedback('您已在其他标签页开始对战', '#fbb9c0');
                         this.leaveBattle();
                         if (this.game.ui) {
                             this.game.ui.closeModal('battle-modal');
@@ -1915,22 +1910,6 @@ class BattleMode {
     showZoomWarning() {
         const warning = document.createElement('div');
         warning.id = 'zoom-warning';
-        warning.style.cssText = `
-            position: fixed;
-            top: 8px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #e68b8b;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            z-index: 10000;
-            font-size: 0.8rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            white-space: nowrap;
-        `;
         warning.textContent = '检测到页面缩放可能影响显示，建议重置到100%';
         document.body.appendChild(warning);
         
@@ -1979,7 +1958,7 @@ class BattleMode {
                         return await originalMethod.apply(this, args);
                     } catch (error) {
                         console.error(`方法 ${methodName} 执行失败:`, error);
-                        this.showFeedback('操作失败，请重试', '#ff4444');
+                        this.showFeedback('操作失败，请重试', '#fbb9c0');
                         return null;
                     }
                 };
@@ -2041,7 +2020,7 @@ class BattleMode {
         }
     }
 
-    showFeedback(message, color = '#4CAF50') {
+    showFeedback(message, color = '#a3d8d8') {
         if (this.game?.ui && typeof this.game.ui.showFeedback === 'function') {
             this.game.ui.showFeedback(message, color);
         } else {
@@ -2057,7 +2036,8 @@ class BattleMode {
                 border-radius: 25px;
                 z-index: 10002;
                 font-size: 0.9rem;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+                border: 1px solid white;
                 animation: slideDown 0.3s ease-out;
             `;
             toast.textContent = message;
@@ -2191,7 +2171,7 @@ class BattleMode {
 
     handleConnectionLost() {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            this.showFeedback('连接丢失，请检查网络', '#ff4444');
+            this.showFeedback('连接丢失，请检查网络', '#fbb9c0');
             return;
         }
         
@@ -2262,7 +2242,7 @@ class BattleMode {
     async quickMatch() {
         if (this.isMatching) {
             console.log('已经在匹配中，请稍候');
-            this.showFeedback('正在匹配中，请稍候', '#ffa500');
+            this.showFeedback('正在匹配中，请稍候', '#fbb9c0');
             return;
         }
 
@@ -2278,7 +2258,7 @@ class BattleMode {
                 if (this.matchRetryCount < this.constants.MAX_MATCH_RETRIES) {
                     this.matchRetryCount++;
                     console.log(`重试匹配 (${this.matchRetryCount}/${this.constants.MAX_MATCH_RETRIES})`);
-                    this.showFeedback('游戏初始化中，请稍后', '#ffa500');
+                    this.showFeedback('游戏初始化中，请稍后', '#fbb9c0');
                     
                     setTimeout(() => {
                         if (this.isMatching) {
@@ -2288,7 +2268,7 @@ class BattleMode {
                         this.quickMatch();
                     }, 2000);
                 } else {
-                    this.showFeedback('游戏初始化失败，请刷新页面', '#ff4444');
+                    this.showFeedback('游戏初始化失败，请刷新页面', '#fbb9c0');
                     this.matchRetryCount = 0;
                 }
                 return;
@@ -2299,18 +2279,18 @@ class BattleMode {
             const authReady = await this.waitForAuthReady();
             if (!authReady) {
                 console.error('auth 模块未就绪');
-                this.showFeedback('登录模块加载失败，请刷新页面', '#ff4444');
+                this.showFeedback('登录模块加载失败，请刷新页面', '#fbb9c0');
                 return;
             }
 
             if (!this.game.auth || typeof this.game.auth.isLoggedIn !== 'function') {
                 console.error('auth 模块异常');
-                this.showFeedback('登录模块异常，请刷新页面', '#ff4444');
+                this.showFeedback('登录模块异常，请刷新页面', '#fbb9c0');
                 return;
             }
 
             if (!this.game.auth.isLoggedIn()) {
-                this.showFeedback('请先登录才能进行对战', '#ffa500');
+                this.showFeedback('请先登录才能进行对战', '#fbb9c0');
                 
                 if (this.game.auth && typeof this.game.auth.showAuthModal === 'function') {
                     this.game.auth.showAuthModal('login');
@@ -2339,7 +2319,7 @@ class BattleMode {
             if (!this.room.channel || this.room.channel.state !== 'joined') {
                 const subscribed = await this.setupRealtimeSubscription();
                 if (!subscribed) {
-                    this.showFeedback('无法连接到匹配服务器', '#ff4444');
+                    this.showFeedback('无法连接到匹配服务器', '#fbb9c0');
                     return;
                 }
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2408,7 +2388,7 @@ class BattleMode {
             
         } catch (error) {
             console.error('quickMatch 执行失败:', error);
-            this.showFeedback('匹配失败，请重试', '#ff4444');
+            this.showFeedback('匹配失败，请重试', '#fbb9c0');
         } finally {
             this.releaseSemaphore('match');
             this.isMatching = false;
@@ -2428,60 +2408,21 @@ class BattleMode {
 
         const hintDiv = document.createElement('div');
         hintDiv.id = 'match-waiting-hint';
-        hintDiv.style.cssText = `
-            margin-top: 8px;
-            padding: 10px;
-            background: linear-gradient(145deg, #fef5f8, #fef0f4);
-            border-radius: 16px;
-            border: 2px solid #fad1db;
-            box-shadow: 0 2px 0 #f5b8c7;
+        hintDiv.innerHTML = `
+            <div style="margin-bottom: 5px; display: flex; align-items: center; justify-content: center;">
+                <span class="waiting-spinner-small"></span>
+                <span id="match-status-text" style="font-size: 0.9rem; font-weight: 500; color: #b2869c; margin-left: 8px;">正在寻找对手...</span>
+            </div>
+            <div id="queue-status" style="font-size: 0.8rem; color: #b2869c; text-align: center;">
+                当前在线玩家: <span id="queue-count" style="font-weight: 500; color: #fba9c4;">0</span>
+            </div>
+            <div style="font-size: 0.75rem; color: #b2869c; margin-top: 3px; text-align: center;">
+                等待时间: <span id="wait-time" style="font-weight: 500;">0</span>秒
+            </div>
+            <div style="margin-top: 5px; font-size: 0.7rem; color: #fba9c4; text-align: center;">
+                ✨ 检测到其他玩家时会立即匹配 ✨
+            </div>
         `;
-
-        const statusContainer = document.createElement('div');
-        statusContainer.style.cssText = 'margin-bottom: 5px; display: flex; align-items: center; justify-content: center;';
-
-        const spinner = document.createElement('span');
-        spinner.className = 'waiting-spinner-small';
-        statusContainer.appendChild(spinner);
-
-        const statusText = document.createElement('span');
-        statusText.id = 'match-status-text';
-        statusText.style.cssText = 'font-size: 0.9rem; font-weight: 500; color: #b28b99; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
-        statusText.textContent = '正在寻找对手...';
-        statusContainer.appendChild(statusText);
-
-        hintDiv.appendChild(statusContainer);
-
-        const queueStatus = document.createElement('div');
-        queueStatus.id = 'queue-status';
-        queueStatus.style.cssText = 'font-size: 0.8rem; color: #b28b99; text-align: center; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
-        queueStatus.textContent = '当前在线玩家: ';
-
-        const queueCount = document.createElement('span');
-        queueCount.id = 'queue-count';
-        queueCount.style.cssText = 'font-weight: 500; color: #f5b8c7;';
-        queueCount.textContent = '0';
-        queueStatus.appendChild(queueCount);
-
-        hintDiv.appendChild(queueStatus);
-
-        const waitTimeDiv = document.createElement('div');
-        waitTimeDiv.style.cssText = 'font-size: 0.75rem; color: #b28b99; margin-top: 3px; text-align: center; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
-        waitTimeDiv.textContent = '等待时间: ';
-
-        const waitTime = document.createElement('span');
-        waitTime.id = 'wait-time';
-        waitTime.style.cssText = 'font-weight: 500;';
-        waitTime.textContent = '0';
-        waitTimeDiv.appendChild(waitTime);
-        waitTimeDiv.appendChild(document.createTextNode('秒'));
-
-        hintDiv.appendChild(waitTimeDiv);
-        
-        const matchHint = document.createElement('div');
-        matchHint.style.cssText = 'margin-top: 5px; font-size: 0.7rem; color: #f5b8c7; text-align: center;';
-        matchHint.textContent = '✨ 检测到其他玩家时会立即匹配 ✨';
-        hintDiv.appendChild(matchHint);
 
         waitingDiv.appendChild(hintDiv);
     }
@@ -2499,33 +2440,26 @@ class BattleMode {
             padding: 6px;
             background: #fff3e0;
             border-radius: 12px;
-            border: 2px solid #e6b68f;
-            color: #b27a58;
+            border: 1px solid #febf9f;
+            color: #b85e3a;
             font-size: 0.8rem;
             text-align: center;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
         `;
         
-        const text = document.createTextNode('⏳ 等待时间较长，您可以：');
-        suggestion.appendChild(text);
+        suggestion.innerHTML = `
+            ⏳ 等待时间较长，您可以：
+            <button class="candy-btn small" style="margin: 0 2px;">继续等待</button>
+            <button class="candy-btn small secondary" style="margin: 0 2px;">与AI对战</button>
+        `;
         
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'candy-btn small';
-        continueBtn.style.cssText = 'margin: 0 2px;';
-        continueBtn.textContent = '继续等待';
+        const continueBtn = suggestion.querySelector('.candy-btn.small');
+        const aiBtn = suggestion.querySelector('.candy-btn.small.secondary');
+        
         continueBtn.onclick = () => this.continueWaiting();
-        suggestion.appendChild(continueBtn);
-        
-        const aiBtn = document.createElement('button');
-        aiBtn.className = 'candy-btn small secondary';
-        aiBtn.style.cssText = 'margin: 0 2px;';
-        aiBtn.textContent = '与AI对战';
         aiBtn.onclick = () => {
             this.continueWaiting();
             this.startAIBattle();
         };
-        suggestion.appendChild(aiBtn);
         
         waitingDiv.appendChild(suggestion);
     }
@@ -2603,48 +2537,18 @@ class BattleMode {
 
         const aiDiv = document.createElement('div');
         aiDiv.id = 'ai-option';
-        aiDiv.style.cssText = `
-            margin-top: 10px;
-            padding: 12px;
-            background: linear-gradient(145deg, #fef5f8, #fef0f4);
-            border-radius: 20px;
-            border: 2px solid #fad1db;
-            box-shadow: 0 2px 0 #f5b8c7;
+        aiDiv.innerHTML = `
+            <div style="font-size: 2rem; margin-bottom: 5px;">😢</div>
+            <p style="margin-bottom: 5px; font-weight: 500; color: #b2869c; font-size: 0.9rem;">当前没有其他玩家在线</p>
+            <p style="margin-bottom: 8px; font-size: 0.8rem; color: #b2869c;">您可以继续等待，或者与AI练习对战</p>
+            <div style="display: flex; gap: 5px; justify-content: center;">
+                <button class="candy-btn primary small" style="flex: 1;">⏳ 继续等待</button>
+                <button class="candy-btn secondary small" style="flex: 1;">🤖 与AI对战</button>
+            </div>
         `;
 
-        const emoji = document.createElement('div');
-        emoji.style.cssText = 'font-size: 2rem; margin-bottom: 5px;';
-        emoji.textContent = '😢';
-        aiDiv.appendChild(emoji);
-
-        const p1 = document.createElement('p');
-        p1.style.cssText = 'margin-bottom: 5px; font-weight: 500; color: #b28b99; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-size: 0.9rem;';
-        p1.textContent = '当前没有其他玩家在线';
-        aiDiv.appendChild(p1);
-
-        const p2 = document.createElement('p');
-        p2.style.cssText = 'margin-bottom: 8px; font-size: 0.8rem; color: #b28b99; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;';
-        p2.textContent = '您可以继续等待，或者与AI练习对战';
-        aiDiv.appendChild(p2);
-
-        const btnContainer = document.createElement('div');
-        btnContainer.style.cssText = 'display: flex; gap: 5px; justify-content: center;';
-
-        const continueBtn = document.createElement('button');
-        continueBtn.className = 'candy-btn primary small';
-        continueBtn.style.cssText = 'flex: 1;';
-        continueBtn.textContent = '⏳ 继续等待';
-        btnContainer.appendChild(continueBtn);
-
-        const aiBtn = document.createElement('button');
-        aiBtn.className = 'candy-btn secondary small';
-        aiBtn.style.cssText = 'flex: 1;';
-        aiBtn.textContent = '🤖 与AI对战';
-        btnContainer.appendChild(aiBtn);
-
-        aiDiv.appendChild(btnContainer);
-
-        waitingDiv.appendChild(aiDiv);
+        const continueBtn = aiDiv.querySelector('.candy-btn.primary');
+        const aiBtn = aiDiv.querySelector('.candy-btn.secondary');
 
         continueBtn.onclick = () => {
             aiDiv.remove();
@@ -2655,6 +2559,8 @@ class BattleMode {
             aiDiv.remove();
             this.startAIBattle();
         };
+
+        waitingDiv.appendChild(aiDiv);
     }
 
     async startAIBattle() {
@@ -2674,7 +2580,7 @@ class BattleMode {
 
         await this.startAIBattleRoom(aiPlayer);
 
-        this.showFeedback('已为您匹配AI对手', '#4CAF50');
+        this.showFeedback('已为您匹配AI对手', '#a3d8d8');
         
         const aiOption = document.getElementById('ai-option');
         if (aiOption) aiOption.remove();
@@ -3253,7 +3159,7 @@ class BattleMode {
                 this.generateBattleTarget();
                 this.refreshCount++;
                 
-                this.showFeedback('✨ 重新生成数字组合', '#ff69b4');
+                this.showFeedback('✨ 重新生成数字组合', '#fba9c4');
                 
                 if (this.room.opponentIsAI && !this.room.myTurn) {
                     this.scheduleAIMove();
@@ -3356,7 +3262,7 @@ class BattleMode {
         
         console.log('立即匹配到对手:', bestMatch);
         
-        this.showFeedback(`🎉 找到对手: ${bestMatch.name}`, '#4CAF50');
+        this.showFeedback(`🎉 找到对手: ${bestMatch.name}`, '#a3d8d8');
         
         const matchStatus = document.getElementById('match-status-text');
         if (matchStatus) {
@@ -3712,13 +3618,13 @@ class BattleMode {
                     return this.loadLocalBattleState();
                 } else {
                     this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
-                    this.showFeedback('存储版本已更新，请重新开始', '#ffa500');
+                    this.showFeedback('存储版本已更新，请重新开始', '#fbb9c0');
                     return false;
                 }
             }
             
             if (Date.now() - state.timestamp > this.constants.STORAGE_EXPIRY) {
-                this.showFeedback('保存的对战已过期', '#ffa500');
+                this.showFeedback('保存的对战已过期', '#fbb9c0');
                 this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
                 return false;
             }
@@ -3891,17 +3797,17 @@ class BattleMode {
         const roomCode = roomCodeInput?.value;
         
         if (!roomCode || roomCode.length !== 6) {
-            this.showFeedback('请输入6位房间码', '#ff4444');
+            this.showFeedback('请输入6位房间码', '#fbb9c0');
             return;
         }
 
         if (!Validators || !Validators.isValidRoomCode(roomCode)) {
-            this.showFeedback('房间码格式不正确', '#ff4444');
+            this.showFeedback('房间码格式不正确', '#fbb9c0');
             return;
         }
 
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            this.showFeedback('请先登录', '#ff4444');
+            this.showFeedback('请先登录', '#fbb9c0');
             if (this.game.auth) {
                 this.game.auth.showAuthModal('login');
             }
@@ -3909,7 +3815,7 @@ class BattleMode {
         }
 
         if (!this.isSupabaseAvailable()) {
-            this.showFeedback('Supabase未连接', '#ff4444');
+            this.showFeedback('Supabase未连接', '#fbb9c0');
             return;
         }
 
@@ -3921,22 +3827,22 @@ class BattleMode {
                 .single();
 
             if (error || !battle) {
-                this.showFeedback('房间不存在', '#ff4444');
+                this.showFeedback('房间不存在', '#fbb9c0');
                 return;
             }
 
             if (battle.status !== 'waiting') {
-                this.showFeedback('房间已开始或已结束', '#ff4444');
+                this.showFeedback('房间已开始或已结束', '#fbb9c0');
                 return;
             }
 
             if (battle.player1_id === this.game.state.currentUser.id) {
-                this.showFeedback('不能加入自己创建的房间', '#ff4444');
+                this.showFeedback('不能加入自己创建的房间', '#fbb9c0');
                 return;
             }
 
             if (battle.player2_id) {
-                this.showFeedback('房间已满', '#ff4444');
+                this.showFeedback('房间已满', '#fbb9c0');
                 return;
             }
 
@@ -3953,7 +3859,7 @@ class BattleMode {
 
             if (updateError) {
                 console.error('加入房间失败:', updateError);
-                this.showFeedback('房间已被其他人加入', '#ff4444');
+                this.showFeedback('房间已被其他人加入', '#fbb9c0');
                 return;
             }
 
@@ -3964,18 +3870,18 @@ class BattleMode {
             });
 
             this.closeJoinModal();
-            this.showFeedback('加入房间成功', '#4CAF50');
+            this.showFeedback('加入房间成功', '#a3d8d8');
             
         } catch (error) {
             console.error('加入房间失败:', error);
-            this.showFeedback('加入房间失败', '#ff4444');
+            this.showFeedback('加入房间失败', '#fbb9c0');
         }
     }
 
     copyRoomCode() {
         if (this.room.roomCode) {
             navigator.clipboard.writeText(this.room.roomCode);
-            this.showFeedback('复制成功', '#4CAF50');
+            this.showFeedback('复制成功', '#a3d8d8');
         }
     }
 
@@ -3993,7 +3899,7 @@ class BattleMode {
 
     async startBattle(data) {
         if (!this.isSupabaseAvailable()) {
-            this.showFeedback('Supabase未连接，无法开始对战', '#ff4444');
+            this.showFeedback('Supabase未连接，无法开始对战', '#fbb9c0');
             return;
         }
 
@@ -4174,25 +4080,16 @@ class BattleMode {
     showOfflineHint() {
         const offlineHint = document.createElement('div');
         offlineHint.className = 'offline-hint';
+        offlineHint.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span>👋</span>
+                <span>对手已离线，等待重连...</span>
+                <button style="background: none; border: none; color: white; font-size: 1rem; cursor: pointer; padding: 0 3px;">×</button>
+            </div>
+        `;
         
-        const container = document.createElement('div');
-        container.style.cssText = 'display: flex; align-items: center; gap: 5px;';
-        
-        const icon = document.createElement('span');
-        icon.textContent = '👋';
-        container.appendChild(icon);
-        
-        const text = document.createElement('span');
-        text.textContent = '对手已离线，等待重连...';
-        container.appendChild(text);
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.style.cssText = 'background: none; border: none; color: white; font-size: 1rem; cursor: pointer; padding: 0 3px;';
-        closeBtn.textContent = '×';
+        const closeBtn = offlineHint.querySelector('button');
         closeBtn.onclick = () => offlineHint.remove();
-        container.appendChild(closeBtn);
-        
-        offlineHint.appendChild(container);
         
         document.body.appendChild(offlineHint);
         
@@ -4202,7 +4099,7 @@ class BattleMode {
             }
         }, 3000);
         
-        this.showFeedback('对手已断开连接', '#e68b8b');
+        this.showFeedback('对手已断开连接', '#fbb9c0');
     }
 
     handleBattleUpdate(payload) {
@@ -4258,7 +4155,6 @@ class BattleMode {
 
         if (this.room.opponentIsAI && !this.room.myTurn) {
             turnText.textContent = 'AI思考中...';
-            indicator.style.background = 'linear-gradient(145deg, #f0e6f2, #e8daf0)';
             this.stopTurnTimer();
             if (timer) {
                 timer.textContent = `${this.constants.ROUND_TIME}s`;
@@ -4266,11 +4162,9 @@ class BattleMode {
             }
         } else if (this.room.myTurn) {
             turnText.textContent = this.t('yourTurn');
-            indicator.style.background = 'linear-gradient(145deg, #e0f0e5, #d6eadc)';
             this.startTurnTimer();
         } else {
             turnText.textContent = this.t('opponentTurn');
-            indicator.style.background = 'linear-gradient(145deg, #fef0f4, #fde8ef)';
             this.stopTurnTimer();
             if (timer) {
                 timer.textContent = `${this.constants.ROUND_TIME}s`;
@@ -4433,7 +4327,7 @@ class BattleMode {
 
         if (!this.room.myTurn) {
             this.playSound('wrong');
-            this.showFeedback('现在是对手的回合', '#ffa500');
+            this.showFeedback('现在是对手的回合', '#fbb9c0');
             return;
         }
 
@@ -4553,7 +4447,7 @@ class BattleMode {
             await this.endTurn();
         } catch (error) {
             console.error('检查对战匹配失败:', error);
-            this.showFeedback('操作失败', '#ff4444');
+            this.showFeedback('操作失败', '#fbb9c0');
             this.room.selectedCards = [];
         }
     }
@@ -4614,7 +4508,7 @@ class BattleMode {
             if (card2.isConnected) card2.classList.remove('selected');
         }, 500);
         
-        this.showFeedback('再试试其他组合吧！', '#ff69b4');
+        this.showFeedback('再试试其他组合吧！', '#fba9c4');
         
         setTimeout(() => {
             this.autoRefreshGridIfNeeded();
@@ -4860,7 +4754,7 @@ class BattleMode {
 
     async attemptReconnect() {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            this.showFeedback('重连失败，请重新开始对战', '#ff4444');
+            this.showFeedback('重连失败，请重新开始对战', '#fbb9c0');
             this.leaveBattle();
             return;
         }
@@ -4891,7 +4785,7 @@ class BattleMode {
                     this.autoRefreshGridIfNeeded();
                 }
                 
-                this.showFeedback('重连成功', '#4CAF50');
+                this.showFeedback('重连成功', '#a3d8d8');
                 this.reconnectAttempts = 0;
                 this.offlineMode = false;
             }
