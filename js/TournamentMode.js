@@ -9,6 +9,7 @@
  * 修改记录：
  * 2024-01-XX - 重构为RPC调用，提高安全性
  * 2024-01-XX - 移除所有客户端业务逻辑，由数据库事务处理
+ * 2024-03-XX - 支持自定义参赛人数 (2-100人)
  * ==============================================================
  */
 
@@ -23,12 +24,26 @@ class TournamentMode {
         // 授权创建锦标赛的邮箱列表
         this.authorizedCreators = ['yyssyun90@gmail.com'];
         
+        // 锦标赛常量
+        this.tournamentConstants = {
+            MIN_PLAYERS: 2,
+            MAX_PLAYERS: 100,
+            DEFAULT_PLAYERS: 16,
+            PRIZE_POOL_PERCENTAGES: {
+                first: 0.5,  // 冠军 50%
+                second: 0.3,  // 亚军 30%
+                third: 0.2    // 季军 20%
+            }
+        };
+        
         // 事件处理器
         this.tabClickHandlers = new Map();
         this.createBtnHandler = null;
         this.confirmCreateHandler = null;
         this.cancelCreateHandler = null;
         this.tournamentBtnHandler = null;
+        this.sizeInputHandler = null;
+        this.feeInputHandler = null;
         
         // 加载状态
         this.isLoading = false;
@@ -116,6 +131,54 @@ class TournamentMode {
         window.addEventListener('beforeunload', () => this.destroy());
     }
 
+    // ==================== 辅助方法 ====================
+
+    /**
+     * 显示反馈消息
+     */
+    showFeedback(message, color = '#4CAF50') {
+        if (this.game?.ui && typeof this.game.ui.showFeedback === 'function') {
+            this.game.ui.showFeedback(message, color);
+        } else {
+            console.log('[Tournament]', message);
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: ${color};
+                color: white;
+                padding: 10px 20px;
+                border-radius: 25px;
+                z-index: 10002;
+                font-size: 0.9rem;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                animation: slideDown 0.3s ease-out;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    }
+
+    /**
+     * 检查网络是否可用
+     */
+    isNetworkAvailable() {
+        return navigator.onLine && this.game?.state?.isOnline !== false;
+    }
+
+    /**
+     * 获取当前用户
+     */
+    getCurrentUser() {
+        return this.game?.state?.currentUser;
+    }
+
     // ==================== 权限检查 ====================
 
     /**
@@ -135,9 +198,7 @@ class TournamentMode {
      */
     checkCreatePermission() {
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
-            }
+            this.showFeedback('请先登录', '#ff4444');
             if (this.game.auth) {
                 this.game.auth.showAuthModal('login');
             }
@@ -145,9 +206,7 @@ class TournamentMode {
         }
 
         if (!this.canCreateTournament()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('您没有权限创建锦标赛', '#ff4444');
-            }
+            this.showFeedback('您没有权限创建锦标赛', '#ff4444');
             return false;
         }
 
@@ -183,9 +242,7 @@ class TournamentMode {
      */
     async openTournamentLobby() {
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
-            }
+            this.showFeedback('请先登录', '#ff4444');
             if (this.game.auth) {
                 this.game.auth.showAuthModal('login');
             }
@@ -270,19 +327,24 @@ class TournamentMode {
      * 加载锦标赛大厅列表
      */
     async loadTournamentLobby(forceRefresh = false) {
-        if (!this.game.state.supabaseReady) {
-            this.showEmptyList('tournament-list', 'Supabase未连接');
-            return;
-        }
-
-        if (!forceRefresh && this.isCacheValid('tournaments')) {
-            this.renderTournamentList(this.cache.tournaments);
-            return;
-        }
-
-        this.showLoading('tournament-list', '加载锦标赛列表...');
-
         try {
+            if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+                this.showEmptyList('tournament-list', 'Supabase未连接');
+                return;
+            }
+
+            if (!this.isNetworkAvailable()) {
+                this.showEmptyList('tournament-list', '网络不可用，请检查连接');
+                return;
+            }
+
+            if (!forceRefresh && this.isCacheValid('tournaments')) {
+                this.renderTournamentList(this.cache.tournaments);
+                return;
+            }
+
+            this.showLoading('tournament-list', '加载锦标赛列表...');
+
             const { data: tournaments, error } = await this.fetchWithRetry(
                 () => this.game.state.supabase
                     .from('candy_math_tournaments')
@@ -301,9 +363,7 @@ class TournamentMode {
             console.error('加载锦标赛列表失败:', error);
             this.hideLoading('tournament-list');
             this.showEmptyList('tournament-list', this.getFriendlyErrorMessage(error));
-            if (this.game.ui) {
-                this.game.ui.showFeedback('加载失败', '#ff4444');
-            }
+            this.showFeedback('加载失败', '#ff4444');
         }
     }
 
@@ -435,19 +495,67 @@ class TournamentMode {
         if (!this.checkCreatePermission()) return;
 
         const nameInput = document.getElementById('tournament-name-input');
-        const sizeSelect = document.getElementById('tournament-size');
+        const sizeInput = document.getElementById('tournament-size-input');
         const modeSelect = document.getElementById('tournament-mode');
         const difficultySelect = document.getElementById('tournament-difficulty');
         const feeInput = document.getElementById('tournament-entry-fee');
+        const prizePreview = document.getElementById('prize-pool-preview');
 
         if (nameInput) nameInput.value = '';
-        if (sizeSelect) sizeSelect.value = '16';
+        if (sizeInput) {
+            sizeInput.value = this.tournamentConstants.DEFAULT_PLAYERS;
+            // 添加输入事件监听
+            if (this.sizeInputHandler) {
+                sizeInput.removeEventListener('input', this.sizeInputHandler);
+            }
+            this.sizeInputHandler = () => this.updatePrizePreview();
+            sizeInput.addEventListener('input', this.sizeInputHandler);
+        }
         if (modeSelect) modeSelect.value = 'challenge';
         if (difficultySelect) difficultySelect.value = 'medium';
-        if (feeInput) feeInput.value = '0';
+        if (feeInput) {
+            feeInput.value = '0';
+            if (this.feeInputHandler) {
+                feeInput.removeEventListener('input', this.feeInputHandler);
+            }
+            this.feeInputHandler = () => this.updatePrizePreview();
+            feeInput.addEventListener('input', this.feeInputHandler);
+        }
+        
+        // 隐藏奖池预览（默认不显示）
+        if (prizePreview) prizePreview.style.display = 'none';
 
         if (this.game.ui) {
             this.game.ui.openModal('create-tournament-modal');
+        }
+    }
+
+    /**
+     * 更新奖池预览
+     */
+    updatePrizePreview() {
+        const sizeInput = document.getElementById('tournament-size-input');
+        const feeInput = document.getElementById('tournament-entry-fee');
+        const prizePreview = document.getElementById('prize-pool-preview');
+        
+        if (!sizeInput || !feeInput || !prizePreview) return;
+        
+        const size = parseInt(sizeInput.value) || 0;
+        const fee = parseInt(feeInput.value) || 0;
+        
+        if (size >= this.tournamentConstants.MIN_PLAYERS && fee > 0) {
+            const totalPrize = size * fee;
+            const firstPrize = Math.floor(totalPrize * this.tournamentConstants.PRIZE_POOL_PERCENTAGES.first);
+            const secondPrize = Math.floor(totalPrize * this.tournamentConstants.PRIZE_POOL_PERCENTAGES.second);
+            const thirdPrize = Math.floor(totalPrize * this.tournamentConstants.PRIZE_POOL_PERCENTAGES.third);
+            
+            document.getElementById('prize-first').textContent = firstPrize;
+            document.getElementById('prize-second').textContent = secondPrize;
+            document.getElementById('prize-third').textContent = thirdPrize;
+            
+            prizePreview.style.display = 'block';
+        } else {
+            prizePreview.style.display = 'none';
         }
     }
 
@@ -467,34 +575,79 @@ class TournamentMode {
         if (!this.checkCreatePermission()) return;
 
         const name = document.getElementById('tournament-name-input')?.value;
-        const size = parseInt(document.getElementById('tournament-size')?.value);
+        const sizeInput = document.getElementById('tournament-size-input');
         const mode = document.getElementById('tournament-mode')?.value;
         const difficulty = document.getElementById('tournament-difficulty')?.value;
         const entryFee = parseInt(document.getElementById('tournament-entry-fee')?.value) || 0;
 
+        // 验证名称
         if (!name || name.trim().length < 2 || name.trim().length > 50) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('锦标赛名称长度必须在2-50字符之间', '#ff4444');
-            }
+            this.showFeedback('锦标赛名称长度必须在2-50字符之间', '#ff4444');
             return;
         }
 
-        if (size < 2 || size > 100) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('参赛人数必须在2-100人之间', '#ff4444');
+        // 验证参赛人数
+        let size;
+        if (sizeInput) {
+            size = parseInt(sizeInput.value);
+            if (isNaN(size) || size < this.tournamentConstants.MIN_PLAYERS || size > this.tournamentConstants.MAX_PLAYERS) {
+                this.showFeedback(`参赛人数必须在 ${this.tournamentConstants.MIN_PLAYERS}-${this.tournamentConstants.MAX_PLAYERS} 之间`, '#ff4444');
+                return;
             }
+        } else {
+            this.showFeedback('请填写参赛人数', '#ff4444');
             return;
         }
 
+        // 验证比赛模式
+        if (!['challenge', 'standard'].includes(mode)) {
+            this.showFeedback('请选择有效的比赛模式', '#ff4444');
+            return;
+        }
+
+        // 验证难度
+        if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+            this.showFeedback('请选择有效的难度', '#ff4444');
+            return;
+        }
+
+        // 验证报名费
+        if (entryFee < 0 || entryFee > 10000) {
+            this.showFeedback('报名费必须在0-10000之间', '#ff4444');
+            return;
+        }
+
+        // 报名费确认
         if (entryFee > 0) {
-            const confirmMsg = `创建锦标赛将扣除 ${entryFee} 积分作为报名费，确定继续吗？`;
+            const totalPrize = size * entryFee;
+            const confirmMsg = `创建锦标赛将扣除 ${entryFee} 积分作为报名费。\n` +
+                              `总奖池: ${totalPrize} 积分\n` +
+                              `冠军: ${Math.floor(totalPrize * 0.5)} 积分\n` +
+                              `亚军: ${Math.floor(totalPrize * 0.3)} 积分\n` +
+                              `季军: ${Math.floor(totalPrize * 0.2)} 积分\n\n` +
+                              `确定继续吗？`;
             if (!confirm(confirmMsg)) return;
         }
 
-        if (!this.game.state.supabaseReady) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('Supabase未连接', '#ff4444');
+        // 检查用户登录状态
+        const user = this.getCurrentUser();
+        if (!user || !user.id) {
+            this.showFeedback('请先登录', '#ff4444');
+            if (this.game?.auth) {
+                this.game.auth.showAuthModal('login');
             }
+            return;
+        }
+
+        // 检查网络连接
+        if (!this.isNetworkAvailable()) {
+            this.showFeedback('网络不可用，请检查连接', '#ff4444');
+            return;
+        }
+
+        // 检查 Supabase 连接
+        if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+            this.showFeedback('Supabase未连接', '#ff4444');
             return;
         }
 
@@ -506,18 +659,20 @@ class TournamentMode {
                 createBtn.textContent = '创建中...';
             }
 
-            const userId = String(this.game.state.currentUser.id);
-            const userName = String(this.game.state.currentUser.name);
+            const userId = String(user.id);
+            const userName = String(user.name || user.email || '未知用户');
 
-            const { data, error } = await this.game.state.supabase.rpc('create_tournament', {
-                p_name: name.trim(),
-                p_size: size,
-                p_mode: mode,
-                p_difficulty: difficulty,
-                p_entry_fee: entryFee,
-                p_creator_id: userId,
-                p_creator_name: userName
-            });
+            const { data, error } = await this.fetchWithRetry(
+                () => this.game.state.supabase.rpc('create_tournament', {
+                    p_name: name.trim(),
+                    p_size: size,
+                    p_mode: mode,
+                    p_difficulty: difficulty,
+                    p_entry_fee: entryFee,
+                    p_creator_id: userId,
+                    p_creator_name: userName
+                })
+            );
 
             if (error) throw error;
 
@@ -526,21 +681,16 @@ class TournamentMode {
                 this.clearCache();
                 await this.loadTournamentLobby(true);
                 
-                if (this.game.ui) {
-                    this.game.ui.showFeedback(data.message || '锦标赛创建成功', '#4CAF50');
-                }
+                this.showFeedback(data.message || '锦标赛创建成功', '#4CAF50');
 
+                // 切换到大厅标签页
                 this.switchTournamentTab('lobby');
             } else {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback(data?.message || '创建失败', '#ff4444');
-                }
+                this.showFeedback(data?.message || '创建失败', '#ff4444');
             }
         } catch (error) {
             console.error('创建锦标赛失败:', error);
-            if (this.game.ui) {
-                this.game.ui.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
-            }
+            this.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
         } finally {
             if (createBtn) {
                 createBtn.disabled = false;
@@ -555,13 +705,19 @@ class TournamentMode {
      * 报名锦标赛（使用RPC）
      */
     async joinTournament(tournamentId) {
-        if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
-            }
-            if (this.game.auth) {
+        // 检查用户登录状态
+        const user = this.getCurrentUser();
+        if (!user || !user.id) {
+            this.showFeedback('请先登录', '#ff4444');
+            if (this.game?.auth) {
                 this.game.auth.showAuthModal('login');
             }
+            return;
+        }
+
+        // 检查网络连接
+        if (!this.isNetworkAvailable()) {
+            this.showFeedback('网络不可用，请检查连接', '#ff4444');
             return;
         }
 
@@ -572,10 +728,8 @@ class TournamentMode {
             joinBtn.textContent = '报名中...';
         }
 
-        if (!this.game.state.supabaseReady) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('Supabase未连接', '#ff4444');
-            }
+        if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+            this.showFeedback('Supabase未连接', '#ff4444');
             if (joinBtn) {
                 joinBtn.disabled = false;
                 joinBtn.textContent = '报名参赛';
@@ -584,41 +738,35 @@ class TournamentMode {
         }
 
         try {
-            const userId = String(this.game.state.currentUser.id);
-            const userName = String(this.game.state.currentUser.name);
+            const userId = String(user.id);
+            const userName = String(user.name || user.email || '未知用户');
 
-            const { data, error } = await this.game.state.supabase.rpc('join_tournament', {
-                p_tournament_id: tournamentId,
-                p_user_id: userId,
-                p_user_name: userName
-            });
+            const { data, error } = await this.fetchWithRetry(
+                () => this.game.state.supabase.rpc('join_tournament', {
+                    p_tournament_id: tournamentId,
+                    p_user_id: userId,
+                    p_user_name: userName
+                })
+            );
 
             if (error) throw error;
 
             if (data?.success) {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback(data.message || '报名成功', '#4CAF50');
-                }
+                this.showFeedback(data.message || '报名成功', '#4CAF50');
                 
                 this.clearCache();
                 
                 if (data.tournament_started) {
-                    if (this.game.ui) {
-                        this.game.ui.showFeedback('报名人数已满，锦标赛即将开始', '#4CAF50');
-                    }
+                    this.showFeedback('报名人数已满，锦标赛即将开始', '#4CAF50');
                 }
                 
                 await this.loadTournamentLobby(true);
             } else {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback(data?.message || '报名失败', '#ff4444');
-                }
+                this.showFeedback(data?.message || '报名失败', '#ff4444');
             }
         } catch (error) {
             console.error('报名失败:', error);
-            if (this.game.ui) {
-                this.game.ui.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
-            }
+            this.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
         } finally {
             if (joinBtn) {
                 joinBtn.disabled = false;
@@ -642,14 +790,19 @@ class TournamentMode {
      * 加载赛程表
      */
     async loadTournamentBracket(tournamentId) {
-        if (!this.game.state.supabaseReady) {
-            this.showEmptyList('bracket-container', 'Supabase未连接');
-            return;
-        }
-
-        this.showLoading('bracket-container', '加载赛程表...');
-
         try {
+            if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+                this.showEmptyList('bracket-container', 'Supabase未连接');
+                return;
+            }
+
+            if (!this.isNetworkAvailable()) {
+                this.showEmptyList('bracket-container', '网络不可用，请检查连接');
+                return;
+            }
+
+            this.showLoading('bracket-container', '加载赛程表...');
+
             const { data: matches, error } = await this.fetchWithRetry(
                 () => this.game.state.supabase
                     .from('candy_math_tournament_matches')
@@ -673,6 +826,7 @@ class TournamentMode {
             console.error('加载赛程表失败:', error);
             this.hideLoading('bracket-container');
             this.showEmptyList('bracket-container', this.getFriendlyErrorMessage(error));
+            this.showFeedback('加载失败', '#ff4444');
         }
     }
 
@@ -748,14 +902,20 @@ class TournamentMode {
      * 完成比赛（使用RPC）
      */
     async finishMatch(matchId, winnerId, player1Score, player2Score) {
-        if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
-            }
+        // 检查用户登录状态
+        const user = this.getCurrentUser();
+        if (!user || !user.id) {
+            this.showFeedback('请先登录', '#ff4444');
             return;
         }
 
-        if (!this.game.state.supabaseReady) return;
+        // 检查网络连接
+        if (!this.isNetworkAvailable()) {
+            this.showFeedback('网络不可用，请检查连接', '#ff4444');
+            return;
+        }
+
+        if (!this.game.state.supabaseReady || !this.game.state.supabase) return;
 
         const finishBtn = document.getElementById(`finish-match-${matchId}`);
 
@@ -765,37 +925,33 @@ class TournamentMode {
                 finishBtn.textContent = '提交中...';
             }
 
-            const userId = String(this.game.state.currentUser.id);
+            const userId = String(user.id);
             const winnerIdStr = String(winnerId);
 
-            const { data, error } = await this.game.state.supabase.rpc('finish_match', {
-                p_match_id: matchId,
-                p_winner_id: winnerIdStr,
-                p_player1_score: player1Score,
-                p_player2_score: player2Score,
-                p_user_id: userId
-            });
+            const { data, error } = await this.fetchWithRetry(
+                () => this.game.state.supabase.rpc('finish_match', {
+                    p_match_id: matchId,
+                    p_winner_id: winnerIdStr,
+                    p_player1_score: player1Score,
+                    p_player2_score: player2Score,
+                    p_user_id: userId
+                })
+            );
 
             if (error) throw error;
 
             if (data?.success) {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback('比赛结果已更新', '#4CAF50');
-                }
+                this.showFeedback('比赛结果已更新', '#4CAF50');
                 
                 if (this.currentTournament) {
                     await this.loadTournamentBracket(this.currentTournament.id);
                 }
             } else {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback(data?.message || '更新失败', '#ff4444');
-                }
+                this.showFeedback(data?.message || '更新失败', '#ff4444');
             }
         } catch (error) {
             console.error('完成比赛失败:', error);
-            if (this.game.ui) {
-                this.game.ui.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
-            }
+            this.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
         } finally {
             if (finishBtn) {
                 finishBtn.disabled = false;
@@ -810,19 +966,24 @@ class TournamentMode {
      * 加载锦标赛排名
      */
     async loadTournamentRanking(forceRefresh = false) {
-        if (!this.game.state.supabaseReady) {
-            this.showEmptyList('tournament-ranking', 'Supabase未连接');
-            return;
-        }
-
-        if (!forceRefresh && this.isCacheValid('rankings')) {
-            this.renderRankingList(this.cache.rankings);
-            return;
-        }
-
-        this.showLoading('tournament-ranking', '加载排名...');
-
         try {
+            if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+                this.showEmptyList('tournament-ranking', 'Supabase未连接');
+                return;
+            }
+
+            if (!this.isNetworkAvailable()) {
+                this.showEmptyList('tournament-ranking', '网络不可用，请检查连接');
+                return;
+            }
+
+            if (!forceRefresh && this.isCacheValid('rankings')) {
+                this.renderRankingList(this.cache.rankings);
+                return;
+            }
+
+            this.showLoading('tournament-ranking', '加载排名...');
+
             const { data: rankings, error } = await this.fetchWithRetry(
                 () => this.game.state.supabase
                     .from('player_elo')
@@ -840,9 +1001,7 @@ class TournamentMode {
             console.error('加载排名失败:', error);
             this.hideLoading('tournament-ranking');
             this.showEmptyList('tournament-ranking', this.getFriendlyErrorMessage(error));
-            if (this.game.ui) {
-                this.game.ui.showFeedback('加载排名失败', '#ff4444');
-            }
+            this.showFeedback('加载排名失败', '#ff4444');
         }
     }
 
@@ -906,19 +1065,24 @@ class TournamentMode {
      * 加载历史锦标赛
      */
     async loadTournamentHistory(forceRefresh = false) {
-        if (!this.game.state.supabaseReady) {
-            this.showEmptyList('tournament-history', 'Supabase未连接');
-            return;
-        }
-
-        if (!forceRefresh && this.isCacheValid('history')) {
-            this.renderHistoryList(this.cache.history);
-            return;
-        }
-
-        this.showLoading('tournament-history', '加载历史记录...');
-
         try {
+            if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+                this.showEmptyList('tournament-history', 'Supabase未连接');
+                return;
+            }
+
+            if (!this.isNetworkAvailable()) {
+                this.showEmptyList('tournament-history', '网络不可用，请检查连接');
+                return;
+            }
+
+            if (!forceRefresh && this.isCacheValid('history')) {
+                this.renderHistoryList(this.cache.history);
+                return;
+            }
+
+            this.showLoading('tournament-history', '加载历史记录...');
+
             const { data: tournaments, error } = await this.fetchWithRetry(
                 () => this.game.state.supabase
                     .from('candy_math_tournaments')
@@ -937,9 +1101,7 @@ class TournamentMode {
             console.error('加载历史记录失败:', error);
             this.hideLoading('tournament-history');
             this.showEmptyList('tournament-history', this.getFriendlyErrorMessage(error));
-            if (this.game.ui) {
-                this.game.ui.showFeedback('加载历史记录失败', '#ff4444');
-            }
+            this.showFeedback('加载历史记录失败', '#ff4444');
         }
     }
 
@@ -1018,10 +1180,10 @@ class TournamentMode {
      * 退出锦标赛
      */
     async leaveTournament(tournamentId) {
-        if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            if (this.game.ui) {
-                this.game.ui.showFeedback('请先登录', '#ff4444');
-            }
+        // 检查用户登录状态
+        const user = this.getCurrentUser();
+        if (!user || !user.id) {
+            this.showFeedback('请先登录', '#ff4444');
             return;
         }
 
@@ -1037,9 +1199,7 @@ class TournamentMode {
             if (fetchError) throw fetchError;
 
             if (tournament.status !== 'registering') {
-                if (this.game.ui) {
-                    this.game.ui.showFeedback('比赛已开始，无法退出', '#ff4444');
-                }
+                this.showFeedback('比赛已开始，无法退出', '#ff4444');
                 return;
             }
 
@@ -1047,22 +1207,18 @@ class TournamentMode {
                 .from('candy_math_tournament_players')
                 .delete()
                 .eq('tournament_id', tournamentId)
-                .eq('user_id', this.game.state.currentUser.id);
+                .eq('user_id', user.id);
 
             if (error) throw error;
 
             this.clearCache();
             await this.loadTournamentLobby(true);
             
-            if (this.game.ui) {
-                this.game.ui.showFeedback('已退出锦标赛', '#4CAF50');
-            }
+            this.showFeedback('已退出锦标赛', '#4CAF50');
             
         } catch (error) {
             console.error('退出锦标赛失败:', error);
-            if (this.game.ui) {
-                this.game.ui.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
-            }
+            this.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
         }
     }
 
@@ -1186,6 +1342,16 @@ class TournamentMode {
         const cancelCreate = document.getElementById('cancel-create-tournament');
         if (cancelCreate && this.cancelCreateHandler) {
             cancelCreate.removeEventListener('click', this.cancelCreateHandler);
+        }
+
+        const sizeInput = document.getElementById('tournament-size-input');
+        if (sizeInput && this.sizeInputHandler) {
+            sizeInput.removeEventListener('input', this.sizeInputHandler);
+        }
+
+        const feeInput = document.getElementById('tournament-entry-fee');
+        if (feeInput && this.feeInputHandler) {
+            feeInput.removeEventListener('input', this.feeInputHandler);
         }
 
         this.initialized = false;
