@@ -43,7 +43,10 @@ class CandyMathGame {
             // 冷却
             hintCooldown: 0,
             hintTimer: null,
-            feedbackTimer: null
+            feedbackTimer: null,
+
+            // 新增：当前学生ID
+            currentStudent: null
         };
 
         // ==================== 配置 ====================
@@ -52,7 +55,6 @@ class CandyMathGame {
         this.currentConfig = this.difficultyConfig[this.state.currentDifficulty];
         
         // ==================== Supabase配置 ====================
-        // 从HTML读取配置
         const configScript = document.getElementById('supabase-config');
         const config = configScript ? JSON.parse(configScript.textContent) : {};
         
@@ -65,7 +67,6 @@ class CandyMathGame {
         this.colorIndex = 0;
 
         // ==================== 子模块初始化 ====================
-        // 工具类（直接使用全局单例）
         this.soundManager = SoundManager;
         this.i18n = I18n;
         
@@ -75,6 +76,11 @@ class CandyMathGame {
         this.ui = null;
         this.battle = null;
         this.tournament = null;
+
+        // 新增：学生记录系统、报告生成器和教师面板
+        this.studentRecord = null;
+        this.reportGenerator = null;
+        this.teacherPanel = null;
         
         // 事件处理器绑定
         this.boundHandlers = this.createBoundHandlers();
@@ -85,9 +91,6 @@ class CandyMathGame {
 
     // ==================== 初始化 ====================
 
-    /**
-     * 创建绑定的事件处理器
-     */
     createBoundHandlers() {
         return {
             closeGameover: () => this.ui?.closeModal('game-over-modal'),
@@ -135,58 +138,42 @@ class CandyMathGame {
         };
     }
 
-    /**
-     * 初始化游戏
-     */
     async init() {
         if (this.initialized) return;
         
         try {
             console.log('开始初始化游戏...');
             
-            // 初始化子模块
             this.storage = new StorageManager(this);
-            // ===== 关键修复：传递对象而不是直接传递this =====
             this.auth = new AuthManager({ game: this });
             this.ui = new UIManager(this);
             
-            // 加载本地数据
             this.storage.loadLocalData();
             this.auth.loadUserSession();
             
-            // 初始化UI
             this.ui.init();
             
-            // 初始化Supabase
             await this.initSupabase();
             
-            // 初始化对战模式（懒加载）
             this.initBattle();
-            
-            // 初始化锦标赛模式（懒加载）
             this.initTournament();
+
+            // 新增：初始化学生记录系统
+            this.studentRecord = new StudentRecordSystem(this);
+            this.reportGenerator = new ReportGenerator(this);
+            this.teacherPanel = new TeacherPanel(this);
             
-            // 绑定事件
             this.bindEvents();
-            
-            // 设置网络监听
             this.setupNetworkListeners();
             
-            // 加载难度配置
             this.loadDifficulty(this.state.currentDifficulty);
             
-            // 更新语言
             this.ui.updateLanguage();
-            
-            // 更新用户UI
             this.ui.updateUserUI();
-            
-            // 检查首次游玩
             this.ui.checkFirstTime();
             
             this.initialized = true;
             
-            // ===== 关键修复：同时设置两个全局变量 =====
             window.battleMode = this.battle;
             window.battleModeInstance = this.battle;
             
@@ -195,26 +182,27 @@ class CandyMathGame {
                 battleModeGlobal: window.battleMode ? '已挂载' : '未挂载',
                 battleModeInstance: window.battleModeInstance ? '已挂载' : '未挂载',
                 supabaseReady: this.state.supabaseReady,
-                supabaseError: this.state.supabaseError
+                supabaseError: this.state.supabaseError,
+                studentRecord: this.studentRecord ? '已创建' : '未创建'
             });
             
         } catch (error) {
             console.error('初始化失败:', error);
             this.state.supabaseError = error.message;
             this.ui?.showFeedback('初始化失败，使用离线模式', '#ffa500');
-            
-            // 即使Supabase失败，也继续初始化其他模块
             this.continueInitWithoutSupabase();
         }
     }
 
-    /**
-     * 无Supabase继续初始化
-     */
     continueInitWithoutSupabase() {
         try {
             this.initBattle();
             this.initTournament();
+            
+            this.studentRecord = new StudentRecordSystem(this);
+            this.reportGenerator = new ReportGenerator(this);
+            this.teacherPanel = new TeacherPanel(this);
+            
             this.bindEvents();
             this.setupNetworkListeners();
             this.loadDifficulty(this.state.currentDifficulty);
@@ -232,21 +220,16 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 初始化Supabase
-     */
     async initSupabase() {
         try {
             console.log('初始化Supabase...');
             
-            // 检查是否已有配置
             if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
                 console.warn('Supabase配置缺失，使用本地模式');
                 this.state.supabaseReady = false;
                 return;
             }
             
-            // 创建Supabase客户端
             const { createClient } = window.supabase;
             if (!createClient) {
                 throw new Error('Supabase客户端库未加载');
@@ -264,7 +247,6 @@ class CandyMathGame {
                 }
             );
             
-            // 测试连接
             const { error } = await this.state.supabase
                 .from('candy_math_battles')
                 .select('count', { count: 'exact', head: true });
@@ -274,7 +256,6 @@ class CandyMathGame {
                 this.state.supabaseReady = false;
                 this.state.supabaseError = error.message;
                 
-                // 如果是API key错误，给出明确提示
                 if (error.message?.includes('API key')) {
                     console.warn('Supabase API key配置错误，请检查环境变量');
                 }
@@ -291,9 +272,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 初始化对战模式（懒加载）
-     */
     initBattle() {
         if (!this.battle) {
             console.log('初始化对战模式...');
@@ -304,9 +282,6 @@ class CandyMathGame {
         return this.battle;
     }
 
-    /**
-     * 初始化锦标赛模式（懒加载）
-     */
     initTournament() {
         if (!this.tournament) {
             this.tournament = new TournamentMode(this);
@@ -315,11 +290,7 @@ class CandyMathGame {
         return this.tournament;
     }
 
-    /**
-     * 销毁游戏（清理资源）
-     */
     destroy() {
-        // 清理定时器
         if (this.state.timer) {
             clearInterval(this.state.timer);
             this.state.timer = null;
@@ -333,15 +304,12 @@ class CandyMathGame {
             this.state.feedbackTimer = null;
         }
         
-        // 清理子模块
         this.battle?.leaveBattle();
         this.tournament?.destroy();
         
-        // 移除网络监听
         window.removeEventListener('online', this.handleNetworkOnline);
         window.removeEventListener('offline', this.handleNetworkOffline);
         
-        // 清理全局引用
         if (window.battleMode === this.battle) {
             window.battleMode = null;
         }
@@ -352,11 +320,7 @@ class CandyMathGame {
         this.initialized = false;
     }
 
-    /**
-     * 绑定事件
-     */
     bindEvents() {
-        // 语言切换
         const langBtn = document.getElementById('lang-switch');
         if (langBtn) {
             if (this.langClickHandler) {
@@ -366,21 +330,18 @@ class CandyMathGame {
             langBtn.addEventListener('click', this.langClickHandler);
         }
 
-        // 模式切换
         document.querySelectorAll('.mode-btn').forEach(btn => {
             const handler = (e) => this.switchMode(e);
             btn.removeEventListener('click', handler);
             btn.addEventListener('click', handler);
         });
 
-        // 难度切换
         document.querySelectorAll('.difficulty-btn').forEach(btn => {
             const handler = (e) => this.switchDifficulty(e);
             btn.removeEventListener('click', handler);
             btn.addEventListener('click', handler);
         });
 
-        // 开始游戏
         const startBtn = document.getElementById('start-game-btn');
         if (startBtn) {
             if (this.startGameHandler) {
@@ -390,7 +351,6 @@ class CandyMathGame {
             startBtn.addEventListener('click', this.startGameHandler);
         }
 
-        // 游戏控制
         const hintBtn = document.getElementById('hint-btn');
         if (hintBtn) {
             if (this.hintHandler) {
@@ -463,7 +423,6 @@ class CandyMathGame {
             exportBtn.addEventListener('click', this.exportHandler);
         }
 
-        // 关闭按钮
         const closeGameover = document.getElementById('close-gameover');
         if (closeGameover) {
             closeGameover.removeEventListener('click', this.boundHandlers.closeGameover);
@@ -482,7 +441,6 @@ class CandyMathGame {
             closeTutorial.addEventListener('click', this.boundHandlers.closeTutorial);
         }
 
-        // 卡片点击
         const gameGrid = document.getElementById('game-grid');
         if (gameGrid) {
             if (this.cardClickHandler) {
@@ -492,14 +450,12 @@ class CandyMathGame {
             gameGrid.addEventListener('click', this.cardClickHandler);
         }
 
-        // ESC键
         if (this.keydownHandler) {
             document.removeEventListener('keydown', this.keydownHandler);
         }
         this.keydownHandler = (e) => this.handleKeydown(e);
         document.addEventListener('keydown', this.keydownHandler);
 
-        // 模态框背景点击
         const authModal = document.getElementById('auth-modal');
         if (authModal) {
             authModal.removeEventListener('click', this.boundHandlers.authModalClick);
@@ -543,9 +499,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 设置网络监听
-     */
     setupNetworkListeners() {
         window.removeEventListener('online', this.handleNetworkOnline);
         window.removeEventListener('offline', this.handleNetworkOffline);
@@ -557,27 +510,18 @@ class CandyMathGame {
         window.addEventListener('offline', this.handleNetworkOffline);
     }
 
-    /**
-     * 网络连接恢复
-     */
     handleNetworkOnline() {
         this.state.isOnline = true;
         this.ui?.updateUserUI();
         this.ui?.showFeedback('networkOnline', '#4CAF50');
     }
 
-    /**
-     * 网络断开
-     */
     handleNetworkOffline() {
         this.state.isOnline = false;
         this.ui?.updateUserUI();
         this.ui?.showFeedback('networkOffline', '#ffa500');
     }
 
-    /**
-     * 键盘事件
-     */
     handleKeydown(e) {
         if (e.key === 'Escape') {
             this.ui?.closeModal('auth-modal');
@@ -592,9 +536,6 @@ class CandyMathGame {
 
     // ==================== 模式切换 ====================
 
-    /**
-     * 切换游戏模式
-     */
     switchMode(e) {
         const btn = e.currentTarget;
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -603,9 +544,6 @@ class CandyMathGame {
         this.ui?.updateModeDisplay();
     }
 
-    /**
-     * 切换难度
-     */
     switchDifficulty(e) {
         const btn = e.currentTarget;
         document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('active'));
@@ -614,9 +552,6 @@ class CandyMathGame {
         this.loadDifficulty(btn.dataset.difficulty);
     }
 
-    /**
-     * 加载难度配置
-     */
     loadDifficulty(difficulty) {
         const config = this.difficultyConfig[difficulty];
         const { min, max } = config.numberRange;
@@ -631,9 +566,6 @@ class CandyMathGame {
 
     // ==================== 游戏控制 ====================
 
-    /**
-     * 开始游戏
-     */
     startGame() {
         try {
             if (this.state.timer) {
@@ -685,9 +617,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 重置游戏状态
-     */
     resetGame() {
         this.state.score = 0;
         this.state.completed = 0;
@@ -701,9 +630,6 @@ class CandyMathGame {
         this.ui?.updateHintButton(0);
     }
 
-    /**
-     * 暂停/继续游戏
-     */
     togglePause() {
         if (!this.state.gameActive) return;
 
@@ -719,9 +645,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 返回首页
-     */
     goHome() {
         if (this.state.gameActive) {
             const lang = I18n;
@@ -743,17 +666,11 @@ class CandyMathGame {
         this.ui?.showHome();
     }
 
-    /**
-     * 重新开始
-     */
     restart() {
         this.ui?.closeModal('game-over-modal');
         this.startGame();
     }
 
-    /**
-     * 结束游戏
-     */
     async endGame() {
         this.state.gameActive = false;
         this.state.isPaused = false;
@@ -788,9 +705,6 @@ class CandyMathGame {
 
     // ==================== 网格生成 ====================
 
-    /**
-     * 生成游戏网格
-     */
     generateGrid() {
         const numbers = this.generateNumbers();
         this.ui?.renderGrid(numbers);
@@ -800,9 +714,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 生成数字
-     */
     generateNumbers() {
         const { min, max } = this.currentConfig.numberRange;
         const numbers = NumberGenerator.generateGridNumbers(
@@ -819,9 +730,6 @@ class CandyMathGame {
         return numbers;
     }
 
-    /**
-     * 刷新网格
-     */
     refreshGrid() {
         this.generateGrid();
         this.state.selectedCards = [];
@@ -829,9 +737,6 @@ class CandyMathGame {
         this.ui?.showFeedback('refreshed', '#ffa500');
     }
 
-    /**
-     * 生成目标数字
-     */
     generateTarget() {
         const { min, max } = this.currentConfig.targetRange;
         const minSum = this.currentConfig.numberRange.min * 2;
@@ -848,9 +753,6 @@ class CandyMathGame {
 
     // ==================== 卡片交互 ====================
 
-    /**
-     * 处理卡片点击
-     */
     handleCardClick(e) {
         try {
             const card = e.target.closest('.number-card');
@@ -874,6 +776,8 @@ class CandyMathGame {
             card.classList.add('selected');
             this.state.selectedCards.push(card);
 
+            // 注意：这里移除了 studentRecord.startQuestion() 的调用
+
             if (this.state.selectedCards.length === 2) {
                 this.checkMatch();
             }
@@ -883,9 +787,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 检查匹配
-     */
     checkMatch() {
         const [card1, card2] = this.state.selectedCards;
         const num1 = parseInt(card1.dataset.value);
@@ -902,9 +803,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 处理正确匹配
-     */
     handleCorrect(card1, card2) {
         this.state.correct++;
         this.state.completed++;
@@ -929,6 +827,16 @@ class CandyMathGame {
 
         if (this.state.history.length > 100) {
             this.state.history.shift();
+        }
+
+        // 新增：记录正确答题
+        if (this.studentRecord && this.state.currentStudent) {
+            this.studentRecord.recordQuestion({
+                target: this.state.currentTarget,
+                num1: parseInt(card1.dataset.value),
+                num2: parseInt(card2.dataset.value),
+                isCorrect: true
+            });
         }
 
         this.soundManager.play('correct');
@@ -960,9 +868,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 处理错误匹配
-     */
     handleWrong(card1, card2) {
         this.state.wrongQuestions.push({
             target: this.state.currentTarget,
@@ -973,6 +878,16 @@ class CandyMathGame {
 
         if (this.state.wrongQuestions.length > 200) {
             this.state.wrongQuestions.shift();
+        }
+
+        // 新增：记录错误答题
+        if (this.studentRecord && this.state.currentStudent) {
+            this.studentRecord.recordQuestion({
+                target: this.state.currentTarget,
+                num1: parseInt(card1.dataset.value),
+                num2: parseInt(card2.dataset.value),
+                isCorrect: false
+            });
         }
 
         this.soundManager.play('wrong');
@@ -987,9 +902,6 @@ class CandyMathGame {
         }, 500);
     }
 
-    /**
-     * 检查是否还有有效组合
-     */
     checkValidCombination() {
         const cards = document.querySelectorAll('.number-card:not(.matched)');
         const nums = Array.from(cards).map(c => parseInt(c.dataset.value));
@@ -1009,9 +921,6 @@ class CandyMathGame {
 
     // ==================== 提示系统 ====================
 
-    /**
-     * 显示提示
-     */
     showHint() {
         if (!this.state.gameActive || this.state.isPaused) return;
 
@@ -1036,9 +945,6 @@ class CandyMathGame {
         }
     }
 
-    /**
-     * 开始提示冷却
-     */
     startHintCooldown() {
         if (this.state.hintTimer) {
             clearInterval(this.state.hintTimer);
@@ -1055,19 +961,29 @@ class CandyMathGame {
         }, 1000);
     }
 
-    // ==================== 导出数据 ====================
-
-    /**
-     * 导出数据（委托给storage）
-     */
     exportData() {
         this.storage?.exportData();
+    }
+
+    // ==================== 新增：学生管理方法 ====================
+
+    setCurrentStudent(studentId, studentName) {
+        this.state.currentStudent = studentId;
+        if (this.studentRecord) {
+            this.studentRecord.startSession(studentId, studentName);
+        }
+    }
+
+    clearCurrentStudent() {
+        if (this.studentRecord) {
+            this.studentRecord.endSession();
+        }
+        this.state.currentStudent = null;
     }
 }
 
 // ==================== 启动游戏 ====================
 document.addEventListener('DOMContentLoaded', () => {
-    // 设置Supabase配置（从HTML读取）
     const configScript = document.getElementById('supabase-config');
     const config = configScript ? JSON.parse(configScript.textContent) : {};
     
@@ -1077,18 +993,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.game = new CandyMathGame();
     window.game.init();
     
-    // 延迟检查
     setTimeout(() => {
         console.log('启动检查:', {
             gameExists: !!window.game,
             battleExists: !!window.game?.battle,
             battleModeGlobal: !!window.battleMode,
             battleModeInstance: !!window.battleModeInstance,
+            studentRecord: !!window.game?.studentRecord,
             supabaseReady: window.game?.state?.supabaseReady,
             supabaseError: window.game?.state?.supabaseError
         });
         
-        // 如果battleMode仍未挂载，手动挂载
         if (window.game?.battle && !window.battleMode) {
             window.battleMode = window.game.battle;
             window.battleModeInstance = window.game.battle;
