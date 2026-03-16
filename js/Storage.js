@@ -9,6 +9,9 @@ class StorageManager {
     constructor(game) {
         this.game = game;
         this.keys = GAME_CONSTANTS.STORAGE_KEYS;
+        
+        // 新增：学生记录存储键
+        this.STUDENT_RECORDS_KEY = 'candy_math_student_records_v1';
     }
 
     // ==================== 本地存储 ====================
@@ -331,6 +334,97 @@ class StorageManager {
                 this.game.ui.showFeedback('数据已清除', '#4CAF50');
                 this.game.ui.updateUserUI();
             }
+        }
+    }
+
+    // ==================== 新增：学生记录存储方法 ====================
+
+    /**
+     * 保存学生记录
+     */
+    saveStudentRecords(data) {
+        try {
+            localStorage.setItem(this.STUDENT_RECORDS_KEY, JSON.stringify(data));
+            return true;
+        } catch (e) {
+            console.warn('保存学生记录失败:', e);
+            return false;
+        }
+    }
+
+    /**
+     * 加载学生记录
+     */
+    loadStudentRecords() {
+        try {
+            const saved = localStorage.getItem(this.STUDENT_RECORDS_KEY);
+            return saved ? JSON.parse(saved) : null;
+        } catch (e) {
+            console.warn('加载学生记录失败:', e);
+            return null;
+        }
+    }
+
+    /**
+     * 清除学生记录
+     */
+    clearStudentRecords() {
+        try {
+            localStorage.removeItem(this.STUDENT_RECORDS_KEY);
+            return true;
+        } catch (e) {
+            console.warn('清除学生记录失败:', e);
+            return false;
+        }
+    }
+
+    /**
+     * 导出所有学生数据（用于备份）
+     */
+    exportStudentRecords() {
+        try {
+            const records = this.loadStudentRecords();
+            if (!records) {
+                alert('没有学生记录可导出');
+                return false;
+            }
+
+            const data = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                records: records
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `student-records-backup-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            return true;
+        } catch (e) {
+            console.error('导出学生记录失败:', e);
+            alert('导出失败：' + e.message);
+            return false;
+        }
+    }
+
+    /**
+     * 导入学生数据备份
+     */
+    importStudentRecords(jsonData) {
+        try {
+            const data = JSON.parse(jsonData);
+            if (data.version === '1.0' && data.records) {
+                localStorage.setItem(this.STUDENT_RECORDS_KEY, JSON.stringify(data.records));
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.warn('导入学生记录失败:', e);
+            return false;
         }
     }
 }
