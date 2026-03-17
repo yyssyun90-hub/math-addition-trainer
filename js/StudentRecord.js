@@ -1,6 +1,6 @@
 /**
  * ==================== 糖果数学消消乐 - 学生记录系统 ====================
- * 版本: 2.0.0 (Supabase集成版)
+ * 版本: 2.0.1 (Supabase集成版 - 修复版)
  * 功能：记录每个学生的学习数据，自动同步到Supabase
  * ==============================================================
  */
@@ -16,9 +16,9 @@ class StudentRecordSystem {
             questions: [],
             currentQuestionStart: null
         };
-        this.storage = game.storage;
+        this.storage = game?.storage || null;
         this.supabase = null;
-        this.offlineQueue = []; // 离线队列，用于网络断开时暂存
+        this.offlineQueue = [];
         
         this.initSupabase();
         this.loadRecords();
@@ -149,7 +149,9 @@ class StudentRecordSystem {
         }
 
         // 2. 保存到localStorage
-        this.storage.saveStudentRecords(this.serialize());
+        if (this.storage) {
+            this.storage.saveStudentRecords(this.serialize());
+        }
 
         // 3. 同步到Supabase（如果在线）
         if (this.supabase && navigator.onLine) {
@@ -456,7 +458,7 @@ class StudentRecordSystem {
                 }
             });
 
-            if (imported > 0) {
+            if (imported > 0 && this.storage) {
                 this.storage.saveStudentRecords(this.serialize());
             }
 
@@ -482,6 +484,11 @@ class StudentRecordSystem {
      * 从存储加载数据
      */
     loadRecords() {
+        if (!this.storage) {
+            console.warn('⚠️ storage未初始化，跳过加载');
+            return;
+        }
+        
         try {
             const saved = this.storage.loadStudentRecords();
             if (saved) {
@@ -501,7 +508,9 @@ class StudentRecordSystem {
     clearAllRecords() {
         if (confirm('确定要清除所有学生记录吗？此操作不可恢复。')) {
             this.students.clear();
-            this.storage.clearStudentRecords();
+            if (this.storage) {
+                this.storage.clearStudentRecords();
+            }
             localStorage.removeItem('candy_math_offline_queue');
             return true;
         }
