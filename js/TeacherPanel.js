@@ -1,7 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 1.0.1
- * 功能：控制教师面板的UI交互和数据展示
+ * 版本: 2.0.0 (Supabase集成版)
+ * 功能：从Supabase读取数据并显示在教师面板
  * ====================================================================
  */
 
@@ -11,16 +11,33 @@ class TeacherPanel {
         this.studentRecord = game.studentRecord;
         this.reportGenerator = game.reportGenerator;
         this.currentTab = 'students';
+        this.supabase = null;
         this.handlers = {};
         
+        this.initSupabase();
         this.init();
+    }
+
+    /**
+     * 初始化Supabase
+     */
+    initSupabase() {
+        try {
+            if (window.supabaseClient) {
+                this.supabase = window.supabaseClient;
+                console.log('✅ TeacherPanel: Supabase连接成功');
+            } else {
+                console.warn('⚠️ TeacherPanel: Supabase未连接，使用本地模式');
+            }
+        } catch (error) {
+            console.error('❌ TeacherPanel: Supabase初始化失败', error);
+        }
     }
 
     /**
      * 初始化教师面板
      */
     init() {
-        // 等待DOM加载完成后再绑定事件
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.bindEvents());
         } else {
@@ -73,6 +90,12 @@ class TeacherPanel {
             excelBtn.addEventListener('click', (e) => this.exportExcel(e));
         }
 
+        // 同步数据按钮（新增）
+        const syncBtn = document.getElementById('sync-data-btn');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', (e) => this.syncData(e));
+        }
+
         // 点击背景关闭
         const modal = document.getElementById('teacher-modal');
         if (modal) {
@@ -82,6 +105,21 @@ class TeacherPanel {
                 }
             });
         }
+
+        // 监听网络状态变化
+        window.addEventListener('online', () => this.handleNetworkChange());
+        window.addEventListener('offline', () => this.handleNetworkChange());
+    }
+
+    /**
+     * 处理网络变化
+     */
+    handleNetworkChange() {
+        const statusEl = document.getElementById('sync-status');
+        if (statusEl) {
+            statusEl.textContent = navigator.onLine ? '🟢 在线' : '🔴 离线';
+            statusEl.style.color = navigator.onLine ? '#28a745' : '#dc3545';
+        }
     }
 
     /**
@@ -90,7 +128,6 @@ class TeacherPanel {
     openPanel(e) {
         e?.preventDefault();
         
-        // 检查是否登录
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
             alert('请先登录');
             if (this.game.auth) {
@@ -103,6 +140,17 @@ class TeacherPanel {
         if (modal) {
             modal.style.display = 'flex';
             this.refreshData();
+            this.handleNetworkChange();
+            
+            // 设置自动刷新（每30秒）
+            if (this.autoRefreshTimer) {
+                clearInterval(this.autoRefreshTimer);
+            }
+            this.autoRefreshTimer = setInterval(() => {
+                if (modal.style.display === 'flex') {
+                    this.refreshData();
+                }
+            }, 30000);
         }
     }
 
@@ -115,6 +163,9 @@ class TeacherPanel {
         const modal = document.getElementById('teacher-modal');
         if (modal) {
             modal.style.display = 'none';
+            if (this.autoRefreshTimer) {
+                clearInterval(this.autoRefreshTimer);
+            }
         }
     }
 
@@ -126,12 +177,10 @@ class TeacherPanel {
         
         this.currentTab = tabId;
 
-        // 更新标签按钮状态
         document.querySelectorAll('[data-teacher-tab]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.teacherTab === tabId);
         });
 
-        // 更新标签页内容显示
         document.querySelectorAll('.teacher-tab-content').forEach(content => {
             content.style.display = 'none';
         });
@@ -141,7 +190,6 @@ class TeacherPanel {
             tabContent.style.display = 'block';
         }
 
-        // 刷新对应数据
         switch (tabId) {
             case 'students':
                 this.refreshStudentList();
@@ -167,29 +215,57 @@ class TeacherPanel {
     /**
      * 刷新学生列表
      */
-    refreshStudentList() {
+    async refreshStudentList() {
         const list = document.getElementById('student-list');
         if (!list) return;
 
         try {
-            const classStats = this.studentRecord.getClassStats();
-            
-            if (classStats.totalStudents === 0) {
-                list.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">暂无学生数据</div>';
+            list.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
+
+            let students = [];
+
+            // 优先从Supabase获取
+            if (this.supabase && navigator.onLine) {
+                const { data, error } = await this.supabase
+                    .from('teacher_dashboard')
+                    .select('*')
+                    .order('last_active', { ascending: false });
+
+                if (!error && data) {
+                    students = data;
+                }
+            }
+
+            // 如果Supabase没数据，从本地获取
+            if (students.length === 0) {
+                const classStats = this.studentRecord.getClassStats();
+                students = await classStats.students;
+            }
+
+            if (students.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无学生数据</div>';
                 return;
             }
 
-            let html = '';
-            classStats.students.sort((a, b) => b.accuracy - a.accuracy).forEach(student => {
+            let html = '<div style="margin-bottom: 10px; display: flex; justify-content: space-between;">';
+            html += `<span>👥 共 ${students.length} 名学生</span>`;
+            html += `<span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 在线' : '🔴 离线'}</span>`;
+            html += '</div>';
+
+            students.sort((a, b) => (a.avg_time || 999) - (b.avg_time || 999)).forEach(student => {
+                const avgTime = student.avg_time || student.avgTime || 0;
+                const accuracy = student.accuracy || 0;
+                const totalQ = student.total_questions || student.totalQuestions || 0;
+                
                 html += `
-                    <div class="student-list-item" data-student-id="${this.escapeHtml(student.studentId)}" style="cursor: pointer;">
+                    <div class="student-list-item" data-student-id="${this.escapeHtml(student.student_id || student.studentId)}" style="cursor: pointer;">
                         <div class="student-info">
-                            <h4>${this.escapeHtml(student.studentName)}</h4>
-                            <p>ID: ${this.escapeHtml(student.studentId)} · 答题: ${student.totalQuestions}题</p>
+                            <h4>${this.escapeHtml(student.name || student.studentName)}</h4>
+                            <p>ID: ${this.escapeHtml(student.student_id || student.studentId)} · 答题: ${totalQ}题</p>
                         </div>
                         <div class="student-stats">
-                            <div class="student-accuracy">${student.accuracy}%</div>
-                            <div class="student-questions">正确: ${student.correctQuestions}/${student.totalQuestions}</div>
+                            <div class="student-accuracy" style="color: ${this.getSpeedColor(avgTime)}">${avgTime.toFixed(1)}s</div>
+                            <div class="student-questions">正确率: ${accuracy.toFixed(1)}%</div>
                         </div>
                     </div>
                 `;
@@ -197,7 +273,7 @@ class TeacherPanel {
 
             list.innerHTML = html;
 
-            // 添加点击事件查看学生详情
+            // 添加点击事件
             list.querySelectorAll('.student-list-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const studentId = item.dataset.studentId;
@@ -206,32 +282,57 @@ class TeacherPanel {
                     }
                 });
             });
+
         } catch (error) {
             console.error('刷新学生列表失败:', error);
-            list.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">加载失败</div>';
+            list.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
         }
+    }
+
+    /**
+     * 根据速度显示颜色
+     */
+    getSpeedColor(time) {
+        if (time < 10) return '#28a745'; // 快 - 绿色
+        if (time < 20) return '#ffc107'; // 中等 - 黄色
+        return '#dc3545'; // 慢 - 红色
     }
 
     /**
      * 刷新报告选项
      */
-    refreshReportOptions() {
+    async refreshReportOptions() {
         const select = document.getElementById('report-student-select');
         if (!select) return;
 
         try {
-            const classStats = this.studentRecord.getClassStats();
-            
-            // 清空并添加默认选项
-            select.innerHTML = '<option value="all">全班报告</option>';
+            let students = [];
 
-            // 添加学生选项
-            classStats.students.forEach(student => {
+            if (this.supabase && navigator.onLine) {
+                const { data, error } = await this.supabase
+                    .from('teacher_dashboard')
+                    .select('student_id, name, avg_time, accuracy')
+                    .order('name');
+
+                if (!error && data) {
+                    students = data;
+                }
+            }
+
+            if (students.length === 0) {
+                const classStats = this.studentRecord.getClassStats();
+                students = classStats.students;
+            }
+
+            select.innerHTML = '<option value="all">📊 全班报告</option>';
+
+            students.forEach(student => {
                 const option = document.createElement('option');
-                option.value = student.studentId;
-                option.textContent = `${student.studentName} (${student.accuracy}%)`;
+                option.value = student.student_id || student.studentId;
+                option.textContent = `${student.name || student.studentName} (${(student.avg_time || 0).toFixed(1)}s, ${(student.accuracy || 0).toFixed(1)}%)`;
                 select.appendChild(option);
             });
+
         } catch (error) {
             console.error('刷新报告选项失败:', error);
         }
@@ -240,82 +341,93 @@ class TeacherPanel {
     /**
      * 刷新班级统计
      */
-    refreshClassStats() {
+    async refreshClassStats() {
         const statsDiv = document.getElementById('class-stats');
         if (!statsDiv) return;
 
         try {
-            const classStats = this.studentRecord.getClassStats();
-            
-            if (classStats.totalStudents === 0) {
-                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">暂无统计数据</div>';
+            statsDiv.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
+
+            let classStats = await this.studentRecord.getClassStats();
+
+            if (!classStats || classStats.totalStudents === 0) {
+                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无统计数据</div>';
                 return;
             }
 
+            // 计算各速度段的学生人数
+            const speedGroups = {
+                fast: 0,   // <10秒
+                medium: 0, // 10-20秒
+                slow: 0    // >20秒
+            };
+
+            classStats.students.forEach(s => {
+                const time = s.avg_time || 999;
+                if (time < 10) speedGroups.fast++;
+                else if (time < 20) speedGroups.medium++;
+                else speedGroups.slow++;
+            });
+
             let html = `
-                <div style="background: rgba(255, 240, 245, 0.7); border-radius: 30px; padding: 20px; margin-bottom: 15px;">
-                    <h3 style="color: #d46b8d; margin-bottom: 15px;">班级概况</h3>
+                <div style="background: #f8f9fa; border-radius: 15px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="color: #d46b8d; margin-bottom: 15px;">📈 班级概况</h3>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div>
-                            <div style="font-size: 0.9rem; color: #b2869c;">学生人数</div>
+                            <div style="font-size: 0.9rem; color: #666;">学生人数</div>
                             <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalStudents}</div>
                         </div>
                         <div>
-                            <div style="font-size: 0.9rem; color: #b2869c;">总练习次数</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalSessions || 0}</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.9rem; color: #b2869c;">总答题数</div>
+                            <div style="font-size: 0.9rem; color: #666;">总答题数</div>
                             <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalQuestions}</div>
                         </div>
                         <div>
-                            <div style="font-size: 0.9rem; color: #b2869c;">班级正确率</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.classAccuracy}%</div>
+                            <div style="font-size: 0.9rem; color: #666;">平均速度</div>
+                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${(classStats.avgClassTime || 0).toFixed(1)}s</div>
                         </div>
                         <div>
-                            <div style="font-size: 0.9rem; color: #b2869c;">平均答题时间</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.averageTime}s</div>
+                            <div style="font-size: 0.9rem; color: #666;">平均正确率</div>
+                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${(classStats.avgClassAccuracy || 0).toFixed(1)}%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background: #f8f9fa; border-radius: 15px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="color: #d46b8d; margin-bottom: 15px;">⏱️ 速度分布</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
+                        <div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #28a745;">${speedGroups.fast}</div>
+                            <div style="font-size: 0.9rem; color: #666;">快 (&lt;10s)</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #ffc107;">${speedGroups.medium}</div>
+                            <div style="font-size: 0.9rem; color: #666;">中 (10-20s)</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #dc3545;">${speedGroups.slow}</div>
+                            <div style="font-size: 0.9rem; color: #666;">慢 (&gt;20s)</div>
                         </div>
                     </div>
                 </div>
             `;
 
-            // 各难度正确率
-            html += `
-                <div style="background: rgba(255, 240, 245, 0.7); border-radius: 30px; padding: 20px; margin-bottom: 15px;">
-                    <h3 style="color: #d46b8d; margin-bottom: 15px;">各难度正确率</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-                        <div style="text-align: center;">
-                            <div style="font-size: 0.9rem; color: #b2869c;">简单</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: #4CAF50;">${classStats.difficultyStats.easy.accuracy}%</div>
-                            <div style="font-size: 0.8rem; color: #b2869c;">(${classStats.difficultyStats.easy.correct}/${classStats.difficultyStats.easy.total})</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 0.9rem; color: #b2869c;">中等</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: #FF9800;">${classStats.difficultyStats.medium.accuracy}%</div>
-                            <div style="font-size: 0.8rem; color: #b2869c;">(${classStats.difficultyStats.medium.correct}/${classStats.difficultyStats.medium.total})</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 0.9rem; color: #b2869c;">困难</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: #f44336;">${classStats.difficultyStats.hard.accuracy}%</div>
-                            <div style="font-size: 0.8rem; color: #b2869c;">(${classStats.difficultyStats.hard.correct}/${classStats.difficultyStats.hard.total})</div>
-                        </div>
-                    </div>
-                </div>
-            `;
+            // 速度最快的5个学生
+            const topFast = [...classStats.students]
+                .filter(s => s.avg_time > 0)
+                .sort((a, b) => (a.avg_time || 999) - (b.avg_time || 999))
+                .slice(0, 5);
 
-            // 优秀学生
-            if (classStats.topStudents.length > 0) {
+            if (topFast.length > 0) {
                 html += `
-                    <div style="background: rgba(255, 240, 245, 0.7); border-radius: 30px; padding: 20px;">
-                        <h3 style="color: #d46b8d; margin-bottom: 15px;">🏆 优秀学生</h3>
+                    <div style="background: #f8f9fa; border-radius: 15px; padding: 20px;">
+                        <h3 style="color: #d46b8d; margin-bottom: 15px;">⚡ 速度最快 (Top 5)</h3>
                 `;
 
-                classStats.topStudents.forEach((student, index) => {
+                topFast.forEach((student, index) => {
                     html += `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255, 200, 220, 0.6);">
-                            <span>${index + 1}. ${this.escapeHtml(student.name)}</span>
-                            <span style="font-weight: bold; color: #d46b8d;">${student.accuracy}% (${student.totalQuestions}题)</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
+                            <span>${index + 1}. ${this.escapeHtml(student.studentName || student.name)}</span>
+                            <span style="font-weight: bold; color: #28a745;">${(student.avg_time || 0).toFixed(1)}s</span>
                         </div>
                     `;
                 });
@@ -324,21 +436,56 @@ class TeacherPanel {
             }
 
             statsDiv.innerHTML = html;
+
         } catch (error) {
             console.error('刷新班级统计失败:', error);
-            statsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">加载失败</div>';
+            statsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+        }
+    }
+
+    /**
+     * 同步数据按钮
+     */
+    async syncData(e) {
+        e?.preventDefault();
+
+        if (!this.supabase || !navigator.onLine) {
+            alert('网络离线，无法同步');
+            return;
+        }
+
+        const syncBtn = document.getElementById('sync-data-btn');
+        const originalText = syncBtn.textContent;
+        syncBtn.textContent = '⏳ 同步中...';
+        syncBtn.disabled = true;
+
+        try {
+            await this.studentRecord.processOfflineQueue();
+            await this.refreshData();
+            alert('✅ 数据同步完成');
+        } catch (error) {
+            console.error('同步失败:', error);
+            alert('❌ 同步失败: ' + error.message);
+        } finally {
+            syncBtn.textContent = originalText;
+            syncBtn.disabled = false;
         }
     }
 
     /**
      * 显示学生详情
      */
-    showStudentDetail(studentId) {
+    async showStudentDetail(studentId) {
         try {
-            const stats = this.studentRecord.getStudentStats(studentId);
-            if (!stats) return;
+            const stats = await this.studentRecord.getStudentStats(studentId);
+            if (!stats) {
+                alert('找不到该学生数据');
+                return;
+            }
 
-            // 创建详情模态框
+            // 获取速度趋势
+            const trend = await this.studentRecord.getSpeedTrend(studentId);
+
             const detailDiv = document.createElement('div');
             detailDiv.id = 'student-detail-modal';
             detailDiv.style.cssText = `
@@ -355,19 +502,51 @@ class TeacherPanel {
                 align-items: center;
             `;
 
+            let trendHtml = '';
+            if (trend.length > 0) {
+                trendHtml = '<div style="margin: 15px 0;"><strong>速度趋势:</strong><br>';
+                trend.slice(-7).forEach(day => {
+                    trendHtml += `📅 ${day.date}: ${day.avgTime}s<br>`;
+                });
+                trendHtml += '</div>';
+            }
+
             const detailHtml = `
-                <div style="background: white; border-radius: 40px; padding: 30px; max-width: 400px; width: 90%;">
+                <div style="background: white; border-radius: 40px; padding: 30px; max-width: 450px; width: 90%;">
                     <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(stats.studentName)} 详情</h3>
-                    <div style="margin-bottom: 15px;">
-                        <div style="color: #b2869c; margin-bottom: 5px;">正确率: <span style="color: #d46b8d; font-weight: bold;">${stats.accuracy}%</span></div>
-                        <div style="color: #b2869c; margin-bottom: 5px;">练习次数: ${stats.totalSessions} 次</div>
-                        <div style="color: #b2869c; margin-bottom: 5px;">答题总数: ${stats.totalQuestions} 题</div>
-                        <div style="color: #b2869c; margin-bottom: 5px;">正确: ${stats.correctQuestions} 题</div>
-                        <div style="color: #b2869c; margin-bottom: 5px;">错误: ${stats.wrongQuestions} 题</div>
-                        <div style="color: #b2869c; margin-bottom: 5px;">平均时间: ${stats.averageTimePerQuestion} 秒/题</div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">学生ID:</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(stats.studentId)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">平均速度:</span>
+                            <span style="font-weight: bold; color: ${this.getSpeedColor(stats.avgTime)};">${(stats.avgTime || 0).toFixed(1)}秒/题</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">正确率:</span>
+                            <span style="font-weight: bold; color: #d46b8d;">${(stats.accuracy || 0).toFixed(1)}%</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">总答题数:</span>
+                            <span style="font-weight: bold;">${stats.totalQuestions || 0}题</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">练习次数:</span>
+                            <span style="font-weight: bold;">${stats.totalSessions || 0}次</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                            <span style="color: #666;">最后活动:</span>
+                            <span style="font-weight: bold;">${stats.lastActive ? new Date(stats.lastActive).toLocaleString() : '无'}</span>
+                        </div>
                     </div>
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button class="candy-btn primary" id="generate-student-pdf">生成报告</button>
+
+                    ${trendHtml}
+
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                        <button class="candy-btn primary" id="generate-student-pdf">📄 生成报告</button>
+                        <button class="candy-btn secondary" id="export-student-excel">📊 导出Excel</button>
                         <button class="candy-btn home" id="close-detail">关闭</button>
                     </div>
                 </div>
@@ -376,9 +555,13 @@ class TeacherPanel {
             detailDiv.innerHTML = detailHtml;
             document.body.appendChild(detailDiv);
 
-            // 绑定事件
             document.getElementById('generate-student-pdf')?.addEventListener('click', () => {
                 this.reportGenerator.generateStudentReport(studentId);
+                detailDiv.remove();
+            });
+
+            document.getElementById('export-student-excel')?.addEventListener('click', () => {
+                this.exportStudentExcel(studentId);
                 detailDiv.remove();
             });
 
@@ -386,14 +569,65 @@ class TeacherPanel {
                 detailDiv.remove();
             });
 
-            // 点击背景关闭
             detailDiv.addEventListener('click', (e) => {
                 if (e.target === detailDiv) {
                     detailDiv.remove();
                 }
             });
+
         } catch (error) {
             console.error('显示学生详情失败:', error);
+            alert('加载失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 导出单个学生Excel
+     */
+    async exportStudentExcel(studentId) {
+        if (!this.supabase || !navigator.onLine) {
+            alert('需要网络连接才能导出');
+            return;
+        }
+
+        try {
+            const { data, error } = await this.supabase
+                .from('question_responses')
+                .select('*')
+                .eq('student_id', studentId)
+                .order('timestamp');
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                alert('没有数据可导出');
+                return;
+            }
+
+            const wsData = [
+                ['学生ID', '题目', '数字1', '数字2', '是否正确', '用时(秒)', '时间戳']
+            ];
+
+            data.forEach(q => {
+                wsData.push([
+                    q.student_id,
+                    `${q.num1}+${q.num2}=${q.target_number}`,
+                    q.num1,
+                    q.num2,
+                    q.is_correct ? '✓' : '✗',
+                    q.response_time,
+                    new Date(q.timestamp).toLocaleString()
+                ]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, '答题记录');
+            XLSX.writeFile(wb, `student_${studentId}_data.xlsx`);
+
+        } catch (error) {
+            console.error('导出失败:', error);
+            alert('导出失败: ' + error.message);
         }
     }
 
@@ -416,14 +650,14 @@ class TeacherPanel {
                 try {
                     const imported = this.studentRecord.importStudents(e.target.result);
                     if (imported > 0) {
-                        alert(`成功导入 ${imported} 名学生`);
+                        alert(`✅ 成功导入 ${imported} 名学生`);
                         this.refreshData();
                     } else {
-                        alert('导入失败，请检查文件格式（CSV格式：学号,姓名）');
+                        alert('❌ 导入失败，请检查文件格式（CSV格式：学号,姓名）');
                     }
                 } catch (error) {
                     console.error('导入学生失败:', error);
-                    alert('导入失败：' + error.message);
+                    alert('❌ 导入失败：' + error.message);
                 }
             };
             reader.readAsText(file);
