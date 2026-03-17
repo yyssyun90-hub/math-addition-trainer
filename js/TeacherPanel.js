@@ -1,6 +1,6 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 2.0.0 (Supabase集成版)
+ * 版本: 2.0.1 (Supabase集成版 - 修复版)
  * 功能：从Supabase读取数据并显示在教师面板
  * ====================================================================
  */
@@ -13,6 +13,7 @@ class TeacherPanel {
         this.currentTab = 'students';
         this.supabase = null;
         this.handlers = {};
+        this.autoRefreshTimer = null;
         
         this.initSupabase();
         this.init();
@@ -90,7 +91,7 @@ class TeacherPanel {
             excelBtn.addEventListener('click', (e) => this.exportExcel(e));
         }
 
-        // 同步数据按钮（新增）
+        // 同步数据按钮
         const syncBtn = document.getElementById('sync-data-btn');
         if (syncBtn) {
             syncBtn.addEventListener('click', (e) => this.syncData(e));
@@ -238,8 +239,8 @@ class TeacherPanel {
 
             // 如果Supabase没数据，从本地获取
             if (students.length === 0) {
-                const classStats = this.studentRecord.getClassStats();
-                students = await classStats.students;
+                const classStats = await this.studentRecord.getClassStats();
+                students = classStats.students || [];
             }
 
             if (students.length === 0) {
@@ -252,20 +253,30 @@ class TeacherPanel {
             html += `<span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 在线' : '🔴 离线'}</span>`;
             html += '</div>';
 
-            students.sort((a, b) => (a.avg_time || 999) - (b.avg_time || 999)).forEach(student => {
-                const avgTime = student.avg_time || student.avgTime || 0;
-                const accuracy = student.accuracy || 0;
-                const totalQ = student.total_questions || student.totalQuestions || 0;
+            // 按速度排序（快的在前面）
+            students.sort((a, b) => {
+                const timeA = a.avg_time || a.avgTime || 999;
+                const timeB = b.avg_time || b.avgTime || 999;
+                return timeA - timeB;
+            }).forEach(student => {
+                // 统一字段名
+                const displayStudent = {
+                    id: student.student_id || student.studentId || '',
+                    name: student.name || student.studentName || '未知',
+                    avgTime: student.avg_time || student.avgTime || 0,
+                    accuracy: student.accuracy || 0,
+                    totalQ: student.total_questions || student.totalQuestions || 0
+                };
                 
                 html += `
-                    <div class="student-list-item" data-student-id="${this.escapeHtml(student.student_id || student.studentId)}" style="cursor: pointer;">
+                    <div class="student-list-item" data-student-id="${this.escapeHtml(displayStudent.id)}" style="cursor: pointer;">
                         <div class="student-info">
-                            <h4>${this.escapeHtml(student.name || student.studentName)}</h4>
-                            <p>ID: ${this.escapeHtml(student.student_id || student.studentId)} · 答题: ${totalQ}题</p>
+                            <h4>${this.escapeHtml(displayStudent.name)}</h4>
+                            <p>ID: ${this.escapeHtml(displayStudent.id)} · 答题: ${displayStudent.totalQ}题</p>
                         </div>
                         <div class="student-stats">
-                            <div class="student-accuracy" style="color: ${this.getSpeedColor(avgTime)}">${avgTime.toFixed(1)}s</div>
-                            <div class="student-questions">正确率: ${accuracy.toFixed(1)}%</div>
+                            <div class="student-accuracy" style="color: ${this.getSpeedColor(displayStudent.avgTime)}">${displayStudent.avgTime.toFixed(1)}s</div>
+                            <div class="student-questions">正确率: ${displayStudent.accuracy.toFixed(1)}%</div>
                         </div>
                     </div>
                 `;
@@ -320,16 +331,23 @@ class TeacherPanel {
             }
 
             if (students.length === 0) {
-                const classStats = this.studentRecord.getClassStats();
-                students = classStats.students;
+                const classStats = await this.studentRecord.getClassStats();
+                students = classStats.students || [];
             }
 
             select.innerHTML = '<option value="all">📊 全班报告</option>';
 
             students.forEach(student => {
+                const displayStudent = {
+                    id: student.student_id || student.studentId,
+                    name: student.name || student.studentName,
+                    avgTime: student.avg_time || student.avgTime || 0,
+                    accuracy: student.accuracy || 0
+                };
+                
                 const option = document.createElement('option');
-                option.value = student.student_id || student.studentId;
-                option.textContent = `${student.name || student.studentName} (${(student.avg_time || 0).toFixed(1)}s, ${(student.accuracy || 0).toFixed(1)}%)`;
+                option.value = displayStudent.id;
+                option.textContent = `${displayStudent.name} (${displayStudent.avgTime.toFixed(1)}s, ${displayStudent.accuracy.toFixed(1)}%)`;
                 select.appendChild(option);
             });
 
@@ -362,8 +380,8 @@ class TeacherPanel {
                 slow: 0    // >20秒
             };
 
-            classStats.students.forEach(s => {
-                const time = s.avg_time || 999;
+            (classStats.students || []).forEach(s => {
+                const time = s.avg_time || s.avgTime || 999;
                 if (time < 10) speedGroups.fast++;
                 else if (time < 20) speedGroups.medium++;
                 else speedGroups.slow++;
@@ -379,7 +397,7 @@ class TeacherPanel {
                         </div>
                         <div>
                             <div style="font-size: 0.9rem; color: #666;">总答题数</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalQuestions}</div>
+                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalQuestions || 0}</div>
                         </div>
                         <div>
                             <div style="font-size: 0.9rem; color: #666;">平均速度</div>
@@ -412,9 +430,13 @@ class TeacherPanel {
             `;
 
             // 速度最快的5个学生
-            const topFast = [...classStats.students]
-                .filter(s => s.avg_time > 0)
-                .sort((a, b) => (a.avg_time || 999) - (b.avg_time || 999))
+            const topFast = [...(classStats.students || [])]
+                .map(s => ({
+                    name: s.name || s.studentName,
+                    avgTime: s.avg_time || s.avgTime || 999
+                }))
+                .filter(s => s.avgTime > 0)
+                .sort((a, b) => a.avgTime - b.avgTime)
                 .slice(0, 5);
 
             if (topFast.length > 0) {
@@ -426,8 +448,8 @@ class TeacherPanel {
                 topFast.forEach((student, index) => {
                     html += `
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
-                            <span>${index + 1}. ${this.escapeHtml(student.studentName || student.name)}</span>
-                            <span style="font-weight: bold; color: #28a745;">${(student.avg_time || 0).toFixed(1)}s</span>
+                            <span>${index + 1}. ${this.escapeHtml(student.name || '未知')}</span>
+                            <span style="font-weight: bold; color: #28a745;">${student.avgTime.toFixed(1)}s</span>
                         </div>
                     `;
                 });
@@ -513,16 +535,16 @@ class TeacherPanel {
 
             const detailHtml = `
                 <div style="background: white; border-radius: 40px; padding: 30px; max-width: 450px; width: 90%;">
-                    <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(stats.studentName)} 详情</h3>
+                    <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(stats.studentName || stats.name)} 详情</h3>
                     
                     <div style="margin-bottom: 20px;">
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
                             <span style="color: #666;">学生ID:</span>
-                            <span style="font-weight: bold;">${this.escapeHtml(stats.studentId)}</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(studentId)}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
                             <span style="color: #666;">平均速度:</span>
-                            <span style="font-weight: bold; color: ${this.getSpeedColor(stats.avgTime)};">${(stats.avgTime || 0).toFixed(1)}秒/题</span>
+                            <span style="font-weight: bold; color: ${this.getSpeedColor(stats.avgTime || 0)};">${(stats.avgTime || 0).toFixed(1)}秒/题</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
                             <span style="color: #666;">正确率:</span>
@@ -544,7 +566,7 @@ class TeacherPanel {
 
                     ${trendHtml}
 
-                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
                         <button class="candy-btn primary" id="generate-student-pdf">📄 生成报告</button>
                         <button class="candy-btn secondary" id="export-student-excel">📊 导出Excel</button>
                         <button class="candy-btn home" id="close-detail">关闭</button>
