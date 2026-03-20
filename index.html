@@ -195,7 +195,7 @@
             margin-top: clamp(10px, 2vw, 20px);
         }
 
-        /* 标题 - 柔和彩虹 */
+        /* 标题 - 柔和彩虹 + 黑色描边 */
         h1 {
             font-size: clamp(1.8rem, 6vw, 2.8rem);
             background: linear-gradient(145deg, 
@@ -203,7 +203,16 @@
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
-            text-shadow: 3px 3px 10px rgba(255, 200, 220, 0.5);
+            text-shadow: 
+                2px 2px 0 #000,
+                -2px -2px 0 #000,
+                2px -2px 0 #000,
+                -2px 2px 0 #000,
+                0 2px 0 #000,
+                2px 0 0 #000,
+                0 -2px 0 #000,
+                -2px 0 0 #000,
+                3px 3px 5px rgba(0,0,0,0.3);
             letter-spacing: 2px;
             font-weight: 700;
             margin-bottom: 10px;
@@ -414,6 +423,13 @@
             cursor: not-allowed;
         }
 
+        .candy-btn.small {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            min-height: 35px;
+            min-width: auto;
+        }
+
         /* 统计面板 - 柔和玻璃 */
         .stats-panel {
             display: grid;
@@ -606,7 +622,8 @@
         }
 
         /* 模态框 - 高级玻璃效果 */
-        .game-over-modal, .auth-modal, .tutorial-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal {
+        .game-over-modal, .auth-modal, .tutorial-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal,
+        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal {
             position: fixed;
             top: 0;
             left: 0;
@@ -618,22 +635,34 @@
             display: none;
             justify-content: center;
             align-items: center;
-            z-index: 1000;
+            z-index: 6000;
             padding: 16px;
         }
 
-        .game-over-card, .auth-card, .tutorial-card, .tournament-card, .battle-card, .create-card, .join-card {
-            background: rgba(255, 255, 255, 0.85);
+        .game-over-card, .auth-card, .tutorial-card, .tournament-card, .battle-card, .create-card, .join-card,
+        .teacher-card, .register-choice-card, .register-card {
+            background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border-radius: 60px;
             padding: clamp(20px, 5vw, 40px);
-            max-width: 500px;
+            max-width: 600px;
             width: 90%;
             border: 2px solid rgba(255, 255, 255, 0.8);
             box-shadow: 0 30px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
             text-align: center;
             position: relative;
+        }
+
+        .teacher-card {
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .register-card {
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         .tournament-card, .battle-card {
@@ -1134,7 +1163,7 @@
             margin-top: 30px;
         }
 
-        /* 对战样式 - 基础设置，详细样式在 BattleMode.js 中 */
+        /* 对战样式 */
         .battle-waiting {
             text-align: center;
         }
@@ -1485,6 +1514,113 @@
             justify-content: center;
         }
 
+        /* ===== 教师面板样式 ===== */
+        .teacher-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        .teacher-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .teacher-tabs .tab-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 30px;
+            background: #ffe4e9;
+            color: #d46b8d;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .teacher-tabs .tab-btn.active {
+            background: linear-gradient(135deg, #feada6, #f5b0c5);
+            color: white;
+        }
+
+        .student-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            padding: 5px;
+        }
+
+        .student-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255, 245, 250, 0.7);
+            border: 1px solid rgba(255, 200, 220, 0.6);
+            border-radius: 30px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .student-list-item:hover {
+            transform: translateX(5px);
+            background: rgba(255, 235, 245, 0.9);
+        }
+
+        .student-info h4 {
+            color: #d46b8d;
+            margin-bottom: 5px;
+        }
+
+        .student-info p {
+            color: #b2869c;
+            font-size: 0.9rem;
+        }
+
+        .student-stats {
+            text-align: right;
+        }
+
+        .student-accuracy {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #d46b8d;
+        }
+
+        .sync-status {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            padding: 5px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        @media (max-width: 600px) {
+            .teacher-controls {
+                bottom: 10px;
+                left: 10px;
+            }
+            .teacher-card {
+                padding: 20px;
+            }
+            .student-list-item {
+                flex-direction: column;
+                text-align: center;
+            }
+            .student-stats {
+                text-align: center;
+                margin-top: 8px;
+            }
+            .register-card {
+                padding: 25px !important;
+            }
+        }
+
         /* 移动端优化 */
         @media (hover: none) and (pointer: coarse) {
             .nav-btn:hover,
@@ -1500,32 +1636,12 @@
                 transform: translateY(3px);
             }
         }
-
-        @media (max-width: 600px) {
-            .battle-header {
-                flex-direction: column;
-                gap: 20px;
-            }
-            
-            .waiting-players {
-                flex-direction: column;
-                gap: 20px;
-            }
-            
-            .result-stats {
-                flex-direction: column;
-            }
-            
-            .tournament-item {
-                flex-direction: column;
-                text-align: center;
-            }
-            
-            .tournament-item-header {
-                flex-direction: column;
-            }
-        }
     </style>
+    
+    <!-- PDF 和 Excel 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <!-- 全局变量声明 -->
     <script>
@@ -1607,7 +1723,7 @@
             </div>
 
             <!-- 对战和锦标赛按钮 -->
-            <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
+            <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center; flex-wrap: wrap;">
                 <button class="candy-btn battle" id="quick-match-btn" data-action="quick-match">
                     ⚡ <span class="btn-text">快速匹配</span>
                 </button>
@@ -1697,6 +1813,120 @@
             <button class="start-btn auth-submit-btn" id="auth-submit">登录</button>
             <div class="auth-switch" id="auth-switch">
                 <span id="switch-to-register">没有账号？立即注册</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 注册相关模态框 ========== -->
+
+    <!-- 注册角色选择模态框 -->
+    <div class="register-choice-modal" id="register-choice-modal" style="display: none;">
+        <div class="register-choice-card">
+            <button class="close-btn" id="close-choice-modal">×</button>
+            <h2 style="color: #d46b8d; margin-bottom: 30px; text-align: center;">选择注册身份</h2>
+            
+            <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px;">
+                <button class="candy-btn primary" id="choose-student" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px;">
+                    👨‍🎓 注册为学生
+                </button>
+                <button class="candy-btn tournament" id="choose-teacher" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px;">
+                    👩‍🏫 注册为教师
+                </button>
+            </div>
+            
+            <p style="text-align: center; color: #b2869c;">
+                已有账号？ <a href="#" id="back-to-login-from-choice" style="color: #d46b8d;">返回登录</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- 学生注册模态框 -->
+    <div class="student-register-modal" id="student-register-modal" style="display: none;">
+        <div class="register-card">
+            <button class="close-btn" id="close-student-register">×</button>
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👨‍🎓 学生注册</h2>
+            
+            <input type="email" class="auth-input" id="student-email" placeholder="电子邮箱" style="margin-bottom: 15px;">
+            <input type="password" class="auth-input" id="student-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;">
+            
+            <select class="auth-input" id="student-state" style="margin-bottom: 15px;">
+                <option value="">请选择州属</option>
+                <option value="Johor">Johor</option>
+                <option value="Kedah">Kedah</option>
+                <option value="Kelantan">Kelantan</option>
+                <option value="Melaka">Melaka</option>
+                <option value="Negeri Sembilan">Negeri Sembilan</option>
+                <option value="Pahang">Pahang</option>
+                <option value="Perak">Perak</option>
+                <option value="Perlis">Perlis</option>
+                <option value="Pulau Pinang">Pulau Pinang</option>
+                <option value="Sabah">Sabah</option>
+                <option value="Sarawak">Sarawak</option>
+                <option value="Selangor">Selangor</option>
+                <option value="Terengganu">Terengganu</option>
+                <option value="Kuala Lumpur">Kuala Lumpur</option>
+                <option value="Labuan">Labuan</option>
+                <option value="Putrajaya">Putrajaya</option>
+            </select>
+            
+            <input type="text" class="auth-input" id="student-school" placeholder="学校名称" style="margin-bottom: 15px;">
+            <input type="text" class="auth-input" id="student-name" placeholder="姓名" style="margin-bottom: 15px;">
+            <input type="text" class="auth-input" id="student-class" placeholder="班级 (例: 5A)" style="margin-bottom: 15px;">
+            
+            <div class="auth-error" id="student-register-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
+            
+            <button class="start-btn auth-submit-btn" id="student-register-submit" style="width: 100%; margin: 20px 0;">注册为学生</button>
+            
+            <div style="text-align: center; margin-top: 15px;">
+                <span style="color: #b2869c;">已有账号？</span>
+                <a href="#" id="back-to-login-from-student" style="color: #d46b8d;">返回登录</a>
+                <span style="color: #b2869c; margin: 0 5px;">|</span>
+                <a href="#" id="back-to-choice-from-student" style="color: #d46b8d;">返回选择</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 教师注册模态框 -->
+    <div class="teacher-register-modal" id="teacher-register-modal" style="display: none;">
+        <div class="register-card">
+            <button class="close-btn" id="close-teacher-register">×</button>
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👩‍🏫 教师注册</h2>
+            
+            <input type="email" class="auth-input" id="teacher-email" placeholder="电子邮箱" style="margin-bottom: 15px;">
+            <input type="password" class="auth-input" id="teacher-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;">
+            <input type="text" class="auth-input" id="teacher-name" placeholder="姓名" style="margin-bottom: 15px;">
+            
+            <select class="auth-input" id="teacher-state" style="margin-bottom: 15px;">
+                <option value="">请选择州属</option>
+                <option value="Johor">Johor</option>
+                <option value="Kedah">Kedah</option>
+                <option value="Kelantan">Kelantan</option>
+                <option value="Melaka">Melaka</option>
+                <option value="Negeri Sembilan">Negeri Sembilan</option>
+                <option value="Pahang">Pahang</option>
+                <option value="Perak">Perak</option>
+                <option value="Perlis">Perlis</option>
+                <option value="Pulau Pinang">Pulau Pinang</option>
+                <option value="Sabah">Sabah</option>
+                <option value="Sarawak">Sarawak</option>
+                <option value="Selangor">Selangor</option>
+                <option value="Terengganu">Terengganu</option>
+                <option value="Kuala Lumpur">Kuala Lumpur</option>
+                <option value="Labuan">Labuan</option>
+                <option value="Putrajaya">Putrajaya</option>
+            </select>
+            
+            <input type="text" class="auth-input" id="teacher-school" placeholder="学校名称" style="margin-bottom: 15px;">
+            
+            <div class="auth-error" id="teacher-register-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
+            
+            <button class="start-btn auth-submit-btn" id="teacher-register-submit" style="width: 100%; margin: 20px 0;">注册为教师</button>
+            
+            <div style="text-align: center; margin-top: 15px;">
+                <span style="color: #b2869c;">已有账号？</span>
+                <a href="#" id="back-to-login-from-teacher" style="color: #d46b8d;">返回登录</a>
+                <span style="color: #b2869c; margin: 0 5px;">|</span>
+                <a href="#" id="back-to-choice-from-teacher" style="color: #d46b8d;">返回选择</a>
             </div>
         </div>
     </div>
@@ -1797,7 +2027,7 @@
         </div>
     </div>
 
-    <!-- 创建锦标赛模态框 - 支持自定义人数 -->
+    <!-- 创建锦标赛模态框 -->
     <div class="create-tournament-modal" id="create-tournament-modal">
         <div class="create-card">
             <h3 style="color: #d46b8d; margin-bottom: 20px;">🏆 创建锦标赛</h3>
@@ -1810,9 +2040,6 @@
                     参赛人数 <span style="color: #fba9c4; font-size: 0.8rem;">(2-100人，自由输入)</span>
                 </label>
                 <input type="number" id="tournament-size-input" min="2" max="100" value="16" step="1">
-                <div style="font-size: 0.8rem; color: #b2869c; margin-top: 5px;">
-                    ⚡ 可以根据班级人数自由设置
-                </div>
             </div>
             <div class="form-group">
                 <label for="tournament-mode">比赛模式</label>
@@ -1958,6 +2185,56 @@
         </div>
     </div>
 
+    <!-- 教师模态框 -->
+    <div class="teacher-modal" id="teacher-modal" style="display: none;">
+        <div class="teacher-card">
+            <button class="close-btn" id="close-teacher">×</button>
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👩‍🏫 教师控制面板</h2>
+            
+            <div class="teacher-tabs">
+                <button class="tab-btn active" data-teacher-tab="students">📋 学生列表</button>
+                <button class="tab-btn" data-teacher-tab="reports">📊 生成报告</button>
+                <button class="tab-btn" data-teacher-tab="stats">📈 班级统计</button>
+            </div>
+
+            <!-- 学生列表标签页 -->
+            <div class="teacher-tab-content" id="students-tab">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; justify-content: space-between; flex-wrap: wrap;">
+                    <button class="candy-btn small" id="import-students">📥 导入学生</button>
+                    <button class="candy-btn small primary" id="sync-data-btn">🔄 同步数据</button>
+                    <button class="candy-btn small warning" id="clear-all-records">🗑️ 清除记录</button>
+                </div>
+                <div class="sync-status" id="sync-status" style="text-align: center; margin-bottom: 10px; color: #28a745;">
+                    🟢 在线
+                </div>
+                <div class="student-list" id="student-list">
+                    <div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div>
+                </div>
+            </div>
+
+            <!-- 生成报告标签页 -->
+            <div class="teacher-tab-content" id="reports-tab" style="display: none;">
+                <div style="margin-bottom: 20px;">
+                    <label for="report-student-select" style="display: block; color: #d46b8d; margin-bottom: 10px; text-align: left;">选择学生:</label>
+                    <select id="report-student-select" style="width: 100%; padding: 12px; border: 2px solid #ffb6c1; border-radius: 30px; margin-bottom: 15px;">
+                        <option value="all">📊 全班报告</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                    <button class="candy-btn primary" id="generate-pdf">📄 生成 PDF 报告</button>
+                    <button class="candy-btn secondary" id="export-excel">📊 导出 Excel</button>
+                </div>
+            </div>
+
+            <!-- 班级统计标签页 -->
+            <div class="teacher-tab-content" id="stats-tab" style="display: none;">
+                <div class="class-stats" id="class-stats">
+                    <div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 音效控制 -->
     <div class="sound-controls">
         <button class="sound-toggle" id="sound-toggle">
@@ -1966,6 +2243,13 @@
         <div class="sound-volume" id="sound-volume">
             <input type="range" min="0" max="100" value="70" id="volume-slider">
         </div>
+    </div>
+
+    <!-- 教师控制面板按钮 -->
+    <div class="teacher-controls">
+        <button class="candy-btn primary" id="teacher-panel-btn">
+            👩‍🏫 <span class="btn-text">教师面板</span>
+        </button>
     </div>
 
     <!-- 修复滚动条问题的脚本 -->
@@ -1995,7 +2279,11 @@
                     '#home-btn',
                     '#home-from-gameover-btn',
                     '#rematch-btn',
-                    '#close-battle-btn'
+                    '#close-battle-btn',
+                    '#close-teacher',
+                    '#close-choice-modal',
+                    '#close-student-register',
+                    '#close-teacher-register'
                 ];
                 
                 setTimeout(() => {
@@ -2014,7 +2302,11 @@
                         '.tournament-modal', 
                         '.battle-modal', 
                         '.join-modal', 
-                        '.create-tournament-modal'
+                        '.create-tournament-modal',
+                        '.teacher-modal',
+                        '.register-choice-modal',
+                        '.student-register-modal',
+                        '.teacher-register-modal'
                     ];
                     
                     modalSelectors.forEach(selector => {
@@ -2041,7 +2333,7 @@
             
             setInterval(function() {
                 const anyModalOpen = Array.from(document.querySelectorAll(
-                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal'
+                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
                 )).some(modal => {
                     const style = window.getComputedStyle(modal);
                     return style.display !== 'none' && style.display !== '';
@@ -2058,7 +2350,7 @@
                         const bodyStyle = window.getComputedStyle(document.body);
                         if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
                             const anyModalOpen = Array.from(document.querySelectorAll(
-                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal'
+                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
                             )).some(modal => {
                                 const style = window.getComputedStyle(modal);
                                 return style.display !== 'none' && style.display !== '';
@@ -2205,18 +2497,20 @@
     <!-- 按照正确顺序加载JS模块 -->
     <script src="js/utils.js"></script>
     <script src="js/Storage.js"></script>
+    <script src="js/StudentRecord.js"></script>
     <script src="js/Game.js"></script>
     <script src="js/Auth.js"></script>
     <script src="js/UI.js"></script>
     <script src="js/BattleMode.js"></script>
     <script src="js/TournamentMode.js"></script>
+    <script src="js/ReportGenerator.js"></script>
+    <script src="js/TeacherPanel.js"></script>
 
     <!-- ===== 实例化 BattleMode 和 TournamentMode ===== -->
     <script>
         (function() {
             console.log('正在实例化游戏模式...');
             
-            // 等待 game 对象就绪
             function initModes() {
                 if (!window.game) {
                     console.log('等待 game 对象...');
@@ -2226,13 +2520,11 @@
                 
                 console.log('game 对象已就绪，开始实例化');
                 
-                // 实例化 BattleMode
                 if (window.BattleMode && !window.battleModeInstance) {
                     try {
                         window.battleModeInstance = new window.BattleMode(window.game);
                         console.log('BattleMode 实例化成功');
                         
-                        // 初始化
                         if (typeof window.battleModeInstance.init === 'function') {
                             window.battleModeInstance.init();
                         }
@@ -2241,7 +2533,6 @@
                     }
                 }
                 
-                // 实例化 TournamentMode
                 if (window.TournamentMode && !window.tournamentModeInstance) {
                     try {
                         window.tournamentModeInstance = new window.TournamentMode(window.game);
@@ -2295,14 +2586,12 @@
 
     <!-- ===== 统一按钮点击处理 ===== -->
     <script>
-        // 为所有需要登录的按钮添加点击处理
         document.addEventListener('click', function(e) {
             const btn = e.target.closest('[data-action]');
             if (!btn) return;
             
             const action = btn.dataset.action;
             
-            // 检查登录状态
             if (!window.currentUser) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2320,7 +2609,6 @@
                 return false;
             }
             
-            // 已登录，执行对应操作
             console.log('用户已登录，执行操作:', action);
             
             if (action === 'quick-match') {
@@ -2433,22 +2721,11 @@
                         });
                         
                         document.getElementById('show-register-btn')?.addEventListener('click', () => {
-                            document.getElementById('auth-modal').style.display = 'flex';
-                            document.getElementById('auth-title').textContent = '📝 注册';
-                            document.getElementById('auth-submit').textContent = '注册';
-                            document.getElementById('auth-error').textContent = '';
+                            document.getElementById('register-choice-modal').style.display = 'flex';
                         });
                     }
                 }
             }
-            
-            document.addEventListener('click', function(e) {
-                if (e.target.id === 'switch-to-register' || e.target.closest('#switch-to-register')) {
-                    document.getElementById('auth-title').textContent = '📝 注册';
-                    document.getElementById('auth-submit').textContent = '注册';
-                    document.getElementById('auth-error').textContent = '';
-                }
-            });
             
             function checkUserStatus() {
                 if (window.supabaseClient) {
@@ -2518,25 +2795,9 @@
                         }
                     });
                 } else {
-                    window.supabaseClient.auth.signUp({
-                        email: email,
-                        password: password
-                    }).then(({ data, error }) => {
-                        if (error) {
-                            if (errorDiv) errorDiv.textContent = error.message;
-                        } else {
-                            if (errorDiv) errorDiv.textContent = '注册成功！请查看邮箱验证';
-                            window.currentUser = data.user;
-                            
-                            if (window.game && window.game.state) {
-                                window.game.state.currentUser = data.user;
-                            }
-                            
-                            setTimeout(() => {
-                                document.getElementById('auth-modal').style.display = 'none';
-                            }, 2000);
-                        }
-                    });
+                    // 旧注册方式已废弃，重定向到选择页面
+                    document.getElementById('auth-modal').style.display = 'none';
+                    document.getElementById('register-choice-modal').style.display = 'flex';
                 }
             }
             
@@ -2544,6 +2805,20 @@
                 e.target.id === 'close-auth' ||
                 (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) {
                 document.getElementById('auth-modal').style.display = 'none';
+            }
+            
+            // 处理从登录切换到注册
+            if (e.target.id === 'switch-to-register' || e.target.closest('#switch-to-register')) {
+                e.preventDefault();
+                document.getElementById('auth-modal').style.display = 'none';
+                document.getElementById('register-choice-modal').style.display = 'flex';
+            }
+            
+            // 处理从注册选择返回登录
+            if (e.target.id === 'back-to-login-from-choice' || e.target.closest('#back-to-login-from-choice')) {
+                e.preventDefault();
+                document.getElementById('register-choice-modal').style.display = 'none';
+                document.getElementById('auth-modal').style.display = 'flex';
             }
         });
     </script>
