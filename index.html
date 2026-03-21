@@ -1579,6 +1579,8 @@
         window.supabaseClient = null;
         window.battleModeInstance = null;
         window.tournamentModeInstance = null;
+        window._userSyncTimer = null;
+        window._uiInitialized = false;
     </script>
     
     <!-- 加载 Supabase -->
@@ -2093,28 +2095,28 @@
             ensureScroll();
             
             function fixAllModals() {
-                const closeSelectors = [
+                var closeSelectors = [
                     '.close-btn', '#close-auth', '#close-tutorial', '#close-gameover', '#cancel-match', 
                     '#cancel-join', '#cancel-create-tournament', '#home-btn', '#home-from-gameover-btn', 
                     '#rematch-btn', '#close-battle-btn', '#close-teacher', '#close-choice-modal',
                     '#close-student-register', '#close-teacher-register'
                 ];
                 
-                setTimeout(() => {
-                    closeSelectors.forEach(selector => {
-                        document.querySelectorAll(selector).forEach(btn => {
+                setTimeout(function() {
+                    closeSelectors.forEach(function(selector) {
+                        document.querySelectorAll(selector).forEach(function(btn) {
                             btn.addEventListener('click', function() { setTimeout(ensureScroll, 50); });
                         });
                     });
                     
-                    const modalSelectors = [
+                    var modalSelectors = [
                         '.auth-modal', '.tutorial-modal', '.game-over-modal', '.tournament-modal', 
                         '.battle-modal', '.join-modal', '.create-tournament-modal', '.teacher-modal',
                         '.register-choice-modal', '.student-register-modal', '.teacher-register-modal'
                     ];
                     
-                    modalSelectors.forEach(selector => {
-                        document.querySelectorAll(selector).forEach(modal => {
+                    modalSelectors.forEach(function(selector) {
+                        document.querySelectorAll(selector).forEach(function(modal) {
                             modal.addEventListener('click', function(e) { if (e.target === modal) setTimeout(ensureScroll, 50); });
                         });
                     });
@@ -2128,20 +2130,20 @@
             }
             
             setInterval(function() {
-                const anyModalOpen = Array.from(document.querySelectorAll(
+                var anyModalOpen = Array.from(document.querySelectorAll(
                     '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
-                )).some(modal => { const style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
+                )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                 if (!anyModalOpen) ensureScroll();
             }, 2000);
             
-            const observer = new MutationObserver(function(mutations) {
+            var observer = new MutationObserver(function(mutations) {
                 mutations.forEach(function(mutation) {
                     if (mutation.attributeName === 'style') {
-                        const bodyStyle = window.getComputedStyle(document.body);
+                        var bodyStyle = window.getComputedStyle(document.body);
                         if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
-                            const anyModalOpen = Array.from(document.querySelectorAll(
+                            var anyModalOpen = Array.from(document.querySelectorAll(
                                 '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
-                            )).some(modal => { const style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
+                            )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                             if (!anyModalOpen) ensureScroll();
                         }
                     }
@@ -2155,22 +2157,33 @@
     <script>
         (function() {
             console.log('正在初始化 Supabase 连接...');
-            const configTag = document.getElementById('supabase-config');
+            var configTag = document.getElementById('supabase-config');
             if (!configTag) { console.error('未找到 Supabase 配置标签'); return; }
-            let supabaseConfig;
+            var supabaseConfig;
             try { supabaseConfig = JSON.parse(configTag.textContent); } catch (e) { console.error('解析 Supabase 配置失败:', e); return; }
-            const { supabaseUrl, supabaseKey } = supabaseConfig;
+            var supabaseUrl = supabaseConfig.supabaseUrl;
+            var supabaseKey = supabaseConfig.supabaseKey;
             try {
                 if (typeof window.supabase !== 'undefined') {
-                    const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
+                    var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
                         auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true, storageKey: 'candy-math-auth' }
                     });
                     console.log('Supabase 客户端创建成功');
                     window.supabaseClient = supabaseClient;
-                    supabaseClient.auth.getSession().then(({ data, error }) => {
-                        if (error) console.error('Supabase 连接测试失败:', error.message);
-                        else { console.log('Supabase 连接成功'); if (data.session) { window.currentUser = data.session.user; console.log('当前登录用户:', window.currentUser.email); } }
-                    }).catch(err => console.error('Supabase 连接异常:', err.message));
+                    supabaseClient.auth.getSession().then(function(result) {
+                        if (result.error) console.error('Supabase 连接测试失败:', result.error.message);
+                        else { 
+                            console.log('Supabase 连接成功'); 
+                            if (result.data && result.data.session) { 
+                                window.currentUser = result.data.session.user; 
+                                console.log('当前登录用户:', window.currentUser.email);
+                                // 同步到 game.state
+                                if (window.game && window.game.state) {
+                                    window.game.state.currentUser = window.currentUser;
+                                }
+                            } 
+                        }
+                    }).catch(function(err) { console.error('Supabase 连接异常:', err.message); });
                 } else console.error('Supabase 库未加载');
             } catch (err) { console.error('创建 Supabase 客户端失败:', err); }
         })();
@@ -2178,39 +2191,43 @@
 
     <!-- 模拟登录模式（默认关闭） -->
     <script>
-        const USE_MOCK_AUTH = false;
+        var USE_MOCK_AUTH = false;
         if (USE_MOCK_AUTH) {
             console.log('使用模拟登录模式');
             window.mockLogin = function(email, password) {
                 console.log('模拟登录成功:', email);
-                const mockUser = { id: 'mock-user-' + Date.now(), email: email, user_metadata: { name: email.split('@')[0] } };
+                var mockUser = { id: 'mock-user-' + Date.now(), email: email, user_metadata: { name: email.split('@')[0] } };
                 localStorage.setItem('mock_user', JSON.stringify(mockUser));
-                const userName = document.getElementById('user-name');
-                const userStatus = document.getElementById('user-status');
-                const userInfo = document.getElementById('user-info');
-                const authButtons = document.getElementById('auth-buttons');
+                var userName = document.getElementById('user-name');
+                var userStatus = document.getElementById('user-status');
+                var userInfo = document.getElementById('user-info');
+                var authButtons = document.getElementById('auth-buttons');
                 if (userName) userName.textContent = mockUser.email.split('@')[0];
                 if (userStatus) userStatus.textContent = '已登录（模拟）';
                 if (userInfo) userInfo.style.display = 'flex';
                 if (authButtons) {
-                    authButtons.innerHTML = `<button class="auth-btn logout" id="mock-logout-btn">🚪 <span class="btn-text">退出</span></button>`;
-                    document.getElementById('mock-logout-btn')?.addEventListener('click', () => { localStorage.removeItem('mock_user'); location.reload(); });
+                    authButtons.innerHTML = '<button class="auth-btn logout" id="mock-logout-btn">🚪 <span class="btn-text">退出</span></button>';
+                    var logoutBtn = document.getElementById('mock-logout-btn');
+                    if (logoutBtn) {
+                        logoutBtn.addEventListener('click', function() { localStorage.removeItem('mock_user'); location.reload(); });
+                    }
                 }
-                const authModal = document.getElementById('auth-modal');
+                var authModal = document.getElementById('auth-modal');
                 if (authModal) authModal.style.display = 'none';
                 window.currentUser = mockUser;
+                if (window.game && window.game.state) window.game.state.currentUser = mockUser;
                 return mockUser;
             };
             document.addEventListener('click', function(e) {
-                if (e.target.id === 'auth-submit' || e.target.closest('#auth-submit')) {
+                if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
                     e.preventDefault();
-                    const email = document.getElementById('auth-email')?.value || 'test@example.com';
-                    const password = document.getElementById('auth-password')?.value || '123456';
+                    var email = document.getElementById('auth-email')?.value || 'test@example.com';
+                    var password = document.getElementById('auth-password')?.value || '123456';
                     window.mockLogin(email, password);
                 }
             });
-            const savedMockUser = localStorage.getItem('mock_user');
-            if (savedMockUser) { try { const user = JSON.parse(savedMockUser); window.mockLogin(user.email, ''); } catch (e) {} }
+            var savedMockUser = localStorage.getItem('mock_user');
+            if (savedMockUser) { try { var user = JSON.parse(savedMockUser); window.mockLogin(user.email, ''); } catch (e) {} }
         }
     </script>
 
@@ -2249,123 +2266,339 @@
     <!-- 忘记密码功能 -->
     <script>
         document.addEventListener('click', function(e) {
-            if (e.target.id === 'forgot-password-btn' || e.target.closest('#forgot-password-btn')) {
+            if (e.target.id === 'forgot-password-btn' || (e.target.closest && e.target.closest('#forgot-password-btn'))) {
                 e.preventDefault();
-                const email = document.getElementById('auth-email')?.value;
-                const errorDiv = document.getElementById('auth-error');
+                var email = document.getElementById('auth-email')?.value;
+                var errorDiv = document.getElementById('auth-error');
                 if (!email) { if (errorDiv) errorDiv.textContent = '请输入邮箱地址'; return; }
                 if (errorDiv) errorDiv.textContent = '正在发送重置邮件...';
                 if (!window.supabaseClient) { if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; return; }
-                window.supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password.html' }).then(({ data, error }) => {
-                    if (error) { if (errorDiv) errorDiv.textContent = error.message; }
-                    else { if (errorDiv) errorDiv.textContent = '重置密码邮件已发送，请查看邮箱'; setTimeout(() => { document.getElementById('auth-modal').style.display = 'none'; }, 3000); }
+                window.supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password.html' }).then(function(result) {
+                    if (result.error) { if (errorDiv) errorDiv.textContent = result.error.message; }
+                    else { if (errorDiv) errorDiv.textContent = '重置密码邮件已发送，请查看邮箱'; setTimeout(function() { document.getElementById('auth-modal').style.display = 'none'; }, 3000); }
                 });
             }
         });
     </script>
 
-    <!-- 统一按钮点击处理 -->
+    <!-- ===== 统一按钮点击处理（最终修复版）===== -->
     <script>
+        // 全局用户同步函数
+        function syncCurrentUser() {
+            try {
+                if (window.currentUser && window.game && window.game.state) {
+                    if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
+                        window.game.state.currentUser = window.currentUser;
+                        console.log('✅ 已同步用户到 game.state');
+                    }
+                    return true;
+                }
+                if (window.game && window.game.state && window.game.state.currentUser && !window.currentUser) {
+                    window.currentUser = window.game.state.currentUser;
+                    console.log('✅ 已同步用户到 window.currentUser');
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.warn('同步用户失败:', e);
+                return false;
+            }
+        }
+        
+        // 立即同步一次
+        setTimeout(syncCurrentUser, 100);
+        
         document.addEventListener('click', function(e) {
-            const btn = e.target.closest('[data-action]');
+            var btn = e.target.closest('[data-action]');
             if (!btn) return;
-            const action = btn.dataset.action;
-            if (!window.currentUser) {
-                e.preventDefault(); e.stopPropagation();
+            var action = btn.dataset.action;
+            
+            // 先同步用户
+            syncCurrentUser();
+            
+            // 检查登录状态
+            var isLoggedIn = !!(window.currentUser || (window.game && window.game.state && window.game.state.currentUser));
+            
+            if (!isLoggedIn) {
+                e.preventDefault(); 
+                e.stopPropagation();
                 console.log('用户未登录，显示登录框');
-                const authModal = document.getElementById('auth-modal');
-                const authTitle = document.getElementById('auth-title');
-                const authError = document.getElementById('auth-error');
+                var authModal = document.getElementById('auth-modal');
+                var authTitle = document.getElementById('auth-title');
+                var authError = document.getElementById('auth-error');
                 if (authModal) authModal.style.display = 'flex';
                 if (authTitle) authTitle.textContent = '🔐 登录';
                 if (authError) authError.textContent = '请先登录后再使用此功能';
                 return false;
             }
+            
+            // 确保 window.currentUser 有值
+            if (!window.currentUser && window.game && window.game.state && window.game.state.currentUser) {
+                window.currentUser = window.game.state.currentUser;
+            }
+            
             console.log('用户已登录，执行操作:', action);
+            
             if (action === 'quick-match') {
                 if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                const battleInstance = window.battleModeInstance || window.battleMode;
-                if (battleInstance) battleInstance.quickMatch();
-                else {
+                var battleInstance = window.battleModeInstance || window.battleMode;
+                if (battleInstance && typeof battleInstance.quickMatch === 'function') {
+                    battleInstance.quickMatch();
+                } else {
                     if (window.BattleMode && window.game) {
-                        try { const newInstance = new window.BattleMode(window.game); window.battleModeInstance = newInstance; window.battleMode = newInstance; newInstance.quickMatch(); } 
-                        catch (e) { alert('快速匹配功能初始化失败，请刷新页面重试'); }
-                    } else alert('快速匹配功能暂不可用，请刷新页面重试');
+                        try { 
+                            var newInstance = new window.BattleMode(window.game); 
+                            window.battleModeInstance = newInstance; 
+                            window.battleMode = newInstance; 
+                            if (typeof newInstance.quickMatch === 'function') newInstance.quickMatch();
+                            else console.error('quickMatch 方法不存在');
+                        } catch (err) { 
+                            console.error('快速匹配初始化失败:', err);
+                            alert('快速匹配功能初始化失败，请刷新页面重试'); 
+                        }
+                    } else {
+                        alert('快速匹配功能暂不可用，请刷新页面重试');
+                    }
                 }
             } else if (action === 'tournament') {
                 if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                const tournamentInstance = window.tournamentModeInstance;
-                if (tournamentInstance) tournamentInstance.openTournamentLobby();
-                else document.getElementById('tournament-modal').style.display = 'flex';
-            } else if (action === 'join-room') document.getElementById('join-modal').style.display = 'flex';
+                var tournamentInstance = window.tournamentModeInstance;
+                if (tournamentInstance && typeof tournamentInstance.openTournamentLobby === 'function') {
+                    tournamentInstance.openTournamentLobby();
+                } else {
+                    document.getElementById('tournament-modal').style.display = 'flex';
+                }
+            } else if (action === 'join-room') {
+                document.getElementById('join-modal').style.display = 'flex';
+            }
         });
     </script>
 
-    <!-- 用户界面更新脚本 -->
+    <!-- 用户界面更新脚本（最终修复版） -->
     <script>
         (function() {
             console.log('初始化用户界面...');
-            function updateUI() {
-                if (window.currentUser) {
-                    if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; console.log('已同步 game.state.currentUser'); }
-                    const userName = document.getElementById('user-name');
-                    const userStatus = document.getElementById('user-status');
-                    const userInfo = document.getElementById('user-info');
-                    const authButtons = document.getElementById('auth-buttons');
-                    if (userName) userName.textContent = window.currentUser.email;
-                    if (userStatus) userStatus.textContent = '已登录';
-                    if (userInfo) userInfo.style.display = 'flex';
-                    if (authButtons) {
-                        authButtons.innerHTML = `<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">退出</span></button>`;
-                        document.getElementById('logout-btn')?.addEventListener('click', () => {
-                            if (window.supabaseClient) { window.supabaseClient.auth.signOut().then(() => { window.currentUser = null; if (window.game && window.game.state) window.game.state.currentUser = null; location.reload(); }); }
-                            else { window.currentUser = null; if (window.game && window.game.state) window.game.state.currentUser = null; location.reload(); }
-                        });
+            
+            var syncTimer = null;
+            var logoutHandler = null;
+            
+            function syncAndUpdateUI() {
+                try {
+                    // 同步用户
+                    if (window.currentUser && window.game && window.game.state) {
+                        if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
+                            window.game.state.currentUser = window.currentUser;
+                        }
                     }
-                } else {
-                    const authButtons = document.getElementById('auth-buttons');
-                    if (authButtons) {
-                        authButtons.innerHTML = `<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">登录</span></button><button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">注册</span></button>`;
-                        document.getElementById('show-login-btn')?.addEventListener('click', () => { document.getElementById('auth-modal').style.display = 'flex'; document.getElementById('auth-title').textContent = '🔐 登录'; document.getElementById('auth-submit').textContent = '登录'; document.getElementById('auth-error').textContent = ''; });
-                        document.getElementById('show-register-btn')?.addEventListener('click', () => { document.getElementById('register-choice-modal').style.display = 'flex'; });
+                    if (window.game && window.game.state && window.game.state.currentUser && !window.currentUser) {
+                        window.currentUser = window.game.state.currentUser;
                     }
+                    
+                    var userName = document.getElementById('user-name');
+                    var userStatus = document.getElementById('user-status');
+                    var userInfo = document.getElementById('user-info');
+                    var authButtons = document.getElementById('auth-buttons');
+                    
+                    if (!authButtons) return;
+                    
+                    if (window.currentUser) {
+                        if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
+                        
+                        // 获取用户显示名称
+                        var displayName = window.currentUser.name || window.currentUser.email || '用户';
+                        if (window.currentUser.role === 'teacher') {
+                            displayName += ' 👩‍🏫';
+                        } else if (window.currentUser.role === 'student') {
+                            displayName += ' 👨‍🎓';
+                        }
+                        
+                        if (userName) userName.textContent = displayName;
+                        if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? '✨ 在线' : '📴 离线';
+                        if (userInfo) userInfo.style.display = 'flex';
+                        
+                        if (authButtons) {
+                            // 移除旧的事件监听器
+                            if (logoutHandler) {
+                                var oldBtn = document.getElementById('logout-btn');
+                                if (oldBtn) oldBtn.removeEventListener('click', logoutHandler);
+                            }
+                            
+                            authButtons.innerHTML = '<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">退出</span></button>';
+                            var logoutBtn = document.getElementById('logout-btn');
+                            if (logoutBtn) {
+                                logoutHandler = function() {
+                                    if (window.supabaseClient) { 
+                                        window.supabaseClient.auth.signOut().then(function() { 
+                                            window.currentUser = null; 
+                                            if (window.game && window.game.state) window.game.state.currentUser = null; 
+                                            location.reload(); 
+                                        }).catch(function() { location.reload(); });
+                                    } else { 
+                                        window.currentUser = null; 
+                                        if (window.game && window.game.state) window.game.state.currentUser = null; 
+                                        location.reload(); 
+                                    }
+                                };
+                                logoutBtn.addEventListener('click', logoutHandler);
+                            }
+                        }
+                    } else {
+                        if (userInfo) userInfo.style.display = 'none';
+                        if (authButtons) {
+                            authButtons.innerHTML = '<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">登录</span></button><button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">注册</span></button>';
+                            
+                            var loginBtn = document.getElementById('show-login-btn');
+                            var registerBtn = document.getElementById('show-register-btn');
+                            
+                            if (loginBtn) {
+                                loginBtn.onclick = function() { 
+                                    document.getElementById('auth-modal').style.display = 'flex'; 
+                                    document.getElementById('auth-title').textContent = '🔐 登录'; 
+                                    document.getElementById('auth-submit').textContent = '登录'; 
+                                    var errorDiv = document.getElementById('auth-error');
+                                    if (errorDiv) errorDiv.textContent = '';
+                                };
+                            }
+                            if (registerBtn) {
+                                registerBtn.onclick = function() { 
+                                    document.getElementById('register-choice-modal').style.display = 'flex'; 
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('UI同步失败:', e);
                 }
             }
+            
             function checkUserStatus() {
                 if (window.supabaseClient) {
-                    window.supabaseClient.auth.getSession().then(({ data }) => {
-                        if (data.session) { window.currentUser = data.session.user; if (window.game && window.game.state) window.game.state.currentUser = window.currentUser; updateUI(); }
-                        else updateUI();
-                    });
-                } else updateUI();
+                    window.supabaseClient.auth.getSession().then(function(result) {
+                        if (result.data && result.data.session) { 
+                            window.currentUser = result.data.session.user; 
+                            // 尝试获取用户角色
+                            if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
+                                window.game.auth.getUserProfile(result.data.session.user.id).then(function(profile) {
+                                    if (profile) {
+                                        window.currentUser.role = profile.role;
+                                        window.currentUser.school = profile.school;
+                                        window.currentUser.state = profile.state;
+                                        window.currentUser.class = profile.class;
+                                    }
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    syncAndUpdateUI();
+                                }).catch(function() {
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    syncAndUpdateUI();
+                                });
+                            } else {
+                                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                syncAndUpdateUI();
+                            }
+                        } else {
+                            syncAndUpdateUI();
+                        }
+                    }).catch(function() { syncAndUpdateUI(); });
+                } else {
+                    syncAndUpdateUI();
+                }
             }
+            
+            // 初始化同步
+            syncAndUpdateUI();
             setTimeout(checkUserStatus, 1000);
             setTimeout(checkUserStatus, 2000);
+            setTimeout(checkUserStatus, 3000);
+            
+            // 每10秒同步一次，确保状态一致
+            if (syncTimer) clearInterval(syncTimer);
+            syncTimer = setInterval(syncAndUpdateUI, 10000);
         })();
     </script>
 
-    <!-- 登录/注册处理脚本 -->
+    <!-- 登录/注册处理脚本（最终修复版） -->
     <script>
         document.addEventListener('click', function(e) {
-            if (e.target.id === 'auth-submit' || e.target.closest('#auth-submit')) {
+            // 处理登录提交
+            if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
                 e.preventDefault();
-                const email = document.getElementById('auth-email')?.value;
-                const password = document.getElementById('auth-password')?.value;
-                const title = document.getElementById('auth-title')?.textContent;
-                const errorDiv = document.getElementById('auth-error');
-                if (!email || !password) { if (errorDiv) errorDiv.textContent = '请填写邮箱和密码'; return; }
+                var email = document.getElementById('auth-email')?.value;
+                var password = document.getElementById('auth-password')?.value;
+                var title = document.getElementById('auth-title')?.textContent;
+                var errorDiv = document.getElementById('auth-error');
+                
+                if (!email || !password) { 
+                    if (errorDiv) errorDiv.textContent = '请填写邮箱和密码'; 
+                    return; 
+                }
                 if (errorDiv) errorDiv.textContent = '正在处理...';
-                if (!window.supabaseClient) { if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; return; }
-                if (title?.includes('登录')) {
-                    window.supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(({ data, error }) => {
-                        if (error) { if (errorDiv) errorDiv.textContent = error.message; }
-                        else { if (errorDiv) errorDiv.textContent = '登录成功！'; window.currentUser = data.user; if (window.game && window.game.state) window.game.state.currentUser = data.user; setTimeout(() => { document.getElementById('auth-modal').style.display = 'none'; location.reload(); }, 1000); }
+                if (!window.supabaseClient) { 
+                    if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; 
+                    return; 
+                }
+                
+                if (title && title.indexOf('登录') !== -1) {
+                    window.supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(result) {
+                        if (result.error) { 
+                            if (errorDiv) errorDiv.textContent = result.error.message; 
+                        } else { 
+                            if (errorDiv) errorDiv.textContent = '登录成功！'; 
+                            window.currentUser = result.data.user; 
+                            
+                            // 获取用户角色
+                            if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
+                                window.game.auth.getUserProfile(result.data.user.id).then(function(profile) {
+                                    if (profile) {
+                                        window.currentUser.role = profile.role;
+                                        window.currentUser.school = profile.school;
+                                        window.currentUser.state = profile.state;
+                                        window.currentUser.class = profile.class;
+                                    }
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    setTimeout(function() { 
+                                        document.getElementById('auth-modal').style.display = 'none'; 
+                                        location.reload(); 
+                                    }, 1000);
+                                }).catch(function() {
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    setTimeout(function() { 
+                                        document.getElementById('auth-modal').style.display = 'none'; 
+                                        location.reload(); 
+                                    }, 1000);
+                                });
+                            } else {
+                                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                setTimeout(function() { 
+                                    document.getElementById('auth-modal').style.display = 'none'; 
+                                    location.reload(); 
+                                }, 1000);
+                            }
+                        }
                     });
-                } else { document.getElementById('auth-modal').style.display = 'none'; document.getElementById('register-choice-modal').style.display = 'flex'; }
+                } else { 
+                    document.getElementById('auth-modal').style.display = 'none'; 
+                    document.getElementById('register-choice-modal').style.display = 'flex'; 
+                }
             }
-            if (e.target.classList.contains('close-btn') || e.target.id === 'close-auth' || (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) document.getElementById('auth-modal').style.display = 'none';
-            if (e.target.id === 'switch-to-register' || e.target.closest('#switch-to-register')) { e.preventDefault(); document.getElementById('auth-modal').style.display = 'none'; document.getElementById('register-choice-modal').style.display = 'flex'; }
-            if (e.target.id === 'back-to-login-from-choice' || e.target.closest('#back-to-login-from-choice')) { e.preventDefault(); document.getElementById('register-choice-modal').style.display = 'none'; document.getElementById('auth-modal').style.display = 'flex'; }
+            
+            // 关闭模态框
+            if (e.target.classList.contains('close-btn') || e.target.id === 'close-auth' || (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) {
+                document.getElementById('auth-modal').style.display = 'none';
+            }
+            
+            // 切换到注册
+            if (e.target.id === 'switch-to-register' || (e.target.closest && e.target.closest('#switch-to-register'))) { 
+                e.preventDefault(); 
+                document.getElementById('auth-modal').style.display = 'none'; 
+                document.getElementById('register-choice-modal').style.display = 'flex'; 
+            }
+            
+            // 返回登录
+            if (e.target.id === 'back-to-login-from-choice' || (e.target.closest && e.target.closest('#back-to-login-from-choice'))) { 
+                e.preventDefault(); 
+                document.getElementById('register-choice-modal').style.display = 'none'; 
+                document.getElementById('auth-modal').style.display = 'flex'; 
+            }
         });
     </script>
 </body>
