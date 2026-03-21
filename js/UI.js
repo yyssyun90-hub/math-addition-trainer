@@ -27,6 +27,20 @@ class UIManager {
         this.prevStepHandler = null;
         this.nextStepHandler = null;
         this.volumeInputHandler = null;
+        
+        // 注册相关事件处理器
+        this.chooseStudentHandler = null;
+        this.chooseTeacherHandler = null;
+        this.backToLoginFromChoiceHandler = null;
+        this.backToChoiceFromStudentHandler = null;
+        this.backToChoiceFromTeacherHandler = null;
+        this.backToLoginFromStudentHandler = null;
+        this.backToLoginFromTeacherHandler = null;
+        this.closeChoiceModalHandler = null;
+        this.closeStudentRegisterHandler = null;
+        this.closeTeacherRegisterHandler = null;
+        this.studentRegisterSubmitHandler = null;
+        this.teacherRegisterSubmitHandler = null;
     }
 
     // ==================== 初始化 ====================
@@ -39,6 +53,256 @@ class UIManager {
         this.updateLanguage();
         this.setupSoundControls();
         this.initTutorial();
+        this.bindRegisterEvents(); // 新增：绑定注册事件
+    }
+
+    // ==================== 注册事件绑定 ====================
+
+    /**
+     * 绑定注册相关事件
+     */
+    bindRegisterEvents() {
+        // 选择注册为学生
+        const chooseStudent = document.getElementById('choose-student');
+        if (chooseStudent) {
+            this.chooseStudentHandler = () => {
+                console.log('点击注册为学生');
+                const choiceModal = document.getElementById('register-choice-modal');
+                const studentModal = document.getElementById('student-register-modal');
+                if (choiceModal) choiceModal.style.display = 'none';
+                if (studentModal) studentModal.style.display = 'flex';
+            };
+            chooseStudent.addEventListener('click', this.chooseStudentHandler);
+        } else {
+            console.warn('choose-student 元素不存在');
+        }
+
+        // 选择注册为教师
+        const chooseTeacher = document.getElementById('choose-teacher');
+        if (chooseTeacher) {
+            this.chooseTeacherHandler = () => {
+                console.log('点击注册为教师');
+                const choiceModal = document.getElementById('register-choice-modal');
+                const teacherModal = document.getElementById('teacher-register-modal');
+                if (choiceModal) choiceModal.style.display = 'none';
+                if (teacherModal) teacherModal.style.display = 'flex';
+            };
+            chooseTeacher.addEventListener('click', this.chooseTeacherHandler);
+        } else {
+            console.warn('choose-teacher 元素不存在');
+        }
+
+        // 从注册选择返回登录
+        const backToLoginFromChoice = document.getElementById('back-to-login-from-choice');
+        if (backToLoginFromChoice) {
+            this.backToLoginFromChoiceHandler = (e) => {
+                e.preventDefault();
+                const choiceModal = document.getElementById('register-choice-modal');
+                const authModal = document.getElementById('auth-modal');
+                if (choiceModal) choiceModal.style.display = 'none';
+                if (authModal) authModal.style.display = 'flex';
+            };
+            backToLoginFromChoice.addEventListener('click', this.backToLoginFromChoiceHandler);
+        }
+
+        // 从学生注册返回登录
+        const backToLoginFromStudent = document.getElementById('back-to-login-from-student');
+        if (backToLoginFromStudent) {
+            this.backToLoginFromStudentHandler = (e) => {
+                e.preventDefault();
+                const studentModal = document.getElementById('student-register-modal');
+                const authModal = document.getElementById('auth-modal');
+                if (studentModal) studentModal.style.display = 'none';
+                if (authModal) authModal.style.display = 'flex';
+            };
+            backToLoginFromStudent.addEventListener('click', this.backToLoginFromStudentHandler);
+        }
+
+        // 从学生注册返回选择
+        const backToChoiceFromStudent = document.getElementById('back-to-choice-from-student');
+        if (backToChoiceFromStudent) {
+            this.backToChoiceFromStudentHandler = (e) => {
+                e.preventDefault();
+                const studentModal = document.getElementById('student-register-modal');
+                const choiceModal = document.getElementById('register-choice-modal');
+                if (studentModal) studentModal.style.display = 'none';
+                if (choiceModal) choiceModal.style.display = 'flex';
+            };
+            backToChoiceFromStudent.addEventListener('click', this.backToChoiceFromStudentHandler);
+        }
+
+        // 从教师注册返回登录
+        const backToLoginFromTeacher = document.getElementById('back-to-login-from-teacher');
+        if (backToLoginFromTeacher) {
+            this.backToLoginFromTeacherHandler = (e) => {
+                e.preventDefault();
+                const teacherModal = document.getElementById('teacher-register-modal');
+                const authModal = document.getElementById('auth-modal');
+                if (teacherModal) teacherModal.style.display = 'none';
+                if (authModal) authModal.style.display = 'flex';
+            };
+            backToLoginFromTeacher.addEventListener('click', this.backToLoginFromTeacherHandler);
+        }
+
+        // 从教师注册返回选择
+        const backToChoiceFromTeacher = document.getElementById('back-to-choice-from-teacher');
+        if (backToChoiceFromTeacher) {
+            this.backToChoiceFromTeacherHandler = (e) => {
+                e.preventDefault();
+                const teacherModal = document.getElementById('teacher-register-modal');
+                const choiceModal = document.getElementById('register-choice-modal');
+                if (teacherModal) teacherModal.style.display = 'none';
+                if (choiceModal) choiceModal.style.display = 'flex';
+            };
+            backToChoiceFromTeacher.addEventListener('click', this.backToChoiceFromTeacherHandler);
+        }
+
+        // 关闭注册选择模态框
+        const closeChoiceModal = document.getElementById('close-choice-modal');
+        if (closeChoiceModal) {
+            this.closeChoiceModalHandler = () => {
+                const choiceModal = document.getElementById('register-choice-modal');
+                if (choiceModal) choiceModal.style.display = 'none';
+            };
+            closeChoiceModal.addEventListener('click', this.closeChoiceModalHandler);
+        }
+
+        // 关闭学生注册模态框
+        const closeStudentRegister = document.getElementById('close-student-register');
+        if (closeStudentRegister) {
+            this.closeStudentRegisterHandler = () => {
+                const studentModal = document.getElementById('student-register-modal');
+                if (studentModal) studentModal.style.display = 'none';
+            };
+            closeStudentRegister.addEventListener('click', this.closeStudentRegisterHandler);
+        }
+
+        // 关闭教师注册模态框
+        const closeTeacherRegister = document.getElementById('close-teacher-register');
+        if (closeTeacherRegister) {
+            this.closeTeacherRegisterHandler = () => {
+                const teacherModal = document.getElementById('teacher-register-modal');
+                if (teacherModal) teacherModal.style.display = 'none';
+            };
+            closeTeacherRegister.addEventListener('click', this.closeTeacherRegisterHandler);
+        }
+
+        // 学生注册提交
+        const studentRegisterSubmit = document.getElementById('student-register-submit');
+        if (studentRegisterSubmit && this.game.auth) {
+            this.studentRegisterSubmitHandler = async (e) => {
+                e.preventDefault();
+                console.log('学生注册提交');
+                
+                const email = document.getElementById('student-email')?.value;
+                const password = document.getElementById('student-password')?.value;
+                const state = document.getElementById('student-state')?.value;
+                const school = document.getElementById('student-school')?.value;
+                const name = document.getElementById('student-name')?.value;
+                const studentClass = document.getElementById('student-class')?.value;
+                const errorDiv = document.getElementById('student-register-error');
+                
+                if (!email || !password || !state || !school || !name || !studentClass) {
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ 所有字段都必须填写';
+                        errorDiv.style.color = '#ff4444';
+                    }
+                    return;
+                }
+                
+                if (errorDiv) {
+                    errorDiv.textContent = '⏳ 处理中...';
+                    errorDiv.style.color = '#666';
+                }
+                
+                try {
+                    const result = await this.game.auth.registerStudent(email, password, state, school, name, studentClass);
+                    
+                    if (result && result.success) {
+                        if (errorDiv) {
+                            errorDiv.textContent = '✅ 注册成功！正在登录...';
+                            errorDiv.style.color = '#4CAF50';
+                        }
+                        setTimeout(() => {
+                            const studentModal = document.getElementById('student-register-modal');
+                            if (studentModal) studentModal.style.display = 'none';
+                            location.reload();
+                        }, 1500);
+                    } else {
+                        if (errorDiv) {
+                            errorDiv.textContent = '❌ ' + (result?.error || '注册失败');
+                            errorDiv.style.color = '#ff4444';
+                        }
+                    }
+                } catch (err) {
+                    console.error('学生注册错误:', err);
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ 注册失败，请重试';
+                        errorDiv.style.color = '#ff4444';
+                    }
+                }
+            };
+            studentRegisterSubmit.addEventListener('click', this.studentRegisterSubmitHandler);
+        }
+
+        // 教师注册提交
+        const teacherRegisterSubmit = document.getElementById('teacher-register-submit');
+        if (teacherRegisterSubmit && this.game.auth) {
+            this.teacherRegisterSubmitHandler = async (e) => {
+                e.preventDefault();
+                console.log('教师注册提交');
+                
+                const email = document.getElementById('teacher-email')?.value;
+                const password = document.getElementById('teacher-password')?.value;
+                const name = document.getElementById('teacher-name')?.value;
+                const state = document.getElementById('teacher-state')?.value;
+                const school = document.getElementById('teacher-school')?.value;
+                const errorDiv = document.getElementById('teacher-register-error');
+                
+                if (!email || !password || !name || !state || !school) {
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ 所有字段都必须填写';
+                        errorDiv.style.color = '#ff4444';
+                    }
+                    return;
+                }
+                
+                if (errorDiv) {
+                    errorDiv.textContent = '⏳ 处理中...';
+                    errorDiv.style.color = '#666';
+                }
+                
+                try {
+                    const result = await this.game.auth.registerTeacher(email, password, name, state, school);
+                    
+                    if (result && result.success) {
+                        if (errorDiv) {
+                            errorDiv.textContent = '✅ 注册成功！正在登录...';
+                            errorDiv.style.color = '#4CAF50';
+                        }
+                        setTimeout(() => {
+                            const teacherModal = document.getElementById('teacher-register-modal');
+                            if (teacherModal) teacherModal.style.display = 'none';
+                            location.reload();
+                        }, 1500);
+                    } else {
+                        if (errorDiv) {
+                            errorDiv.textContent = '❌ ' + (result?.error || '注册失败');
+                            errorDiv.style.color = '#ff4444';
+                        }
+                    }
+                } catch (err) {
+                    console.error('教师注册错误:', err);
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ 注册失败，请重试';
+                        errorDiv.style.color = '#ff4444';
+                    }
+                }
+            };
+            teacherRegisterSubmit.addEventListener('click', this.teacherRegisterSubmitHandler);
+        }
+        
+        console.log('✅ 注册事件绑定完成');
     }
 
     // ==================== 语言切换 ====================
@@ -173,211 +437,76 @@ class UIManager {
 
         // ========== 新增：登录/注册模态框 ==========
         const authTitle = document.getElementById('auth-title');
-        if (authTitle) authTitle.textContent = lang.t('authTitle');
+        if (authTitle) authTitle.textContent = lang.t('authTitle') || '登录';
         
         const authEmail = document.getElementById('auth-email');
-        if (authEmail) authEmail.placeholder = lang.t('emailPlaceholder');
+        if (authEmail) authEmail.placeholder = lang.t('emailPlaceholder') || '邮箱';
         
         const authPassword = document.getElementById('auth-password');
-        if (authPassword) authPassword.placeholder = lang.t('passwordPlaceholder');
+        if (authPassword) authPassword.placeholder = lang.t('passwordPlaceholder') || '密码';
         
         const authSubmit = document.getElementById('auth-submit');
-        if (authSubmit) authSubmit.textContent = lang.t('submit');
+        if (authSubmit) authSubmit.textContent = lang.t('submit') || '提交';
         
         const authSwitch = document.getElementById('auth-switch');
         if (authSwitch) {
-            const isLogin = this.game.auth?.authMode === 'login';
-            authSwitch.innerHTML = isLogin ? 
-                lang.t('noAccount') : 
-                lang.t('hasAccount');
+            authSwitch.innerHTML = (lang.t('noAccount') || '没有账号') + ' <span id="switch-to-register">' + (lang.t('registerNow') || '立即注册') + '</span>';
         }
 
-        // ========== 新增：加入房间模态框 ==========
-        const joinTitle = document.querySelector('#join-modal h3');
-        if (joinTitle) joinTitle.textContent = lang.t('joinRoom');
+        // ========== 新增：注册模态框标题 ==========
+        const studentRegisterTitle = document.querySelector('#student-register-modal h2');
+        if (studentRegisterTitle) studentRegisterTitle.innerHTML = '👨‍🎓 ' + (lang.t('registerStudent') || '学生注册');
         
-        const joinInput = document.getElementById('room-code-input');
-        if (joinInput) joinInput.placeholder = lang.t('enterRoomCode');
+        const teacherRegisterTitle = document.querySelector('#teacher-register-modal h2');
+        if (teacherRegisterTitle) teacherRegisterTitle.innerHTML = '👩‍🏫 ' + (lang.t('registerTeacher') || '教师注册');
         
-        const confirmJoin = document.getElementById('confirm-join');
-        if (confirmJoin) {
-            confirmJoin.textContent = lang.t('join');
-            // 确保保留 primary 类
-            confirmJoin.classList.add('candy-btn', 'primary');
+        const registerChoiceTitle = document.querySelector('#register-choice-modal h2');
+        if (registerChoiceTitle) registerChoiceTitle.textContent = lang.t('chooseRole') || '选择注册身份';
+        
+        const chooseStudentBtn = document.getElementById('choose-student');
+        if (chooseStudentBtn) {
+            chooseStudentBtn.innerHTML = '👨‍🎓 ' + (lang.t('registerStudent') || '注册为学生');
         }
         
-        const cancelJoin = document.getElementById('cancel-join');
-        if (cancelJoin) {
-            cancelJoin.textContent = lang.t('cancel');
-            cancelJoin.classList.add('candy-btn');
+        const chooseTeacherBtn = document.getElementById('choose-teacher');
+        if (chooseTeacherBtn) {
+            chooseTeacherBtn.innerHTML = '👩‍🏫 ' + (lang.t('registerTeacher') || '注册为教师');
         }
+        
+        // 注册模态框占位符
+        const studentEmail = document.getElementById('student-email');
+        if (studentEmail) studentEmail.placeholder = lang.t('emailPlaceholder') || '电子邮箱';
+        
+        const studentPassword = document.getElementById('student-password');
+        if (studentPassword) studentPassword.placeholder = lang.t('passwordPlaceholder') || '密码 (至少6位)';
+        
+        const studentName = document.getElementById('student-name');
+        if (studentName) studentName.placeholder = lang.t('namePlaceholder') || '姓名';
+        
+        const studentSchool = document.getElementById('student-school');
+        if (studentSchool) studentSchool.placeholder = lang.t('schoolPlaceholder') || '学校名称';
+        
+        const studentClass = document.getElementById('student-class');
+        if (studentClass) studentClass.placeholder = lang.t('classPlaceholder') || '班级 (例: 5A)';
+        
+        const teacherEmail = document.getElementById('teacher-email');
+        if (teacherEmail) teacherEmail.placeholder = lang.t('emailPlaceholder') || '电子邮箱';
+        
+        const teacherPassword = document.getElementById('teacher-password');
+        if (teacherPassword) teacherPassword.placeholder = lang.t('passwordPlaceholder') || '密码 (至少6位)';
+        
+        const teacherName = document.getElementById('teacher-name');
+        if (teacherName) teacherName.placeholder = lang.t('namePlaceholder') || '姓名';
+        
+        const teacherSchool = document.getElementById('teacher-school');
+        if (teacherSchool) teacherSchool.placeholder = lang.t('schoolPlaceholder') || '学校名称';
 
-        // ========== 新增：锦标赛大厅 ==========
-        const tournamentTabs = document.querySelectorAll('.tournament-tabs .tab-btn');
-        if (tournamentTabs.length >= 4) {
-            // 大厅
-            const lobbySpan = tournamentTabs[0].querySelector('span');
-            if (lobbySpan) lobbySpan.textContent = lang.t('lobby');
-            
-            // 赛程表
-            const bracketSpan = tournamentTabs[1].querySelector('span');
-            if (bracketSpan) bracketSpan.textContent = lang.t('bracket');
-            
-            // 历史
-            const historySpan = tournamentTabs[2].querySelector('span');
-            if (historySpan) historySpan.textContent = lang.t('history');
-            
-            // 排名
-            const rankingSpan = tournamentTabs[3].querySelector('span');
-            if (rankingSpan) rankingSpan.textContent = lang.t('ranking');
-        }
+        // 注册按钮文本
+        const studentSubmit = document.getElementById('student-register-submit');
+        if (studentSubmit) studentSubmit.textContent = lang.t('registerStudent') || '注册为学生';
         
-        const createTournamentBtn = document.getElementById('create-tournament-btn');
-        if (createTournamentBtn) {
-            createTournamentBtn.innerHTML = `➕ <span>${lang.t('createTournament')}</span>`;
-        }
-
-        // ========== 新增：创建锦标赛模态框 ==========
-        const createTitle = document.querySelector('#create-tournament-modal h3');
-        if (createTitle) createTitle.textContent = lang.t('createTournament');
-        
-        // 锦标赛名称
-        const tournamentNameLabels = document.querySelectorAll('#create-tournament-modal label');
-        if (tournamentNameLabels.length >= 1) {
-            tournamentNameLabels[0].textContent = lang.t('tournamentName');
-        }
-        
-        const tournamentNameInput = document.getElementById('tournament-name-input');
-        if (tournamentNameInput) tournamentNameInput.placeholder = lang.t('enterTournamentName');
-        
-        // 参赛人数
-        if (tournamentNameLabels.length >= 2) {
-            tournamentNameLabels[1].textContent = lang.t('playerCount');
-        }
-        
-        // 比赛模式
-        if (tournamentNameLabels.length >= 3) {
-            tournamentNameLabels[2].textContent = lang.t('gameMode');
-        }
-        
-        // 难度
-        if (tournamentNameLabels.length >= 4) {
-            tournamentNameLabels[3].textContent = lang.t('difficulty');
-        }
-        
-        // 报名费
-        if (tournamentNameLabels.length >= 5) {
-            tournamentNameLabels[4].textContent = lang.t('entryFee');
-        }
-        
-        const entryFeeInput = document.getElementById('tournament-entry-fee');
-        if (entryFeeInput) entryFeeInput.placeholder = lang.t('enterEntryFee');
-        
-        const confirmCreate = document.getElementById('confirm-create-tournament');
-        if (confirmCreate) {
-            confirmCreate.textContent = lang.t('create');
-            confirmCreate.classList.add('candy-btn', 'primary');
-        }
-        
-        const cancelCreate = document.getElementById('cancel-create-tournament');
-        if (cancelCreate) {
-            cancelCreate.textContent = lang.t('cancel');
-            cancelCreate.classList.add('candy-btn');
-        }
-
-        // ========== 新增：对战模态框 ==========
-        const battleWaitingTitle = document.querySelector('#battle-waiting h3');
-        if (battleWaitingTitle) battleWaitingTitle.textContent = lang.t('findingOpponent');
-        
-        // 房间码标签
-        const roomCodeDisplay = document.querySelector('.room-code-display');
-        if (roomCodeDisplay) {
-            const textNode = roomCodeDisplay.childNodes[0];
-            if (textNode) {
-                textNode.textContent = lang.t('roomCode') + ': ';
-            }
-        }
-        
-        const copyBtn = document.getElementById('copy-room-code');
-        if (copyBtn) copyBtn.title = lang.t('copy');
-        
-        // 等待界面的玩家名称
-        const playerSlots = document.querySelectorAll('.player-slot .player-name');
-        if (playerSlots.length >= 2) {
-            // 第一个是你
-            if (playerSlots[0]) playerSlots[0].textContent = lang.t('you');
-            // 第二个是等待中
-            if (playerSlots[1]) playerSlots[1].textContent = lang.t('waiting');
-        }
-        
-        const vsDivider = document.querySelector('.vs-divider');
-        if (vsDivider) vsDivider.textContent = lang.t('vs');
-        
-        const cancelMatchBtn = document.getElementById('cancel-match');
-        if (cancelMatchBtn) cancelMatchBtn.textContent = lang.t('cancel');
-        
-        // 对战界面的回合指示器
-        const turnText = document.querySelector('.turn-text');
-        if (turnText) {
-            const myTurn = this.game?.battle?.room?.myTurn;
-            turnText.textContent = myTurn ? lang.t('yourTurn') : lang.t('opponentTurn');
-        }
-        
-        const chatInput = document.getElementById('chat-input');
-        if (chatInput) chatInput.placeholder = lang.t('enterMessage');
-        
-        const sendBtn = document.getElementById('send-message');
-        if (sendBtn) sendBtn.textContent = lang.t('send');
-        
-        const rematchBtn = document.getElementById('rematch-btn');
-        if (rematchBtn) {
-            const span = rematchBtn.querySelector('span');
-            if (span) {
-                span.textContent = lang.t('rematch');
-            } else {
-                rematchBtn.innerHTML = `🔄 <span>${lang.t('rematch')}</span>`;
-            }
-        }
-        
-        const closeBattleBtn = document.getElementById('close-battle-btn');
-        if (closeBattleBtn) {
-            const span = closeBattleBtn.querySelector('span');
-            if (span) {
-                span.textContent = lang.t('close');
-            } else {
-                closeBattleBtn.innerHTML = `<span>${lang.t('close')}</span>`;
-            }
-        }
-
-        // ========== 新增：通用按钮 ==========
-        const confirmBtns = document.querySelectorAll('.confirm-btn, #confirm-btn');
-        confirmBtns.forEach(btn => {
-            if (btn) btn.textContent = lang.t('confirm');
-        });
-        
-        const backBtns = document.querySelectorAll('.back-btn, #back-btn');
-        backBtns.forEach(btn => {
-            if (btn) btn.textContent = lang.t('back');
-        });
-        
-        const nextBtns = document.querySelectorAll('#next-step, .next-btn');
-        nextBtns.forEach(btn => {
-            if (btn && btn.id !== 'next-step') { // 避免覆盖引导的下一个按钮
-                btn.textContent = lang.t('next');
-            }
-        });
-        
-        const prevBtns = document.querySelectorAll('#prev-step, .prev-btn');
-        prevBtns.forEach(btn => {
-            if (btn && btn.id !== 'prev-step') { // 避免覆盖引导的上一步按钮
-                btn.textContent = lang.t('previous');
-            }
-        });
-        
-        const doneBtns = document.querySelectorAll('.done-btn, #done-btn');
-        doneBtns.forEach(btn => {
-            if (btn) btn.textContent = lang.t('done');
-        });
+        const teacherSubmit = document.getElementById('teacher-register-submit');
+        if (teacherSubmit) teacherSubmit.textContent = lang.t('registerTeacher') || '注册为教师';
     }
 
     /**
@@ -403,7 +532,7 @@ class UIManager {
     /**
      * 更新用户界面（登录状态）
      */
-    updateUserUI() {
+    async updateUserUI() {
         if (this.destroyed) return;
         
         const userInfo = document.getElementById('user-info');
@@ -422,10 +551,28 @@ class UIManager {
             // 已登录状态
             if (userInfo) userInfo.style.display = 'flex';
 
+            // 获取用户角色（从 students 或 teachers 表）
+            let role = 'student';
+            let school = '';
+            let userClass = '';
+            
+            try {
+                if (this.game.auth && this.game.auth.getUserProfile) {
+                    const profile = await this.game.auth.getUserProfile(this.game.state.currentUser.id);
+                    if (profile) {
+                        role = profile.role || 'student';
+                        school = profile.school || '';
+                        userClass = profile.class || '';
+                    }
+                }
+            } catch (error) {
+                console.warn('获取用户资料失败:', error);
+            }
+
             const logoutBtn = document.createElement('button');
             logoutBtn.className = 'auth-btn logout';
             logoutBtn.id = 'logout-btn';
-            logoutBtn.innerHTML = '🚪 ' + lang.t('logout');
+            logoutBtn.innerHTML = '🚪 ' + (lang.t('logout') || '退出');
             logoutBtn.addEventListener('click', () => {
                 if (this.game.auth) {
                     this.game.auth.logout();
@@ -433,9 +580,31 @@ class UIManager {
             });
             authButtons.appendChild(logoutBtn);
 
-            if (userName) userName.textContent = this.game.state.currentUser.name;
-            if (userStatus) userStatus.textContent = this.game.state.isOnline ? '✨ ' + lang.t('onlineMode') : '📴 ' + lang.t('offlineMode');
-            if (userAvatar) userAvatar.textContent = this.game.state.currentUser.name.charAt(0).toUpperCase();
+            if (userName) {
+                let displayName = this.game.state.currentUser.name || this.game.state.currentUser.email || '用户';
+                if (role === 'teacher') {
+                    displayName += ' 👩‍🏫';
+                } else {
+                    displayName += ' 👨‍🎓';
+                }
+                userName.textContent = displayName;
+            }
+            
+            if (userStatus) {
+                let status = this.game.state.isOnline ? '✨ ' + (lang.t('onlineMode') || '在线') : '📴 ' + (lang.t('offlineMode') || '离线');
+                if (school) {
+                    status += ` · ${school}`;
+                }
+                if (userClass && role === 'student') {
+                    status += ` · ${userClass}`;
+                }
+                userStatus.textContent = status;
+            }
+            
+            if (userAvatar) {
+                const name = this.game.state.currentUser.name || this.game.state.currentUser.email || 'U';
+                userAvatar.textContent = name.charAt(0).toUpperCase();
+            }
         } else {
             // 未登录状态
             if (userInfo) userInfo.style.display = 'none';
@@ -443,7 +612,7 @@ class UIManager {
             const loginBtn = document.createElement('button');
             loginBtn.className = 'auth-btn login';
             loginBtn.id = 'login-btn';
-            loginBtn.innerHTML = '🔐 ' + lang.t('login');
+            loginBtn.innerHTML = '🔐 ' + (lang.t('login') || '登录');
             loginBtn.addEventListener('click', () => {
                 if (this.game.auth) {
                     this.game.auth.showAuthModal('login');
@@ -454,10 +623,10 @@ class UIManager {
             const registerBtn = document.createElement('button');
             registerBtn.className = 'auth-btn register';
             registerBtn.id = 'register-btn';
-            registerBtn.innerHTML = '📝 ' + lang.t('register');
+            registerBtn.innerHTML = '📝 ' + (lang.t('register') || '注册');
             registerBtn.addEventListener('click', () => {
                 if (this.game.auth) {
-                    this.game.auth.showAuthModal('register');
+                    this.game.auth.showRegisterChoice();
                 }
             });
             authButtons.appendChild(registerBtn);
@@ -601,7 +770,6 @@ class UIManager {
     highlightHint(indices) {
         if (this.destroyed) return;
         
-        // 清除之前的定时器
         if (this.highlightTimer) {
             clearTimeout(this.highlightTimer);
             this.highlightTimer = null;
@@ -615,7 +783,6 @@ class UIManager {
                 
                 this.highlightTimer = setTimeout(() => {
                     if (!this.destroyed) {
-                        // 重新获取卡片，确保元素仍然存在
                         const currentCards = document.querySelectorAll('.number-card:not(.matched)');
                         if (currentCards[indices[0]] && currentCards[indices[1]]) {
                             currentCards[indices[0]].style.animation = '';
@@ -722,7 +889,6 @@ class UIManager {
     setupSoundControls() {
         if (this.destroyed) return;
         
-        // 避免重复初始化
         if (this.eventListenersInitialized) return;
 
         try {
@@ -755,7 +921,6 @@ class UIManager {
                 volumeSlider.addEventListener('input', this.volumeInputHandler);
             }
 
-            // 为所有可点击元素添加点击音效（使用事件委托）
             this.clickHandler = (e) => {
                 if (!this.destroyed) {
                     try {
@@ -813,7 +978,6 @@ class UIManager {
                 dontShow.addEventListener('change', this.dontShowHandler);
             }
 
-            // 添加语言切换监听
             const langSwitch = document.getElementById('lang-switch');
             if (langSwitch && !this.langSwitchHandler) {
                 this.langSwitchHandler = () => {
@@ -830,7 +994,6 @@ class UIManager {
                 langSwitch.addEventListener('click', this.langSwitchHandler);
             }
 
-            // 监听引导模态框关闭
             const tutorialModal = document.getElementById('tutorial-modal');
             if (tutorialModal) {
                 this.tutorialObserver = new MutationObserver((mutations) => {
@@ -869,7 +1032,6 @@ class UIManager {
         try {
             const lang = I18n;
             
-            // 更新步骤提示文本
             const hint1 = document.getElementById('step1-hint');
             const hint2 = document.getElementById('step2-hint');
             const hint3 = document.getElementById('step3-hint');
@@ -878,17 +1040,14 @@ class UIManager {
             if (hint2) hint2.innerHTML = `⭐ ${lang.t('tutorial2')}`;
             if (hint3) hint3.innerHTML = `⭐ ${lang.t('tutorial3')}`;
 
-            // 更新"不再显示"标签
             const dontShowLabel = document.getElementById('dont-show-label');
             if (dontShowLabel) dontShowLabel.textContent = lang.t('dontShow');
 
-            // 更新演示区域的无匹配文本
             const noMatchText = document.getElementById('no-match-text');
             if (noMatchText) {
                 noMatchText.textContent = `${lang.t('noMatch')} 8`;
             }
 
-            // 更新步骤指示器的语言属性
             const stepIndicator = document.getElementById('step-indicator');
             if (stepIndicator) {
                 stepIndicator.setAttribute('data-lang', I18n.getLang());
@@ -1083,7 +1242,6 @@ class UIManager {
         if (this.destroyed) return;
         
         try {
-            // 清理所有定时器
             if (this.feedbackTimer) {
                 clearTimeout(this.feedbackTimer);
                 this.feedbackTimer = null;
@@ -1099,34 +1257,29 @@ class UIManager {
                 this.langSwitchTimeout = null;
             }
             
-            // 移除点击事件监听
             if (this.clickHandler) {
                 document.removeEventListener('click', this.clickHandler);
                 this.clickHandler = null;
             }
 
-            // 移除音效开关监听
             const soundToggle = document.getElementById('sound-toggle');
             if (soundToggle && this.soundToggleHandler) {
                 soundToggle.removeEventListener('click', this.soundToggleHandler);
                 this.soundToggleHandler = null;
             }
 
-            // 移除音量滑动条监听
             const volumeSlider = document.getElementById('volume-slider');
             if (volumeSlider && this.volumeInputHandler) {
                 volumeSlider.removeEventListener('input', this.volumeInputHandler);
                 this.volumeInputHandler = null;
             }
 
-            // 移除语言切换监听
             const langSwitch = document.getElementById('lang-switch');
             if (langSwitch && this.langSwitchHandler) {
                 langSwitch.removeEventListener('click', this.langSwitchHandler);
                 this.langSwitchHandler = null;
             }
 
-            // 移除引导按钮监听
             const prevBtn = document.getElementById('prev-step');
             if (prevBtn && this.prevStepHandler) {
                 prevBtn.removeEventListener('click', this.prevStepHandler);
@@ -1139,14 +1292,85 @@ class UIManager {
                 this.nextStepHandler = null;
             }
 
-            // 移除不再显示复选框监听
             const dontShow = document.getElementById('dont-show-tutorial');
             if (dontShow && this.dontShowHandler) {
                 dontShow.removeEventListener('change', this.dontShowHandler);
                 this.dontShowHandler = null;
             }
 
-            // 断开观察器
+            // 移除注册相关事件监听
+            const chooseStudent = document.getElementById('choose-student');
+            if (chooseStudent && this.chooseStudentHandler) {
+                chooseStudent.removeEventListener('click', this.chooseStudentHandler);
+                this.chooseStudentHandler = null;
+            }
+
+            const chooseTeacher = document.getElementById('choose-teacher');
+            if (chooseTeacher && this.chooseTeacherHandler) {
+                chooseTeacher.removeEventListener('click', this.chooseTeacherHandler);
+                this.chooseTeacherHandler = null;
+            }
+
+            const backToLoginFromChoice = document.getElementById('back-to-login-from-choice');
+            if (backToLoginFromChoice && this.backToLoginFromChoiceHandler) {
+                backToLoginFromChoice.removeEventListener('click', this.backToLoginFromChoiceHandler);
+                this.backToLoginFromChoiceHandler = null;
+            }
+
+            const backToChoiceFromStudent = document.getElementById('back-to-choice-from-student');
+            if (backToChoiceFromStudent && this.backToChoiceFromStudentHandler) {
+                backToChoiceFromStudent.removeEventListener('click', this.backToChoiceFromStudentHandler);
+                this.backToChoiceFromStudentHandler = null;
+            }
+
+            const backToChoiceFromTeacher = document.getElementById('back-to-choice-from-teacher');
+            if (backToChoiceFromTeacher && this.backToChoiceFromTeacherHandler) {
+                backToChoiceFromTeacher.removeEventListener('click', this.backToChoiceFromTeacherHandler);
+                this.backToChoiceFromTeacherHandler = null;
+            }
+
+            const backToLoginFromStudent = document.getElementById('back-to-login-from-student');
+            if (backToLoginFromStudent && this.backToLoginFromStudentHandler) {
+                backToLoginFromStudent.removeEventListener('click', this.backToLoginFromStudentHandler);
+                this.backToLoginFromStudentHandler = null;
+            }
+
+            const backToLoginFromTeacher = document.getElementById('back-to-login-from-teacher');
+            if (backToLoginFromTeacher && this.backToLoginFromTeacherHandler) {
+                backToLoginFromTeacher.removeEventListener('click', this.backToLoginFromTeacherHandler);
+                this.backToLoginFromTeacherHandler = null;
+            }
+
+            const closeChoiceModal = document.getElementById('close-choice-modal');
+            if (closeChoiceModal && this.closeChoiceModalHandler) {
+                closeChoiceModal.removeEventListener('click', this.closeChoiceModalHandler);
+                this.closeChoiceModalHandler = null;
+            }
+
+            const closeStudentRegister = document.getElementById('close-student-register');
+            if (closeStudentRegister && this.closeStudentRegisterHandler) {
+                closeStudentRegister.removeEventListener('click', this.closeStudentRegisterHandler);
+                this.closeStudentRegisterHandler = null;
+            }
+
+            const closeTeacherRegister = document.getElementById('close-teacher-register');
+            if (closeTeacherRegister && this.closeTeacherRegisterHandler) {
+                closeTeacherRegister.removeEventListener('click', this.closeTeacherRegisterHandler);
+                this.closeTeacherRegisterHandler = null;
+            }
+
+            const studentRegisterSubmit = document.getElementById('student-register-submit');
+            if (studentRegisterSubmit && this.studentRegisterSubmitHandler) {
+                studentRegisterSubmit.removeEventListener('click', this.studentRegisterSubmitHandler);
+                this.studentRegisterSubmitHandler = null;
+            }
+
+            const teacherRegisterSubmit = document.getElementById('teacher-register-submit');
+            if (teacherRegisterSubmit && this.teacherRegisterSubmitHandler) {
+                teacherRegisterSubmit.removeEventListener('click', this.teacherRegisterSubmitHandler);
+                this.teacherRegisterSubmitHandler = null;
+            }
+
             if (this.tutorialObserver) {
                 this.tutorialObserver.disconnect();
                 this.tutorialObserver = null;
@@ -1155,7 +1379,6 @@ class UIManager {
             console.warn('销毁UI时出错:', error);
         }
 
-        // 重置标志
         this.eventListenersInitialized = false;
         this.tutorialInitialized = false;
         this.destroyed = true;
