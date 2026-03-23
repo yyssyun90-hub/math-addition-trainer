@@ -1,7 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - UI管理 ====================
- * 包含：界面渲染、语言切换、模态框管理、反馈消息、新手引导（多语言支持）
- * 依赖：utils.js (需要 I18n, SoundManager, Formatters)
+ * 版本: 6.0.0 (学生/教师/管理员注册版)
+ * 功能：界面渲染、语言切换、模态框管理、反馈消息、新手引导
  * ============================================================
  */
 
@@ -31,16 +31,21 @@ class UIManager {
         // 注册相关事件处理器
         this.chooseStudentHandler = null;
         this.chooseTeacherHandler = null;
+        this.chooseAdminHandler = null;
         this.backToLoginFromChoiceHandler = null;
         this.backToChoiceFromStudentHandler = null;
         this.backToChoiceFromTeacherHandler = null;
+        this.backToChoiceFromAdminHandler = null;
         this.backToLoginFromStudentHandler = null;
         this.backToLoginFromTeacherHandler = null;
+        this.backToLoginFromAdminHandler = null;
         this.closeChoiceModalHandler = null;
         this.closeStudentRegisterHandler = null;
         this.closeTeacherRegisterHandler = null;
+        this.closeAdminRegisterHandler = null;
         this.studentRegisterSubmitHandler = null;
         this.teacherRegisterSubmitHandler = null;
+        this.adminRegisterSubmitHandler = null;
     }
 
     // ==================== 初始化 ====================
@@ -53,7 +58,7 @@ class UIManager {
         this.updateLanguage();
         this.setupSoundControls();
         this.initTutorial();
-        this.bindRegisterEvents(); // 新增：绑定注册事件
+        this.bindRegisterEvents();
     }
 
     // ==================== 注册事件绑定 ====================
@@ -90,6 +95,21 @@ class UIManager {
             chooseTeacher.addEventListener('click', this.chooseTeacherHandler);
         } else {
             console.warn('choose-teacher 元素不存在');
+        }
+
+        // 选择注册为管理员
+        const chooseAdmin = document.getElementById('choose-admin');
+        if (chooseAdmin) {
+            this.chooseAdminHandler = () => {
+                console.log('点击注册为管理员');
+                const choiceModal = document.getElementById('register-choice-modal');
+                const adminModal = document.getElementById('admin-register-modal');
+                if (choiceModal) choiceModal.style.display = 'none';
+                if (adminModal) adminModal.style.display = 'flex';
+            };
+            chooseAdmin.addEventListener('click', this.chooseAdminHandler);
+        } else {
+            console.warn('choose-admin 元素不存在');
         }
 
         // 从注册选择返回登录
@@ -157,6 +177,32 @@ class UIManager {
             backToChoiceFromTeacher.addEventListener('click', this.backToChoiceFromTeacherHandler);
         }
 
+        // 从管理员注册返回登录
+        const backToLoginFromAdmin = document.getElementById('back-to-login-from-admin');
+        if (backToLoginFromAdmin) {
+            this.backToLoginFromAdminHandler = (e) => {
+                e.preventDefault();
+                const adminModal = document.getElementById('admin-register-modal');
+                const authModal = document.getElementById('auth-modal');
+                if (adminModal) adminModal.style.display = 'none';
+                if (authModal) authModal.style.display = 'flex';
+            };
+            backToLoginFromAdmin.addEventListener('click', this.backToLoginFromAdminHandler);
+        }
+
+        // 从管理员注册返回选择
+        const backToChoiceFromAdmin = document.getElementById('back-to-choice-from-admin');
+        if (backToChoiceFromAdmin) {
+            this.backToChoiceFromAdminHandler = (e) => {
+                e.preventDefault();
+                const adminModal = document.getElementById('admin-register-modal');
+                const choiceModal = document.getElementById('register-choice-modal');
+                if (adminModal) adminModal.style.display = 'none';
+                if (choiceModal) choiceModal.style.display = 'flex';
+            };
+            backToChoiceFromAdmin.addEventListener('click', this.backToChoiceFromAdminHandler);
+        }
+
         // 关闭注册选择模态框
         const closeChoiceModal = document.getElementById('close-choice-modal');
         if (closeChoiceModal) {
@@ -185,6 +231,16 @@ class UIManager {
                 if (teacherModal) teacherModal.style.display = 'none';
             };
             closeTeacherRegister.addEventListener('click', this.closeTeacherRegisterHandler);
+        }
+
+        // 关闭管理员注册模态框
+        const closeAdminRegister = document.getElementById('close-admin-register');
+        if (closeAdminRegister) {
+            this.closeAdminRegisterHandler = () => {
+                const adminModal = document.getElementById('admin-register-modal');
+                if (adminModal) adminModal.style.display = 'none';
+            };
+            closeAdminRegister.addEventListener('click', this.closeAdminRegisterHandler);
         }
 
         // 学生注册提交
@@ -300,6 +356,61 @@ class UIManager {
                 }
             };
             teacherRegisterSubmit.addEventListener('click', this.teacherRegisterSubmitHandler);
+        }
+
+        // 管理员注册提交
+        const adminRegisterSubmit = document.getElementById('admin-register-submit');
+        if (adminRegisterSubmit && this.game.auth) {
+            this.adminRegisterSubmitHandler = async (e) => {
+                e.preventDefault();
+                console.log('管理员注册提交');
+                
+                const email = document.getElementById('admin-email')?.value;
+                const password = document.getElementById('admin-password')?.value;
+                const name = document.getElementById('admin-name')?.value;
+                const errorDiv = document.getElementById('admin-register-error');
+                
+                if (!email || !password || !name) {
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ 所有字段都必须填写';
+                        errorDiv.style.color = '#ff4444';
+                    }
+                    return;
+                }
+                
+                if (errorDiv) {
+                    errorDiv.textContent = '⏳ 处理中...';
+                    errorDiv.style.color = '#666';
+                }
+                
+                try {
+                    const result = await this.game.auth.registerAdmin(email, password, name);
+                    
+                    if (result && result.success) {
+                        if (errorDiv) {
+                            errorDiv.textContent = '✅ 注册成功！正在登录...';
+                            errorDiv.style.color = '#4CAF50';
+                        }
+                        setTimeout(() => {
+                            const adminModal = document.getElementById('admin-register-modal');
+                            if (adminModal) adminModal.style.display = 'none';
+                            location.reload();
+                        }, 1500);
+                    } else {
+                        if (errorDiv) {
+                            errorDiv.textContent = '❌ ' + (result?.error || '注册失败');
+                            errorDiv.style.color = '#ff4444';
+                        }
+                    }
+                } catch (err) {
+                    console.error('管理员注册错误:', err);
+                    if (errorDiv) {
+                        errorDiv.textContent = '❌ 注册失败，请重试';
+                        errorDiv.style.color = '#ff4444';
+                    }
+                }
+            };
+            adminRegisterSubmit.addEventListener('click', this.adminRegisterSubmitHandler);
         }
         
         console.log('✅ 注册事件绑定完成');
@@ -435,7 +546,7 @@ class UIManager {
         // 更新引导内容
         this.updateTutorialContent();
 
-        // ========== 新增：登录/注册模态框 ==========
+        // ========== 登录/注册模态框 ==========
         const authTitle = document.getElementById('auth-title');
         if (authTitle) authTitle.textContent = lang.t('authTitle') || '登录';
         
@@ -453,12 +564,15 @@ class UIManager {
             authSwitch.innerHTML = (lang.t('noAccount') || '没有账号') + ' <span id="switch-to-register">' + (lang.t('registerNow') || '立即注册') + '</span>';
         }
 
-        // ========== 新增：注册模态框标题 ==========
+        // ========== 注册模态框标题 ==========
         const studentRegisterTitle = document.querySelector('#student-register-modal h2');
         if (studentRegisterTitle) studentRegisterTitle.innerHTML = '👨‍🎓 ' + (lang.t('registerStudent') || '学生注册');
         
         const teacherRegisterTitle = document.querySelector('#teacher-register-modal h2');
         if (teacherRegisterTitle) teacherRegisterTitle.innerHTML = '👩‍🏫 ' + (lang.t('registerTeacher') || '教师注册');
+        
+        const adminRegisterTitle = document.querySelector('#admin-register-modal h2');
+        if (adminRegisterTitle) adminRegisterTitle.innerHTML = '👑 ' + (lang.t('registerAdmin') || '管理员注册');
         
         const registerChoiceTitle = document.querySelector('#register-choice-modal h2');
         if (registerChoiceTitle) registerChoiceTitle.textContent = lang.t('chooseRole') || '选择注册身份';
@@ -471,6 +585,11 @@ class UIManager {
         const chooseTeacherBtn = document.getElementById('choose-teacher');
         if (chooseTeacherBtn) {
             chooseTeacherBtn.innerHTML = '👩‍🏫 ' + (lang.t('registerTeacher') || '注册为教师');
+        }
+        
+        const chooseAdminBtn = document.getElementById('choose-admin');
+        if (chooseAdminBtn) {
+            chooseAdminBtn.innerHTML = '👑 ' + (lang.t('registerAdmin') || '注册为管理员');
         }
         
         // 注册模态框占位符
@@ -500,6 +619,15 @@ class UIManager {
         
         const teacherSchool = document.getElementById('teacher-school');
         if (teacherSchool) teacherSchool.placeholder = lang.t('schoolPlaceholder') || '学校名称';
+        
+        const adminEmail = document.getElementById('admin-email');
+        if (adminEmail) adminEmail.placeholder = lang.t('emailPlaceholder') || '电子邮箱';
+        
+        const adminPassword = document.getElementById('admin-password');
+        if (adminPassword) adminPassword.placeholder = lang.t('passwordPlaceholder') || '密码 (至少6位)';
+        
+        const adminName = document.getElementById('admin-name');
+        if (adminName) adminName.placeholder = lang.t('namePlaceholder') || '姓名';
 
         // 注册按钮文本
         const studentSubmit = document.getElementById('student-register-submit');
@@ -507,6 +635,9 @@ class UIManager {
         
         const teacherSubmit = document.getElementById('teacher-register-submit');
         if (teacherSubmit) teacherSubmit.textContent = lang.t('registerTeacher') || '注册为教师';
+        
+        const adminSubmit = document.getElementById('admin-register-submit');
+        if (adminSubmit) adminSubmit.textContent = lang.t('registerAdmin') || '注册为管理员';
     }
 
     /**
@@ -551,10 +682,11 @@ class UIManager {
             // 已登录状态
             if (userInfo) userInfo.style.display = 'flex';
 
-            // 获取用户角色（从 students 或 teachers 表）
+            // 获取用户角色
             let role = 'student';
             let school = '';
             let userClass = '';
+            let permissions = null;
             
             try {
                 if (this.game.auth && this.game.auth.getUserProfile) {
@@ -563,6 +695,7 @@ class UIManager {
                         role = profile.role || 'student';
                         school = profile.school || '';
                         userClass = profile.class || '';
+                        permissions = profile.permissions || null;
                     }
                 }
             } catch (error) {
@@ -582,7 +715,9 @@ class UIManager {
 
             if (userName) {
                 let displayName = this.game.state.currentUser.name || this.game.state.currentUser.email || '用户';
-                if (role === 'teacher') {
+                if (role === 'admin') {
+                    displayName += ' 👑';
+                } else if (role === 'teacher') {
                     displayName += ' 👩‍🏫';
                 } else {
                     displayName += ' 👨‍🎓';
@@ -591,7 +726,12 @@ class UIManager {
             }
             
             if (userStatus) {
-                let status = this.game.state.isOnline ? '✨ ' + (lang.t('onlineMode') || '在线') : '📴 ' + (lang.t('offlineMode') || '离线');
+                let status = '';
+                if (role === 'admin') {
+                    status = '👑 管理员 · 全校数据可见';
+                } else {
+                    status = this.game.state.isOnline ? '✨ ' + (lang.t('onlineMode') || '在线') : '📴 ' + (lang.t('offlineMode') || '离线');
+                }
                 if (school) {
                     status += ` · ${school}`;
                 }
@@ -604,6 +744,17 @@ class UIManager {
             if (userAvatar) {
                 const name = this.game.state.currentUser.name || this.game.state.currentUser.email || 'U';
                 userAvatar.textContent = name.charAt(0).toUpperCase();
+            }
+
+            // 显示或隐藏管理员标签页（在教师面板中）
+            const adminTab = document.getElementById('admin-tab-btn');
+            const adminTabContent = document.getElementById('admin-tab');
+            if (adminTab && adminTabContent) {
+                if (role === 'admin') {
+                    adminTab.style.display = 'inline-block';
+                } else {
+                    adminTab.style.display = 'none';
+                }
             }
         } else {
             // 未登录状态
@@ -714,7 +865,6 @@ class UIManager {
                           aria-label="数字 ${num}">${num}</div>`;
         }).join('');
 
-        // 设置卡片点击状态
         if (this.game.state.gameActive && !this.game.state.isPaused) {
             document.querySelectorAll('.number-card').forEach(card => {
                 if (card) {
@@ -1311,6 +1461,12 @@ class UIManager {
                 this.chooseTeacherHandler = null;
             }
 
+            const chooseAdmin = document.getElementById('choose-admin');
+            if (chooseAdmin && this.chooseAdminHandler) {
+                chooseAdmin.removeEventListener('click', this.chooseAdminHandler);
+                this.chooseAdminHandler = null;
+            }
+
             const backToLoginFromChoice = document.getElementById('back-to-login-from-choice');
             if (backToLoginFromChoice && this.backToLoginFromChoiceHandler) {
                 backToLoginFromChoice.removeEventListener('click', this.backToLoginFromChoiceHandler);
@@ -1329,6 +1485,12 @@ class UIManager {
                 this.backToChoiceFromTeacherHandler = null;
             }
 
+            const backToChoiceFromAdmin = document.getElementById('back-to-choice-from-admin');
+            if (backToChoiceFromAdmin && this.backToChoiceFromAdminHandler) {
+                backToChoiceFromAdmin.removeEventListener('click', this.backToChoiceFromAdminHandler);
+                this.backToChoiceFromAdminHandler = null;
+            }
+
             const backToLoginFromStudent = document.getElementById('back-to-login-from-student');
             if (backToLoginFromStudent && this.backToLoginFromStudentHandler) {
                 backToLoginFromStudent.removeEventListener('click', this.backToLoginFromStudentHandler);
@@ -1339,6 +1501,12 @@ class UIManager {
             if (backToLoginFromTeacher && this.backToLoginFromTeacherHandler) {
                 backToLoginFromTeacher.removeEventListener('click', this.backToLoginFromTeacherHandler);
                 this.backToLoginFromTeacherHandler = null;
+            }
+
+            const backToLoginFromAdmin = document.getElementById('back-to-login-from-admin');
+            if (backToLoginFromAdmin && this.backToLoginFromAdminHandler) {
+                backToLoginFromAdmin.removeEventListener('click', this.backToLoginFromAdminHandler);
+                this.backToLoginFromAdminHandler = null;
             }
 
             const closeChoiceModal = document.getElementById('close-choice-modal');
@@ -1359,6 +1527,12 @@ class UIManager {
                 this.closeTeacherRegisterHandler = null;
             }
 
+            const closeAdminRegister = document.getElementById('close-admin-register');
+            if (closeAdminRegister && this.closeAdminRegisterHandler) {
+                closeAdminRegister.removeEventListener('click', this.closeAdminRegisterHandler);
+                this.closeAdminRegisterHandler = null;
+            }
+
             const studentRegisterSubmit = document.getElementById('student-register-submit');
             if (studentRegisterSubmit && this.studentRegisterSubmitHandler) {
                 studentRegisterSubmit.removeEventListener('click', this.studentRegisterSubmitHandler);
@@ -1369,6 +1543,12 @@ class UIManager {
             if (teacherRegisterSubmit && this.teacherRegisterSubmitHandler) {
                 teacherRegisterSubmit.removeEventListener('click', this.teacherRegisterSubmitHandler);
                 this.teacherRegisterSubmitHandler = null;
+            }
+
+            const adminRegisterSubmit = document.getElementById('admin-register-submit');
+            if (adminRegisterSubmit && this.adminRegisterSubmitHandler) {
+                adminRegisterSubmit.removeEventListener('click', this.adminRegisterSubmitHandler);
+                this.adminRegisterSubmitHandler = null;
             }
 
             if (this.tutorialObserver) {
