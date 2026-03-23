@@ -391,6 +391,10 @@
             background: linear-gradient(135deg, #ffe194, #ffd966);
             color: #946f2b;
         }
+        .candy-btn.admin {
+            background: linear-gradient(135deg, #a855f7, #7c3aed);
+            color: white;
+        }
         .candy-btn.small {
             padding: 6px 12px;
             font-size: 0.9rem;
@@ -601,7 +605,7 @@
 
         /* 模态框样式 */
         .game-over-modal, .auth-modal, .tutorial-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal,
-        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal {
+        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal {
             position: fixed;
             top: 0;
             left: 0;
@@ -1759,6 +1763,9 @@
                 <button class="candy-btn tournament" id="choose-teacher" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px;">
                     👩‍🏫 注册为教师
                 </button>
+                <button class="candy-btn admin" id="choose-admin" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px; background: linear-gradient(135deg, #a855f7, #7c3aed);">
+                    👑 注册为管理员
+                </button>
             </div>
             <p style="text-align: center; color: #b2869c;">
                 已有账号？ <a href="#" id="back-to-login-from-choice" style="color: #d46b8d;">返回登录</a>
@@ -1841,6 +1848,25 @@
                 <a href="#" id="back-to-login-from-teacher" style="color: #d46b8d;">返回登录</a>
                 <span style="color: #b2869c; margin: 0 5px;">|</span>
                 <a href="#" id="back-to-choice-from-teacher" style="color: #d46b8d;">返回选择</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 管理员注册模态框 -->
+    <div class="admin-register-modal" id="admin-register-modal" style="display: none;">
+        <div class="register-card">
+            <button class="close-btn" id="close-admin-register">×</button>
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👑 管理员注册</h2>
+            <input type="email" class="auth-input" id="admin-email" placeholder="电子邮箱" style="margin-bottom: 15px;">
+            <input type="password" class="auth-input" id="admin-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;">
+            <input type="text" class="auth-input" id="admin-name" placeholder="姓名" style="margin-bottom: 15px;">
+            <div class="auth-error" id="admin-register-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
+            <button class="start-btn auth-submit-btn" id="admin-register-submit" style="width: 100%; margin: 20px 0;">注册为管理员</button>
+            <div style="text-align: center; margin-top: 15px;">
+                <span style="color: #b2869c;">已有账号？</span>
+                <a href="#" id="back-to-login-from-admin" style="color: #d46b8d;">返回登录</a>
+                <span style="color: #b2869c; margin: 0 5px;">|</span>
+                <a href="#" id="back-to-choice-from-admin" style="color: #d46b8d;">返回选择</a>
             </div>
         </div>
     </div>
@@ -2042,6 +2068,7 @@
                 <button class="tab-btn active" data-teacher-tab="students">📋 学生列表</button>
                 <button class="tab-btn" data-teacher-tab="reports">📊 生成报告</button>
                 <button class="tab-btn" data-teacher-tab="stats">📈 班级统计</button>
+                <button class="tab-btn" data-teacher-tab="admin" style="display: none;" id="admin-tab-btn">👑 全校数据</button>
             </div>
             <div class="teacher-tab-content" id="students-tab">
                 <div style="display: flex; gap: 10px; margin-bottom: 15px; justify-content: space-between; flex-wrap: wrap;">
@@ -2064,6 +2091,9 @@
             </div>
             <div class="teacher-tab-content" id="stats-tab" style="display: none;">
                 <div class="class-stats" id="class-stats"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div></div>
+            </div>
+            <div class="teacher-tab-content" id="admin-tab" style="display: none;">
+                <div class="admin-stats" id="admin-stats"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载全校数据...</div></div>
             </div>
         </div>
     </div>
@@ -2099,7 +2129,7 @@
                     '.close-btn', '#close-auth', '#close-tutorial', '#close-gameover', '#cancel-match', 
                     '#cancel-join', '#cancel-create-tournament', '#home-btn', '#home-from-gameover-btn', 
                     '#rematch-btn', '#close-battle-btn', '#close-teacher', '#close-choice-modal',
-                    '#close-student-register', '#close-teacher-register'
+                    '#close-student-register', '#close-teacher-register', '#close-admin-register'
                 ];
                 
                 setTimeout(function() {
@@ -2112,7 +2142,8 @@
                     var modalSelectors = [
                         '.auth-modal', '.tutorial-modal', '.game-over-modal', '.tournament-modal', 
                         '.battle-modal', '.join-modal', '.create-tournament-modal', '.teacher-modal',
-                        '.register-choice-modal', '.student-register-modal', '.teacher-register-modal'
+                        '.register-choice-modal', '.student-register-modal', '.teacher-register-modal',
+                        '.admin-register-modal'
                     ];
                     
                     modalSelectors.forEach(function(selector) {
@@ -2131,7 +2162,7 @@
             
             setInterval(function() {
                 var anyModalOpen = Array.from(document.querySelectorAll(
-                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
+                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal'
                 )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                 if (!anyModalOpen) ensureScroll();
             }, 2000);
@@ -2142,7 +2173,7 @@
                         var bodyStyle = window.getComputedStyle(document.body);
                         if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
                             var anyModalOpen = Array.from(document.querySelectorAll(
-                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
+                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal'
                             )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                             if (!anyModalOpen) ensureScroll();
                         }
@@ -2170,6 +2201,36 @@
                     });
                     console.log('Supabase 客户端创建成功');
                     window.supabaseClient = supabaseClient;
+                    
+                    // 预设管理员账号
+                    supabaseClient.auth.admin?.createUser({
+                        email: 'yyssyun90@gmail.com',
+                        password: 'Admin123456',
+                        email_confirm: true,
+                        user_metadata: { name: '超级管理员', role: 'admin' }
+                    }).then(function(result) {
+                        if (result.error) {
+                            if (result.error.message.includes('already registered')) {
+                                console.log('管理员账号已存在');
+                            } else {
+                                console.error('创建管理员账号失败:', result.error);
+                            }
+                        } else {
+                            console.log('管理员账号创建成功');
+                            // 创建管理员记录
+                            supabaseClient.from('admins').insert([{
+                                user_id: result.data.user.id,
+                                email: 'yyssyun90@gmail.com',
+                                name: '超级管理员',
+                                role: 'admin',
+                                permissions: ['view_all', 'manage_schools', 'manage_teachers']
+                            }]).then(function(adminResult) {
+                                if (adminResult.error) console.warn('创建管理员记录失败:', adminResult.error);
+                                else console.log('管理员记录创建成功');
+                            });
+                        }
+                    }).catch(function(err) { console.log('管理员账号可能已存在:', err); });
+                    
                     supabaseClient.auth.getSession().then(function(result) {
                         if (result.error) console.error('Supabase 连接测试失败:', result.error.message);
                         else { 
@@ -2177,7 +2238,6 @@
                             if (result.data && result.data.session) { 
                                 window.currentUser = result.data.session.user; 
                                 console.log('当前登录用户:', window.currentUser.email);
-                                // 同步到 game.state
                                 if (window.game && window.game.state) {
                                     window.game.state.currentUser = window.currentUser;
                                 }
@@ -2196,7 +2256,7 @@
             console.log('使用模拟登录模式');
             window.mockLogin = function(email, password) {
                 console.log('模拟登录成功:', email);
-                var mockUser = { id: 'mock-user-' + Date.now(), email: email, user_metadata: { name: email.split('@')[0] } };
+                var mockUser = { id: 'mock-user-' + Date.now(), email: email, user_metadata: { name: email.split('@')[0] }, role: email === 'yyssyun90@gmail.com' ? 'admin' : 'student' };
                 localStorage.setItem('mock_user', JSON.stringify(mockUser));
                 var userName = document.getElementById('user-name');
                 var userStatus = document.getElementById('user-status');
@@ -2404,20 +2464,42 @@
                     if (window.currentUser) {
                         if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
                         
-                        // 获取用户显示名称
+                        // 获取用户显示名称和角色
                         var displayName = window.currentUser.name || window.currentUser.email || '用户';
-                        if (window.currentUser.role === 'teacher') {
+                        var role = window.currentUser.role || 'student';
+                        
+                        if (role === 'admin') {
+                            displayName += ' 👑';
+                        } else if (role === 'teacher') {
                             displayName += ' 👩‍🏫';
-                        } else if (window.currentUser.role === 'student') {
+                        } else {
                             displayName += ' 👨‍🎓';
                         }
                         
+                        // 管理员显示特殊状态
+                        if (role === 'admin') {
+                            if (userStatus) userStatus.textContent = '👑 管理员 · 全校数据可见';
+                        } else {
+                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? '✨ 在线' : '📴 离线';
+                        }
+                        
                         if (userName) userName.textContent = displayName;
-                        if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? '✨ 在线' : '📴 离线';
                         if (userInfo) userInfo.style.display = 'flex';
                         
+                        // 显示或隐藏管理员标签页
+                        var adminTab = document.getElementById('admin-tab-btn');
+                        var adminTabContent = document.getElementById('admin-tab');
+                        if (adminTab && adminTabContent) {
+                            if (role === 'admin') {
+                                adminTab.style.display = 'inline-block';
+                                adminTabContent.style.display = 'block';
+                            } else {
+                                adminTab.style.display = 'none';
+                                adminTabContent.style.display = 'none';
+                            }
+                        }
+                        
                         if (authButtons) {
-                            // 移除旧的事件监听器
                             if (logoutHandler) {
                                 var oldBtn = document.getElementById('logout-btn');
                                 if (oldBtn) oldBtn.removeEventListener('click', logoutHandler);
@@ -2510,7 +2592,6 @@
             setTimeout(checkUserStatus, 2000);
             setTimeout(checkUserStatus, 3000);
             
-            // 每10秒同步一次，确保状态一致
             if (syncTimer) clearInterval(syncTimer);
             syncTimer = setInterval(syncAndUpdateUI, 10000);
         })();
@@ -2545,7 +2626,6 @@
                             if (errorDiv) errorDiv.textContent = '登录成功！'; 
                             window.currentUser = result.data.user; 
                             
-                            // 获取用户角色
                             if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
                                 window.game.auth.getUserProfile(result.data.user.id).then(function(profile) {
                                     if (profile) {
