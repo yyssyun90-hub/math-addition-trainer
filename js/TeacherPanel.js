@@ -1,7 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 2.0.1 (Supabase集成版 - 修复版)
- * 功能：从Supabase读取数据并显示在教师面板
+ * 版本: 3.0.4 (匹配现有HTML元素)
+ * 功能：从Supabase读取数据并显示在教师面板，支持教师和管理员不同视图
  * ====================================================================
  */
 
@@ -14,6 +14,9 @@ class TeacherPanel {
         this.supabase = null;
         this.handlers = {};
         this.autoRefreshTimer = null;
+        this.currentUserRole = null;
+        this.currentUserSchoolId = null;
+        this.currentUserSchoolName = null;
         
         this.initSupabase();
         this.init();
@@ -43,6 +46,56 @@ class TeacherPanel {
             document.addEventListener('DOMContentLoaded', () => this.bindEvents());
         } else {
             this.bindEvents();
+        }
+    }
+
+    /**
+     * 获取当前用户角色和学校
+     */
+    async getUserRoleAndSchool() {
+        if (!this.game.auth || !this.game.state.currentUser) {
+            return { role: 'student', schoolId: null, schoolName: null };
+        }
+
+        try {
+            const userId = this.game.state.currentUser.id;
+            
+            // 先查 admins 表
+            const { data: admin, error: adminError } = await this.supabase
+                .from('admins')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+            
+            if (!adminError && admin) {
+                this.currentUserRole = 'admin';
+                return { role: 'admin', schoolId: null, schoolName: null };
+            }
+            
+            // 再查 teachers 表
+            const { data: teacher, error: teacherError } = await this.supabase
+                .from('teachers')
+                .select('school_id, school')
+                .eq('user_id', userId)
+                .maybeSingle();
+            
+            if (!teacherError && teacher) {
+                this.currentUserRole = 'teacher';
+                this.currentUserSchoolId = teacher.school_id;
+                this.currentUserSchoolName = teacher.school;
+                return { 
+                    role: 'teacher', 
+                    schoolId: teacher.school_id, 
+                    schoolName: teacher.school 
+                };
+            }
+            
+            this.currentUserRole = 'student';
+            return { role: 'student', schoolId: null, schoolName: null };
+            
+        } catch (error) {
+            console.error('获取用户角色失败:', error);
+            return { role: 'student', schoolId: null, schoolName: null };
         }
     }
 
@@ -97,7 +150,7 @@ class TeacherPanel {
             syncBtn.addEventListener('click', (e) => this.syncData(e));
         }
 
-        // 点击背景关闭
+        // 点击背景关闭教师面板
         const modal = document.getElementById('teacher-modal');
         if (modal) {
             modal.addEventListener('click', (e) => {
@@ -126,7 +179,7 @@ class TeacherPanel {
     /**
      * 打开教师面板
      */
-    openPanel(e) {
+    async openPanel(e) {
         e?.preventDefault();
         
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
@@ -137,9 +190,25 @@ class TeacherPanel {
             return;
         }
 
+        // 获取用户角色
+        const userInfo = await this.getUserRoleAndSchool();
+        
+        // 检查权限：只有教师或管理员可以访问
+        if (userInfo.role !== 'teacher' && userInfo.role !== 'admin') {
+            alert('只有教师或管理员可以访问此面板');
+            return;
+        }
+
         const modal = document.getElementById('teacher-modal');
         if (modal) {
             modal.style.display = 'flex';
+            
+            // 根据角色显示/隐藏管理员标签页
+            const adminTab = document.getElementById('admin-tab-btn');
+            if (adminTab) {
+                adminTab.style.display = userInfo.role === 'admin' ? 'inline-block' : 'none';
+            }
+            
             this.refreshData();
             this.handleNetworkChange();
             
@@ -201,6 +270,9 @@ class TeacherPanel {
             case 'reports':
                 this.refreshReportOptions();
                 break;
+            case 'admin':
+                this.refreshAdminDashboard();
+                break;
         }
     }
 
@@ -211,6 +283,9 @@ class TeacherPanel {
         this.refreshStudentList();
         this.refreshReportOptions();
         this.refreshClassStats();
+        if (this.currentUserRole === 'admin') {
+            this.refreshAdminDashboard();
+        }
     }
 
     /**
@@ -223,24 +298,24 @@ class TeacherPanel {
         try {
             list.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
 
+            const userInfo = await this.getUserRoleAndSchool();
             let students = [];
 
-            // 优先从Supabase获取
             if (this.supabase && navigator.onLine) {
-                const { data, error } = await this.supabase
-                    .from('teacher_dashboard')
-                    .select('*')
-                    .order('last_active', { ascending: false });
-
+                let query = this.supabase
+                    .from('students')
+                    .select('student_id, name, class, school');
+                
+                // 教师只能看到自己学校的学生
+                if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                    query = query.eq('school_id', userInfo.schoolId);
+                }
+                
+                const { data, error } = await query.order('created_at', { ascending: false });
+                
                 if (!error && data) {
                     students = data;
                 }
-            }
-
-            // 如果Supabase没数据，从本地获取
-            if (students.length === 0) {
-                const classStats = await this.studentRecord.getClassStats();
-                students = classStats.students || [];
             }
 
             if (students.length === 0) {
@@ -253,30 +328,17 @@ class TeacherPanel {
             html += `<span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 在线' : '🔴 离线'}</span>`;
             html += '</div>';
 
-            // 按速度排序（快的在前面）
-            students.sort((a, b) => {
-                const timeA = a.avg_time || a.avgTime || 999;
-                const timeB = b.avg_time || b.avgTime || 999;
-                return timeA - timeB;
-            }).forEach(student => {
-                // 统一字段名
-                const displayStudent = {
-                    id: student.student_id || student.studentId || '',
-                    name: student.name || student.studentName || '未知',
-                    avgTime: student.avg_time || student.avgTime || 0,
-                    accuracy: student.accuracy || 0,
-                    totalQ: student.total_questions || student.totalQuestions || 0
-                };
-                
+            students.forEach(student => {
                 html += `
-                    <div class="student-list-item" data-student-id="${this.escapeHtml(displayStudent.id)}" style="cursor: pointer;">
+                    <div class="student-list-item" data-student-id="${this.escapeHtml(student.student_id || '')}" style="cursor: pointer;">
                         <div class="student-info">
-                            <h4>${this.escapeHtml(displayStudent.name)}</h4>
-                            <p>ID: ${this.escapeHtml(displayStudent.id)} · 答题: ${displayStudent.totalQ}题</p>
+                            <h4>${this.escapeHtml(student.name || '未知')}</h4>
+                            <p>学号: ${this.escapeHtml(student.student_id || '-')} · 班级: ${this.escapeHtml(student.class || '未分配')}</p>
+                            <p style="font-size: 0.8rem; color: #999;">学校: ${this.escapeHtml(student.school || '-')}</p>
                         </div>
                         <div class="student-stats">
-                            <div class="student-accuracy" style="color: ${this.getSpeedColor(displayStudent.avgTime)}">${displayStudent.avgTime.toFixed(1)}s</div>
-                            <div class="student-questions">正确率: ${displayStudent.accuracy.toFixed(1)}%</div>
+                            <div class="student-accuracy">📚</div>
+                            <div class="student-questions">点击查看详情</div>
                         </div>
                     </div>
                 `;
@@ -301,58 +363,117 @@ class TeacherPanel {
     }
 
     /**
-     * 根据速度显示颜色
+     * 刷新管理员仪表盘（全校数据）
      */
-    getSpeedColor(time) {
-        if (time < 10) return '#28a745'; // 快 - 绿色
-        if (time < 20) return '#ffc107'; // 中等 - 黄色
-        return '#dc3545'; // 慢 - 红色
-    }
-
-    /**
-     * 刷新报告选项
-     */
-    async refreshReportOptions() {
-        const select = document.getElementById('report-student-select');
-        if (!select) return;
+    async refreshAdminDashboard() {
+        const adminTab = document.getElementById('admin-tab');
+        if (!adminTab) return;
 
         try {
-            let students = [];
+            adminTab.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载全校数据...</div>';
 
-            if (this.supabase && navigator.onLine) {
-                const { data, error } = await this.supabase
-                    .from('teacher_dashboard')
-                    .select('student_id, name, avg_time, accuracy')
-                    .order('name');
-
-                if (!error && data) {
-                    students = data;
-                }
+            // 获取所有学校
+            const { data: schools, error: schoolsError } = await this.supabase
+                .from('schools')
+                .select('*')
+                .order('school_name');
+            
+            if (schoolsError) throw schoolsError;
+            
+            if (!schools || schools.length === 0) {
+                adminTab.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无学校数据</div>';
+                return;
             }
-
-            if (students.length === 0) {
-                const classStats = await this.studentRecord.getClassStats();
-                students = classStats.students || [];
-            }
-
-            select.innerHTML = '<option value="all">📊 全班报告</option>';
-
-            students.forEach(student => {
-                const displayStudent = {
-                    id: student.student_id || student.studentId,
-                    name: student.name || student.studentName,
-                    avgTime: student.avg_time || student.avgTime || 0,
-                    accuracy: student.accuracy || 0
-                };
+            
+            // 获取每个学校的统计数据
+            let totalStudents = 0;
+            let totalTeachers = 0;
+            let totalClasses = 0;
+            const schoolStats = [];
+            
+            for (const school of schools) {
+                // 获取学生数量
+                const { count: studentCount } = await this.supabase
+                    .from('students')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('school_id', school.id);
                 
-                const option = document.createElement('option');
-                option.value = displayStudent.id;
-                option.textContent = `${displayStudent.name} (${displayStudent.avgTime.toFixed(1)}s, ${displayStudent.accuracy.toFixed(1)}%)`;
-                select.appendChild(option);
-            });
-
+                // 获取教师数量
+                const { count: teacherCount } = await this.supabase
+                    .from('teachers')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('school_id', school.id);
+                
+                // 获取班级数量
+                const { count: classCount } = await this.supabase
+                    .from('classes')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('school_id', school.id);
+                
+                const sCount = studentCount || 0;
+                const tCount = teacherCount || 0;
+                const cCount = classCount || 0;
+                
+                totalStudents += sCount;
+                totalTeachers += tCount;
+                totalClasses += cCount;
+                
+                schoolStats.push({
+                    ...school,
+                    student_count: sCount,
+                    teacher_count: tCount,
+                    class_count: cCount
+                });
+            }
+            
+            let html = `
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 20px; margin-bottom: 20px; color: white;">
+                    <h3 style="margin-bottom: 15px;">📊 全国统计</h3>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center;">
+                        <div>
+                            <div style="font-size: 2rem; font-weight: bold;">${schools.length}</div>
+                            <div style="font-size: 0.9rem;">学校数量</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 2rem; font-weight: bold;">${totalStudents}</div>
+                            <div style="font-size: 0.9rem;">学生总数</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 2rem; font-weight: bold;">${totalTeachers}</div>
+                            <div style="font-size: 0.9rem;">教师总数</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 2rem; font-weight: bold;">${totalClasses}</div>
+                            <div style="font-size: 0.9rem;">班级总数</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 学校列表
+            html += `<h3 style="color: #d46b8d; margin: 20px 0 15px;">🏫 学校列表</h3>`;
+            
+            for (const school of schoolStats) {
+                html += `
+                    <div style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                            <div>
+                                <h4 style="color: #d46b8d;">${this.escapeHtml(school.school_name)}</h4>
+                                <div style="font-size: 0.85rem; color: #666;">州属: ${this.escapeHtml(school.state)}</div>
+                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
+                                    教师: ${school.teacher_count}人 · 学生: ${school.student_count}人 · 班级: ${school.class_count}个
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            adminTab.innerHTML = html;
+            
         } catch (error) {
-            console.error('刷新报告选项失败:', error);
+            console.error('刷新管理员仪表盘失败:', error);
+            adminTab.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
         }
     }
 
@@ -366,102 +487,100 @@ class TeacherPanel {
         try {
             statsDiv.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
 
-            let classStats = await this.studentRecord.getClassStats();
-
-            if (!classStats || classStats.totalStudents === 0) {
-                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无统计数据</div>';
+            const userInfo = await this.getUserRoleAndSchool();
+            
+            // 获取班级列表
+            let query = this.supabase
+                .from('classes')
+                .select('id, class_name, class_code');
+            
+            if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                query = query.eq('school_id', userInfo.schoolId);
+            }
+            
+            const { data: classes, error } = await query;
+            
+            if (error) throw error;
+            
+            if (!classes || classes.length === 0) {
+                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无班级数据</div>';
                 return;
             }
-
-            // 计算各速度段的学生人数
-            const speedGroups = {
-                fast: 0,   // <10秒
-                medium: 0, // 10-20秒
-                slow: 0    // >20秒
-            };
-
-            (classStats.students || []).forEach(s => {
-                const time = s.avg_time || s.avgTime || 999;
-                if (time < 10) speedGroups.fast++;
-                else if (time < 20) speedGroups.medium++;
-                else speedGroups.slow++;
-            });
-
-            let html = `
-                <div style="background: #f8f9fa; border-radius: 15px; padding: 20px; margin-bottom: 15px;">
-                    <h3 style="color: #d46b8d; margin-bottom: 15px;">📈 班级概况</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div>
-                            <div style="font-size: 0.9rem; color: #666;">学生人数</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalStudents}</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.9rem; color: #666;">总答题数</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${classStats.totalQuestions || 0}</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.9rem; color: #666;">平均速度</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${(classStats.avgClassTime || 0).toFixed(1)}s</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.9rem; color: #666;">平均正确率</div>
-                            <div style="font-size: 2rem; font-weight: bold; color: #d46b8d;">${(classStats.avgClassAccuracy || 0).toFixed(1)}%</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="background: #f8f9fa; border-radius: 15px; padding: 20px; margin-bottom: 15px;">
-                    <h3 style="color: #d46b8d; margin-bottom: 15px;">⏱️ 速度分布</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center;">
-                        <div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: #28a745;">${speedGroups.fast}</div>
-                            <div style="font-size: 0.9rem; color: #666;">快 (&lt;10s)</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: #ffc107;">${speedGroups.medium}</div>
-                            <div style="font-size: 0.9rem; color: #666;">中 (10-20s)</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: #dc3545;">${speedGroups.slow}</div>
-                            <div style="font-size: 0.9rem; color: #666;">慢 (&gt;20s)</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // 速度最快的5个学生
-            const topFast = [...(classStats.students || [])]
-                .map(s => ({
-                    name: s.name || s.studentName,
-                    avgTime: s.avg_time || s.avgTime || 999
-                }))
-                .filter(s => s.avgTime > 0)
-                .sort((a, b) => a.avgTime - b.avgTime)
-                .slice(0, 5);
-
-            if (topFast.length > 0) {
+            
+            let html = `<div style="margin-bottom: 15px;">
+                <h3 style="color: #d46b8d;">📚 班级列表</h3>
+            </div>`;
+            
+            for (const cls of classes) {
+                // 获取班级学生数量
+                const { count: studentCount, error: countError } = await this.supabase
+                    .from('students')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('class_id', cls.id);
+                
+                const studentNum = (countError || !studentCount) ? 0 : studentCount;
+                
                 html += `
-                    <div style="background: #f8f9fa; border-radius: 15px; padding: 20px;">
-                        <h3 style="color: #d46b8d; margin-bottom: 15px;">⚡ 速度最快 (Top 5)</h3>
-                `;
-
-                topFast.forEach((student, index) => {
-                    html += `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
-                            <span>${index + 1}. ${this.escapeHtml(student.name || '未知')}</span>
-                            <span style="font-weight: bold; color: #28a745;">${student.avgTime.toFixed(1)}s</span>
+                    <div style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                            <div>
+                                <h4 style="color: #d46b8d;">${this.escapeHtml(cls.class_name)}</h4>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    班级代码: ${cls.class_code || '未生成'}<br>
+                                    学生人数: ${studentNum} 人
+                                </div>
+                            </div>
                         </div>
-                    `;
-                });
-
-                html += '</div>';
+                    </div>
+                `;
             }
-
+            
             statsDiv.innerHTML = html;
-
+            
         } catch (error) {
             console.error('刷新班级统计失败:', error);
             statsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+        }
+    }
+
+    /**
+     * 刷新报告选项
+     */
+    async refreshReportOptions() {
+        const select = document.getElementById('report-student-select');
+        if (!select) return;
+
+        try {
+            const userInfo = await this.getUserRoleAndSchool();
+            let students = [];
+
+            if (this.supabase && navigator.onLine) {
+                let query = this.supabase
+                    .from('students')
+                    .select('student_id, name');
+                
+                if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                    query = query.eq('school_id', userInfo.schoolId);
+                }
+                
+                const { data, error } = await query.order('name');
+                
+                if (!error && data) {
+                    students = data;
+                }
+            }
+
+            select.innerHTML = '<option value="all">📊 全班报告</option>';
+
+            students.forEach(student => {
+                const option = document.createElement('option');
+                option.value = student.student_id;
+                option.textContent = student.name || '未知';
+                select.appendChild(option);
+            });
+
+        } catch (error) {
+            console.error('刷新报告选项失败:', error);
         }
     }
 
@@ -499,15 +618,17 @@ class TeacherPanel {
      */
     async showStudentDetail(studentId) {
         try {
-            const stats = await this.studentRecord.getStudentStats(studentId);
-            if (!stats) {
+            const { data: student, error } = await this.supabase
+                .from('students')
+                .select('*')
+                .eq('student_id', studentId)
+                .maybeSingle();
+            
+            if (error || !student) {
                 alert('找不到该学生数据');
                 return;
             }
-
-            // 获取速度趋势
-            const trend = await this.studentRecord.getSpeedTrend(studentId);
-
+            
             const detailDiv = document.createElement('div');
             detailDiv.id = 'student-detail-modal';
             detailDiv.style.cssText = `
@@ -524,51 +645,35 @@ class TeacherPanel {
                 align-items: center;
             `;
 
-            let trendHtml = '';
-            if (trend.length > 0) {
-                trendHtml = '<div style="margin: 15px 0;"><strong>速度趋势:</strong><br>';
-                trend.slice(-7).forEach(day => {
-                    trendHtml += `📅 ${day.date}: ${day.avgTime}s<br>`;
-                });
-                trendHtml += '</div>';
-            }
-
             const detailHtml = `
                 <div style="background: white; border-radius: 40px; padding: 30px; max-width: 450px; width: 90%;">
-                    <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(stats.studentName || stats.name)} 详情</h3>
+                    <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(student.name || '未知')} 详情</h3>
                     
                     <div style="margin-bottom: 20px;">
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">学生ID:</span>
-                            <span style="font-weight: bold;">${this.escapeHtml(studentId)}</span>
+                            <span style="color: #666;">学号:</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(student.student_id || '-')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">平均速度:</span>
-                            <span style="font-weight: bold; color: ${this.getSpeedColor(stats.avgTime || 0)};">${(stats.avgTime || 0).toFixed(1)}秒/题</span>
+                            <span style="color: #666;">姓名:</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(student.name || '-')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">正确率:</span>
-                            <span style="font-weight: bold; color: #d46b8d;">${(stats.accuracy || 0).toFixed(1)}%</span>
+                            <span style="color: #666;">班级:</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(student.class || '未分配')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">总答题数:</span>
-                            <span style="font-weight: bold;">${stats.totalQuestions || 0}题</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">练习次数:</span>
-                            <span style="font-weight: bold;">${stats.totalSessions || 0}次</span>
+                            <span style="color: #666;">学校:</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(student.school || '-')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                            <span style="color: #666;">最后活动:</span>
-                            <span style="font-weight: bold;">${stats.lastActive ? new Date(stats.lastActive).toLocaleString() : '无'}</span>
+                            <span style="color: #666;">注册时间:</span>
+                            <span style="font-weight: bold;">${student.created_at ? new Date(student.created_at).toLocaleDateString() : '-'}</span>
                         </div>
                     </div>
 
-                    ${trendHtml}
-
-                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
                         <button class="candy-btn primary" id="generate-student-pdf">📄 生成报告</button>
-                        <button class="candy-btn secondary" id="export-student-excel">📊 导出Excel</button>
                         <button class="candy-btn home" id="close-detail">关闭</button>
                     </div>
                 </div>
@@ -579,11 +684,6 @@ class TeacherPanel {
 
             document.getElementById('generate-student-pdf')?.addEventListener('click', () => {
                 this.reportGenerator.generateStudentReport(studentId);
-                detailDiv.remove();
-            });
-
-            document.getElementById('export-student-excel')?.addEventListener('click', () => {
-                this.exportStudentExcel(studentId);
                 detailDiv.remove();
             });
 
@@ -656,26 +756,81 @@ class TeacherPanel {
     /**
      * 导入学生
      */
-    importStudents(e) {
+    async importStudents(e) {
         e?.preventDefault();
         
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.csv,.txt';
         
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
-                    const imported = this.studentRecord.importStudents(e.target.result);
+                    const userInfo = await this.getUserRoleAndSchool();
+                    if (userInfo.role !== 'teacher') {
+                        alert('只有教师可以导入学生');
+                        return;
+                    }
+                    
+                    if (!userInfo.schoolId) {
+                        alert('无法获取学校信息');
+                        return;
+                    }
+                    
+                    const lines = e.target.result.split('\n');
+                    let imported = 0;
+                    let errors = 0;
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+                        
+                        const parts = trimmed.split(',').map(s => s.trim());
+                        if (parts.length >= 2) {
+                            const studentId = parts[0];
+                            const studentName = parts[1];
+                            const studentClass = parts[2] || null;
+                            
+                            // 检查是否已存在
+                            const { data: existing } = await this.supabase
+                                .from('students')
+                                .select('student_id')
+                                .eq('student_id', studentId)
+                                .maybeSingle();
+                            
+                            if (existing) {
+                                errors++;
+                                continue;
+                            }
+                            
+                            // 插入学生记录
+                            const { error } = await this.supabase
+                                .from('students')
+                                .insert([{
+                                    student_id: studentId,
+                                    name: studentName,
+                                    class: studentClass,
+                                    school_id: userInfo.schoolId,
+                                    school: userInfo.schoolName
+                                }]);
+                            
+                            if (!error) {
+                                imported++;
+                            } else {
+                                errors++;
+                            }
+                        }
+                    }
+                    
                     if (imported > 0) {
-                        alert(`✅ 成功导入 ${imported} 名学生`);
+                        alert(`✅ 成功导入 ${imported} 名学生${errors > 0 ? `，${errors} 条失败` : ''}`);
                         this.refreshData();
                     } else {
-                        alert('❌ 导入失败，请检查文件格式（CSV格式：学号,姓名）');
+                        alert('❌ 导入失败，请检查文件格式（CSV格式：学号,姓名,班级）');
                     }
                 } catch (error) {
                     console.error('导入学生失败:', error);
@@ -694,8 +849,10 @@ class TeacherPanel {
     clearAllRecords(e) {
         e?.preventDefault();
         
-        if (this.studentRecord.clearAllRecords()) {
-            this.refreshData();
+        if (confirm('确定要清除所有学生记录吗？此操作不可恢复。')) {
+            if (this.studentRecord.clearAllRecords()) {
+                this.refreshData();
+            }
         }
     }
 
