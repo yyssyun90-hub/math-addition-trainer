@@ -1,15 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - 用户认证 ====================
- * 版本: 5.0.4 (10次自查最终修复版)
- * 最后更新: 2026-03-20
- * 修复内容:
- * - 修复 getUserProfile 错误处理
- * - 修复 updateCurrentUser 空值保护
- * - 修复 showRegisterChoice 元素检查
- * - 优化 ID 生成唯一性
- * - 增强 localStorage 错误处理
- * - 完善密码强度验证
- * - 优化认证监听器管理
+ * 版本: 6.0.0 (学生/教师/管理员注册版)
+ * 功能：登录、注册（学生/教师/管理员）、密码重置、会话管理
  * =============================================================
  */
 
@@ -30,6 +22,7 @@
             };
             
             this.game = this.dependencies.game;
+            this._idCounter = 0;
             
             this.config = {
                 maxRetries: this.validateNumber(options.maxRetries, 3, 1, 10),
@@ -190,6 +183,13 @@
 
         generateTabId() {
             return 'tab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) + '_' + performance.now();
+        }
+
+        generateUniqueId(prefix) {
+            const timestamp = Date.now().toString(36);
+            const random = Math.random().toString(36).substr(2, 6);
+            const counter = (this._idCounter = (this._idCounter || 0) + 1);
+            return `${prefix}${timestamp}${random}${counter}`;
         }
 
         log(level, message, data = null) {
@@ -797,6 +797,20 @@
                 teacherModal.style.display = 'flex';
             } else {
                 this.log('error', 'teacher-register-modal 元素不存在');
+            }
+        }
+
+        showAdminRegister() {
+            const choiceModal = document.getElementById('register-choice-modal');
+            if (choiceModal) {
+                choiceModal.style.display = 'none';
+            }
+            
+            const adminModal = document.getElementById('admin-register-modal');
+            if (adminModal) {
+                adminModal.style.display = 'flex';
+            } else {
+                this.log('error', 'admin-register-modal 元素不存在');
             }
         }
 
@@ -1582,13 +1596,6 @@
 
         // ==================== 学生注册 ====================
 
-        generateUniqueId(prefix) {
-            const timestamp = Date.now().toString(36);
-            const random = Math.random().toString(36).substr(2, 6);
-            const counter = (this._idCounter = (this._idCounter || 0) + 1);
-            return `${prefix}${timestamp}${random}${counter}`;
-        }
-
         async registerStudent(email, password, state, school, name, studentClass) {
             this.markStart('registerStudent');
             const requestId = this.registerRequest('register');
@@ -1762,22 +1769,102 @@
             }
         }
 
+        // ==================== 管理员注册 ====================
+
+        async registerAdmin(email, password, name) {
+            this.markStart('registerAdmin');
+            const requestId = this.registerRequest('register');
+
+            try {
+                if (!email || !password || !name) {
+                    throw new Error('所有字段都必须填写');
+                }
+
+                if (!this.validateEmail(email)) {
+                    throw new Error('请输入有效的邮箱地址');
+                }
+
+                if (!this.validatePassword(password)) {
+                    throw new Error(`密码至少需要${this.config.passwordMinLength}位`);
+                }
+
+                const { data: authData, error: authError } = await this.supabase.auth.signUp({
+                    email: email,
+                    password: password,
+                    options: {
+                        data: {
+                            name: name,
+                            role: 'admin'
+                        }
+                    }
+                });
+
+                if (authError) throw authError;
+                if (!authData || !authData.user) throw new Error('注册失败：未获取到用户信息');
+
+                const adminData = {
+                    user_id: authData.user.id,
+                    email: email,
+                    name: name,
+                    role: 'admin',
+                    permissions: ['view_all', 'manage_schools', 'manage_teachers']
+                };
+
+                try {
+                    const { error: adminError } = await this.supabase
+                        .from('admins')
+                        .insert([adminData]);
+                    
+                    if (adminError) {
+                        if (adminError.code === '42P01') {
+                            this.log('warn', 'admins表不存在，只使用auth metadata');
+                        } else {
+                            throw adminError;
+                        }
+                    }
+                } catch (dbError) {
+                    this.log('warn', '保存到admins表失败', dbError);
+                }
+
+                this.updateCurrentUser(authData.user, {
+                    role: 'admin',
+                    name: name,
+                    email: email,
+                    permissions: adminData.permissions
+                });
+
+                this.metrics.registerSuccess++;
+                
+                return { success: true, user: authData.user };
+
+            } catch (error) {
+                this.metrics.registerFailures++;
+                console.error('管理员注册失败:', error);
+                return { success: false, error: error.message };
+            } finally {
+                this.completeRequest(requestId);
+                this.markEnd('registerAdmin');
+            }
+        }
+
         // ==================== 用户资料 ====================
 
         async getUserProfile(userId) {
             if (!userId) return null;
             
             try {
-                const { data: student, error: studentError } = await this.supabase
-                    .from('students')
+                // 先查 admins 表
+                const { data: admin, error: adminError } = await this.supabase
+                    .from('admins')
                     .select('*')
                     .eq('user_id', userId)
                     .maybeSingle();
 
-                if (!studentError && student) {
-                    return { ...student, role: 'student' };
+                if (!adminError && admin) {
+                    return { ...admin, role: 'admin' };
                 }
 
+                // 再查 teachers 表
                 const { data: teacher, error: teacherError } = await this.supabase
                     .from('teachers')
                     .select('*')
@@ -1786,6 +1873,17 @@
 
                 if (!teacherError && teacher) {
                     return { ...teacher, role: 'teacher' };
+                }
+
+                // 最后查 students 表
+                const { data: student, error: studentError } = await this.supabase
+                    .from('students')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+                if (!studentError && student) {
+                    return { ...student, role: 'student' };
                 }
 
                 return null;
@@ -1809,6 +1907,7 @@
             let userClass = null;
             let studentId = null;
             let teacherId = null;
+            let permissions = null;
             
             if (profile) {
                 role = profile.role || 'student';
@@ -1817,6 +1916,7 @@
                 userClass = profile.class || null;
                 studentId = profile.student_id || null;
                 teacherId = profile.teacher_id || null;
+                permissions = profile.permissions || null;
             } else {
                 role = userMeta.role || 'student';
                 school = userMeta.school || null;
@@ -1835,6 +1935,7 @@
                 class: userClass,
                 student_id: studentId,
                 teacher_id: teacherId,
+                permissions: permissions,
                 metadata: { ...userMeta },
                 lastUpdated: Date.now()
             };
@@ -1906,6 +2007,7 @@
                 class: this.game.state.currentUser.class,
                 student_id: this.game.state.currentUser.student_id,
                 teacher_id: this.game.state.currentUser.teacher_id,
+                permissions: this.game.state.currentUser.permissions,
                 lastUpdated: this.game.state.currentUser.lastUpdated
             };
             
