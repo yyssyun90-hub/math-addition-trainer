@@ -1,6 +1,6 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 3.0.4 (匹配现有HTML元素)
+ * 版本: 3.0.5 (完整版 - 班级管理 + 学生导入导出 + 管理员全校视图)
  * 功能：从Supabase读取数据并显示在教师面板，支持教师和管理员不同视图
  * ====================================================================
  */
@@ -100,6 +100,33 @@ class TeacherPanel {
     }
 
     /**
+     * 获取用户学校信息
+     */
+    async getUserSchoolInfo() {
+        const userInfo = await this.getUserRoleAndSchool();
+        if (userInfo.role !== 'teacher' || !userInfo.schoolId) {
+            return null;
+        }
+        
+        try {
+            const { data: school, error } = await this.supabase
+                .from('schools')
+                .select('*')
+                .eq('id', userInfo.schoolId)
+                .maybeSingle();
+            
+            if (error || !school) {
+                return null;
+            }
+            
+            return school;
+        } catch (error) {
+            console.error('获取学校信息失败:', error);
+            return null;
+        }
+    }
+
+    /**
      * 绑定事件
      */
     bindEvents() {
@@ -124,6 +151,36 @@ class TeacherPanel {
         const importBtn = document.getElementById('import-students');
         if (importBtn) {
             importBtn.addEventListener('click', (e) => this.importStudents(e));
+        }
+
+        // 导出学生
+        const exportStudentsBtn = document.getElementById('export-students-btn');
+        if (exportStudentsBtn) {
+            exportStudentsBtn.addEventListener('click', (e) => this.exportStudentsToExcel(e));
+        }
+
+        // 创建班级按钮
+        const createClassBtn = document.getElementById('create-class-btn');
+        if (createClassBtn) {
+            createClassBtn.addEventListener('click', (e) => this.showCreateClassModal(e));
+        }
+
+        // 确认创建班级
+        const confirmCreateClass = document.getElementById('confirm-create-class');
+        if (confirmCreateClass) {
+            confirmCreateClass.addEventListener('click', (e) => this.createClass(e));
+        }
+
+        // 关闭创建班级模态框
+        const closeCreateClass = document.getElementById('close-create-class');
+        if (closeCreateClass) {
+            closeCreateClass.addEventListener('click', (e) => this.closeCreateClassModal(e));
+        }
+
+        // 取消创建班级按钮
+        const cancelCreateClass = document.getElementById('cancel-create-class');
+        if (cancelCreateClass) {
+            cancelCreateClass.addEventListener('click', (e) => this.closeCreateClassModal(e));
         }
 
         // 清除所有记录
@@ -156,6 +213,16 @@ class TeacherPanel {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
                     this.closePanel(e);
+                }
+            });
+        }
+
+        // 创建班级模态框背景关闭
+        const createClassModal = document.getElementById('create-class-modal');
+        if (createClassModal) {
+            createClassModal.addEventListener('click', (e) => {
+                if (e.target === createClassModal) {
+                    this.closeCreateClassModal(e);
                 }
             });
         }
@@ -207,6 +274,14 @@ class TeacherPanel {
             const adminTab = document.getElementById('admin-tab-btn');
             if (adminTab) {
                 adminTab.style.display = userInfo.role === 'admin' ? 'inline-block' : 'none';
+            }
+            
+            // 刷新数据前先获取学校信息
+            if (userInfo.role === 'teacher') {
+                const schoolInfo = await this.getUserSchoolInfo();
+                if (schoolInfo) {
+                    this.currentUserSchoolName = schoolInfo.school_name;
+                }
             }
             
             this.refreshData();
@@ -283,10 +358,266 @@ class TeacherPanel {
         this.refreshStudentList();
         this.refreshReportOptions();
         this.refreshClassStats();
+        this.refreshClassList();
         if (this.currentUserRole === 'admin') {
             this.refreshAdminDashboard();
         }
     }
+
+    // ==================== 班级管理功能 ====================
+
+    /**
+     * 显示创建班级模态框
+     */
+    showCreateClassModal(e) {
+        e?.preventDefault();
+        
+        const modal = document.getElementById('create-class-modal');
+        if (modal) {
+            const classNameInput = document.getElementById('new-class-name');
+            if (classNameInput) classNameInput.value = '';
+            const errorDiv = document.getElementById('create-class-error');
+            if (errorDiv) errorDiv.textContent = '';
+            modal.style.display = 'flex';
+        }
+    }
+
+    /**
+     * 关闭创建班级模态框
+     */
+    closeCreateClassModal(e) {
+        e?.preventDefault();
+        
+        const modal = document.getElementById('create-class-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    /**
+     * 创建班级
+     */
+    async createClass(e) {
+        e?.preventDefault();
+        
+        const className = document.getElementById('new-class-name')?.value.trim();
+        const errorDiv = document.getElementById('create-class-error');
+        
+        if (!className) {
+            if (errorDiv) {
+                errorDiv.textContent = '❌ 请输入班级名称';
+                errorDiv.style.color = '#ff4444';
+            }
+            return;
+        }
+        
+        if (errorDiv) {
+            errorDiv.textContent = '⏳ 创建中...';
+            errorDiv.style.color = '#666';
+        }
+        
+        try {
+            const userInfo = await this.getUserRoleAndSchool();
+            
+            if (userInfo.role !== 'teacher') {
+                throw new Error('只有教师可以创建班级');
+            }
+            
+            if (!userInfo.schoolId) {
+                throw new Error('无法获取学校信息，请确保您的教师账号已关联学校');
+            }
+            
+            // 生成班级代码
+            const schoolInfo = await this.getUserSchoolInfo();
+            
+            const schoolCode = (schoolInfo?.school_name || 'SCH').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+            const stateCode = (schoolInfo?.state || 'MY').substring(0, 2).toUpperCase();
+            const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const classCode = `${stateCode}_${schoolCode}_${className.replace(/[^a-zA-Z0-9]/g, '')}_${randomCode}`;
+            
+            const academicYear = new Date().getFullYear();
+            
+            const { data: newClass, error } = await this.supabase
+                .from('classes')
+                .insert([{
+                    class_name: className,
+                    school_id: userInfo.schoolId,
+                    teacher_id: this.game.state.currentUser.id,
+                    class_code: classCode,
+                    academic_year: academicYear
+                }])
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            if (errorDiv) {
+                errorDiv.textContent = '✅ 班级创建成功！';
+                errorDiv.style.color = '#4CAF50';
+            }
+            
+            setTimeout(() => {
+                this.closeCreateClassModal();
+                this.refreshClassList();
+                this.refreshClassStats();
+            }, 1500);
+            
+        } catch (error) {
+            console.error('创建班级失败:', error);
+            if (errorDiv) {
+                errorDiv.textContent = '❌ ' + (error.message || '创建失败');
+                errorDiv.style.color = '#ff4444';
+            }
+        }
+    }
+
+    /**
+     * 刷新班级列表
+     */
+    async refreshClassList() {
+        const classListDiv = document.getElementById('class-list');
+        if (!classListDiv) return;
+
+        try {
+            const userInfo = await this.getUserRoleAndSchool();
+            
+            let query = this.supabase
+                .from('classes')
+                .select(`
+                    id,
+                    class_name,
+                    class_code,
+                    school_id,
+                    teacher_id,
+                    academic_year
+                `);
+            
+            // 教师只能看到自己学校的班级
+            if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                query = query.eq('school_id', userInfo.schoolId);
+            }
+            
+            const { data: classes, error } = await query.order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            if (!classes || classes.length === 0) {
+                classListDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无班级，点击"创建班级"开始</div>';
+                return;
+            }
+            
+            let html = '';
+            for (const cls of classes) {
+                // 获取班级学生数量
+                const { count: studentCount } = await this.supabase
+                    .from('students')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('class_id', cls.id);
+                
+                const studentNum = studentCount || 0;
+                
+                html += `
+                    <div class="class-item" style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px; border-left: 4px solid #d46b8d;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                            <div>
+                                <h4 style="color: #d46b8d; margin-bottom: 5px;">${this.escapeHtml(cls.class_name)}</h4>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    班级代码: <code style="background: #fff; padding: 2px 6px; border-radius: 10px;">${cls.class_code || '未生成'}</code><br>
+                                    学生人数: ${studentNum} 人<br>
+                                    学年: ${cls.academic_year}
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <button class="candy-btn small" data-class-id="${cls.id}" data-class-name="${this.escapeHtml(cls.class_name)}">📋 查看学生</button>
+                                ${cls.class_code ? `<button class="candy-btn small secondary" data-class-code="${cls.class_code}">📋 复制代码</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            classListDiv.innerHTML = html;
+            
+            // 绑定班级按钮事件
+            classListDiv.querySelectorAll('[data-class-id]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const classId = btn.dataset.classId;
+                    const className = btn.dataset.className;
+                    this.showClassStudents(classId, className);
+                });
+            });
+            
+            classListDiv.querySelectorAll('[data-class-code]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const classCode = btn.dataset.classCode;
+                    this.copyClassCode(classCode);
+                });
+            });
+            
+        } catch (error) {
+            console.error('刷新班级列表失败:', error);
+            classListDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+        }
+    }
+
+    /**
+     * 查看班级学生
+     */
+    async showClassStudents(classId, className) {
+        try {
+            const { data: students, error } = await this.supabase
+                .from('students')
+                .select('student_id, name, class')
+                .eq('class_id', classId)
+                .order('name');
+            
+            if (error) throw error;
+            
+            if (!students || students.length === 0) {
+                alert(`班级 "${className}" 暂无学生`);
+                return;
+            }
+            
+            let message = `📋 班级 "${className}" 学生列表:\n\n`;
+            message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            message += `序号 │ 学号 │ 姓名\n`;
+            message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            
+            students.forEach((s, index) => {
+                const num = (index + 1).toString().padStart(3);
+                const id = (s.student_id || '-').padEnd(12);
+                const name = s.name || '未知';
+                message += `${num} │ ${id} │ ${name}\n`;
+            });
+            
+            message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            message += `共 ${students.length} 名学生`;
+            
+            alert(message);
+            
+        } catch (error) {
+            console.error('获取班级学生失败:', error);
+            alert('获取学生列表失败');
+        }
+    }
+
+    /**
+     * 复制班级代码
+     */
+    copyClassCode(code) {
+        if (!code) {
+            alert('没有班级代码');
+            return;
+        }
+        
+        navigator.clipboard.writeText(code).then(() => {
+            alert('✅ 班级代码已复制');
+        }).catch(() => {
+            alert('❌ 复制失败，请手动复制');
+        });
+    }
+
+    // ==================== 学生管理功能 ====================
 
     /**
      * 刷新学生列表
@@ -359,6 +690,283 @@ class TeacherPanel {
         } catch (error) {
             console.error('刷新学生列表失败:', error);
             list.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+        }
+    }
+
+    /**
+     * 导入学生 (CSV)
+     */
+    async importStudents(e) {
+        e?.preventDefault();
+        
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.csv,.txt';
+        
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const userInfo = await this.getUserRoleAndSchool();
+                    if (userInfo.role !== 'teacher') {
+                        alert('只有教师可以导入学生');
+                        return;
+                    }
+                    
+                    if (!userInfo.schoolId) {
+                        alert('无法获取学校信息');
+                        return;
+                    }
+                    
+                    const lines = e.target.result.split('\n');
+                    let imported = 0;
+                    let errors = 0;
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+                        
+                        const parts = trimmed.split(',').map(s => s.trim());
+                        if (parts.length >= 2) {
+                            const studentId = parts[0];
+                            const studentName = parts[1];
+                            const studentClass = parts[2] || null;
+                            
+                            // 检查是否已存在
+                            const { data: existing } = await this.supabase
+                                .from('students')
+                                .select('student_id')
+                                .eq('student_id', studentId)
+                                .maybeSingle();
+                            
+                            if (existing) {
+                                errors++;
+                                continue;
+                            }
+                            
+                            // 插入学生记录
+                            const { error } = await this.supabase
+                                .from('students')
+                                .insert([{
+                                    student_id: studentId,
+                                    name: studentName,
+                                    class: studentClass,
+                                    school_id: userInfo.schoolId,
+                                    school: userInfo.schoolName
+                                }]);
+                            
+                            if (!error) {
+                                imported++;
+                            } else {
+                                errors++;
+                            }
+                        }
+                    }
+                    
+                    if (imported > 0) {
+                        alert(`✅ 成功导入 ${imported} 名学生${errors > 0 ? `，${errors} 条失败` : ''}`);
+                        this.refreshData();
+                    } else {
+                        alert('❌ 导入失败，请检查文件格式（CSV格式：学号,姓名,班级）');
+                    }
+                } catch (error) {
+                    console.error('导入学生失败:', error);
+                    alert('❌ 导入失败：' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        input.click();
+    }
+
+    /**
+     * 导出学生到Excel
+     */
+    async exportStudentsToExcel(e) {
+        e?.preventDefault();
+        
+        if (!this.supabase || !navigator.onLine) {
+            alert('需要网络连接才能导出');
+            return;
+        }
+        
+        try {
+            const userInfo = await this.getUserRoleAndSchool();
+            
+            let query = this.supabase
+                .from('students')
+                .select('student_id, name, class, school, created_at');
+            
+            if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                query = query.eq('school_id', userInfo.schoolId);
+            }
+            
+            const { data: students, error } = await query.order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            if (!students || students.length === 0) {
+                alert('没有学生数据可导出');
+                return;
+            }
+            
+            // 准备Excel数据
+            const wsData = [
+                ['学号', '姓名', '班级', '学校', '注册日期']
+            ];
+            
+            students.forEach(s => {
+                wsData.push([
+                    s.student_id || '-',
+                    s.name || '-',
+                    s.class || '-',
+                    s.school || '-',
+                    s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'
+                ]);
+            });
+            
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            
+            // 调整列宽
+            ws['!cols'] = [{wch:15}, {wch:12}, {wch:10}, {wch:20}, {wch:12}];
+            
+            XLSX.utils.book_append_sheet(wb, ws, '学生列表');
+            
+            const fileName = userInfo.role === 'admin' 
+                ? `全校学生数据_${new Date().toISOString().slice(0,10)}.xlsx`
+                : `${userInfo.schoolName || '学校'}_学生数据_${new Date().toISOString().slice(0,10)}.xlsx`;
+            
+            XLSX.writeFile(wb, fileName);
+            
+            alert(`✅ 成功导出 ${students.length} 名学生数据`);
+            
+        } catch (error) {
+            console.error('导出学生失败:', error);
+            alert('❌ 导出失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 刷新班级统计
+     */
+    async refreshClassStats() {
+        const statsDiv = document.getElementById('class-stats');
+        if (!statsDiv) return;
+
+        try {
+            statsDiv.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
+
+            const userInfo = await this.getUserRoleAndSchool();
+            
+            // 获取班级列表
+            let query = this.supabase
+                .from('classes')
+                .select('id, class_name, class_code');
+            
+            if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                query = query.eq('school_id', userInfo.schoolId);
+            }
+            
+            const { data: classes, error } = await query;
+            
+            if (error) throw error;
+            
+            if (!classes || classes.length === 0) {
+                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无班级数据</div>';
+                return;
+            }
+            
+            let html = `<div style="margin-bottom: 15px;">
+                <h3 style="color: #d46b8d;">📚 班级列表</h3>
+            </div>`;
+            
+            for (const cls of classes) {
+                // 获取班级学生数量
+                const { count: studentCount } = await this.supabase
+                    .from('students')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('class_id', cls.id);
+                
+                const studentNum = studentCount || 0;
+                
+                html += `
+                    <div style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                            <div>
+                                <h4 style="color: #d46b8d;">${this.escapeHtml(cls.class_name)}</h4>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    班级代码: ${cls.class_code || '未生成'}<br>
+                                    学生人数: ${studentNum} 人
+                                </div>
+                            </div>
+                            <div style="margin-top: 8px;">
+                                <button class="candy-btn small" data-class-id="${cls.id}" data-class-name="${this.escapeHtml(cls.class_name)}">📋 查看学生</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            statsDiv.innerHTML = html;
+            
+            // 绑定查看学生按钮事件
+            statsDiv.querySelectorAll('[data-class-id]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const classId = btn.dataset.classId;
+                    const className = btn.dataset.className;
+                    this.showClassStudents(classId, className);
+                });
+            });
+            
+        } catch (error) {
+            console.error('刷新班级统计失败:', error);
+            statsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+        }
+    }
+
+    /**
+     * 刷新报告选项
+     */
+    async refreshReportOptions() {
+        const select = document.getElementById('report-student-select');
+        if (!select) return;
+
+        try {
+            const userInfo = await this.getUserRoleAndSchool();
+            let students = [];
+
+            if (this.supabase && navigator.onLine) {
+                let query = this.supabase
+                    .from('students')
+                    .select('student_id, name');
+                
+                if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                    query = query.eq('school_id', userInfo.schoolId);
+                }
+                
+                const { data, error } = await query.order('name');
+                
+                if (!error && data) {
+                    students = data;
+                }
+            }
+
+            select.innerHTML = '<option value="all">📊 全班报告</option>';
+
+            students.forEach(student => {
+                const option = document.createElement('option');
+                option.value = student.student_id;
+                option.textContent = student.name || '未知';
+                select.appendChild(option);
+            });
+
+        } catch (error) {
+            console.error('刷新报告选项失败:', error);
         }
     }
 
@@ -474,113 +1082,6 @@ class TeacherPanel {
         } catch (error) {
             console.error('刷新管理员仪表盘失败:', error);
             adminTab.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
-        }
-    }
-
-    /**
-     * 刷新班级统计
-     */
-    async refreshClassStats() {
-        const statsDiv = document.getElementById('class-stats');
-        if (!statsDiv) return;
-
-        try {
-            statsDiv.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
-
-            const userInfo = await this.getUserRoleAndSchool();
-            
-            // 获取班级列表
-            let query = this.supabase
-                .from('classes')
-                .select('id, class_name, class_code');
-            
-            if (userInfo.role === 'teacher' && userInfo.schoolId) {
-                query = query.eq('school_id', userInfo.schoolId);
-            }
-            
-            const { data: classes, error } = await query;
-            
-            if (error) throw error;
-            
-            if (!classes || classes.length === 0) {
-                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无班级数据</div>';
-                return;
-            }
-            
-            let html = `<div style="margin-bottom: 15px;">
-                <h3 style="color: #d46b8d;">📚 班级列表</h3>
-            </div>`;
-            
-            for (const cls of classes) {
-                // 获取班级学生数量
-                const { count: studentCount, error: countError } = await this.supabase
-                    .from('students')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('class_id', cls.id);
-                
-                const studentNum = (countError || !studentCount) ? 0 : studentCount;
-                
-                html += `
-                    <div style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-                            <div>
-                                <h4 style="color: #d46b8d;">${this.escapeHtml(cls.class_name)}</h4>
-                                <div style="font-size: 0.85rem; color: #666;">
-                                    班级代码: ${cls.class_code || '未生成'}<br>
-                                    学生人数: ${studentNum} 人
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            statsDiv.innerHTML = html;
-            
-        } catch (error) {
-            console.error('刷新班级统计失败:', error);
-            statsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
-        }
-    }
-
-    /**
-     * 刷新报告选项
-     */
-    async refreshReportOptions() {
-        const select = document.getElementById('report-student-select');
-        if (!select) return;
-
-        try {
-            const userInfo = await this.getUserRoleAndSchool();
-            let students = [];
-
-            if (this.supabase && navigator.onLine) {
-                let query = this.supabase
-                    .from('students')
-                    .select('student_id, name');
-                
-                if (userInfo.role === 'teacher' && userInfo.schoolId) {
-                    query = query.eq('school_id', userInfo.schoolId);
-                }
-                
-                const { data, error } = await query.order('name');
-                
-                if (!error && data) {
-                    students = data;
-                }
-            }
-
-            select.innerHTML = '<option value="all">📊 全班报告</option>';
-
-            students.forEach(student => {
-                const option = document.createElement('option');
-                option.value = student.student_id;
-                option.textContent = student.name || '未知';
-                select.appendChild(option);
-            });
-
-        } catch (error) {
-            console.error('刷新报告选项失败:', error);
         }
     }
 
@@ -751,96 +1252,6 @@ class TeacherPanel {
             console.error('导出失败:', error);
             alert('导出失败: ' + error.message);
         }
-    }
-
-    /**
-     * 导入学生
-     */
-    async importStudents(e) {
-        e?.preventDefault();
-        
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.csv,.txt';
-        
-        input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const userInfo = await this.getUserRoleAndSchool();
-                    if (userInfo.role !== 'teacher') {
-                        alert('只有教师可以导入学生');
-                        return;
-                    }
-                    
-                    if (!userInfo.schoolId) {
-                        alert('无法获取学校信息');
-                        return;
-                    }
-                    
-                    const lines = e.target.result.split('\n');
-                    let imported = 0;
-                    let errors = 0;
-                    
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (!trimmed) continue;
-                        
-                        const parts = trimmed.split(',').map(s => s.trim());
-                        if (parts.length >= 2) {
-                            const studentId = parts[0];
-                            const studentName = parts[1];
-                            const studentClass = parts[2] || null;
-                            
-                            // 检查是否已存在
-                            const { data: existing } = await this.supabase
-                                .from('students')
-                                .select('student_id')
-                                .eq('student_id', studentId)
-                                .maybeSingle();
-                            
-                            if (existing) {
-                                errors++;
-                                continue;
-                            }
-                            
-                            // 插入学生记录
-                            const { error } = await this.supabase
-                                .from('students')
-                                .insert([{
-                                    student_id: studentId,
-                                    name: studentName,
-                                    class: studentClass,
-                                    school_id: userInfo.schoolId,
-                                    school: userInfo.schoolName
-                                }]);
-                            
-                            if (!error) {
-                                imported++;
-                            } else {
-                                errors++;
-                            }
-                        }
-                    }
-                    
-                    if (imported > 0) {
-                        alert(`✅ 成功导入 ${imported} 名学生${errors > 0 ? `，${errors} 条失败` : ''}`);
-                        this.refreshData();
-                    } else {
-                        alert('❌ 导入失败，请检查文件格式（CSV格式：学号,姓名,班级）');
-                    }
-                } catch (error) {
-                    console.error('导入学生失败:', error);
-                    alert('❌ 导入失败：' + error.message);
-                }
-            };
-            reader.readAsText(file);
-        };
-
-        input.click();
     }
 
     /**
