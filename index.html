@@ -605,7 +605,8 @@
 
         /* 模态框样式 */
         .game-over-modal, .auth-modal, .tutorial-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal,
-        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal {
+        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal,
+        .create-class-modal {
             position: fixed;
             top: 0;
             left: 0;
@@ -622,7 +623,7 @@
         }
 
         .game-over-card, .auth-card, .tutorial-card, .tournament-card, .battle-card, .create-card, .join-card,
-        .teacher-card, .register-choice-card, .register-card {
+        .teacher-card, .register-choice-card, .register-card, .create-class-card {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -634,6 +635,10 @@
             box-shadow: 0 30px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
             text-align: center;
             position: relative;
+        }
+
+        .create-class-card {
+            max-width: 400px;
         }
 
         .teacher-card {
@@ -714,7 +719,8 @@
             flex-wrap: wrap;
         }
 
-        .auth-input, #room-code-input, #tournament-name-input, #tournament-size-input, #tournament-entry-fee, .form-group input, .form-group select {
+        .auth-input, #room-code-input, #tournament-name-input, #tournament-size-input, #tournament-entry-fee, .form-group input, .form-group select,
+        #new-class-name {
             width: 100%;
             padding: clamp(12px, 3vw, 15px) clamp(15px, 3vw, 20px);
             margin: 10px 0;
@@ -727,7 +733,8 @@
             transition: all 0.3s ease;
         }
 
-        .auth-input:focus, #room-code-input:focus, #tournament-name-input:focus, #tournament-size-input:focus, #tournament-entry-fee:focus, .form-group input:focus, .form-group select:focus {
+        .auth-input:focus, #room-code-input:focus, #tournament-name-input:focus, #tournament-size-input:focus, #tournament-entry-fee:focus, .form-group input:focus, .form-group select:focus,
+        #new-class-name:focus {
             outline: none;
             border-color: #fba9c4;
             box-shadow: 0 0 0 4px rgba(255, 210, 225, 0.3);
@@ -1480,14 +1487,14 @@
             color: white;
         }
 
-        .student-list {
+        .student-list, .class-list {
             max-height: 400px;
             overflow-y: auto;
             margin-bottom: 15px;
             padding: 5px;
         }
 
-        .student-list-item {
+        .student-list-item, .class-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -1500,17 +1507,17 @@
             cursor: pointer;
         }
 
-        .student-list-item:hover {
+        .student-list-item:hover, .class-item:hover {
             transform: translateX(5px);
             background: rgba(255, 235, 245, 0.9);
         }
 
-        .student-info h4 {
+        .student-info h4, .class-item h4 {
             color: #d46b8d;
             margin-bottom: 5px;
         }
 
-        .student-info p {
+        .student-info p, .class-item p {
             color: #b2869c;
             font-size: 0.9rem;
         }
@@ -1541,7 +1548,7 @@
             .teacher-card {
                 padding: 20px;
             }
-            .student-list-item {
+            .student-list-item, .class-item {
                 flex-direction: column;
                 text-align: center;
             }
@@ -2070,15 +2077,27 @@
                 <button class="tab-btn" data-teacher-tab="stats">📈 班级统计</button>
                 <button class="tab-btn" data-teacher-tab="admin" style="display: none;" id="admin-tab-btn">👑 全校数据</button>
             </div>
+            
+            <!-- 学生列表标签页（包含班级管理） -->
             <div class="teacher-tab-content" id="students-tab">
                 <div style="display: flex; gap: 10px; margin-bottom: 15px; justify-content: space-between; flex-wrap: wrap;">
                     <button class="candy-btn small" id="import-students">📥 导入学生</button>
+                    <button class="candy-btn small" id="export-students-btn">📊 导出学生</button>
+                    <button class="candy-btn small primary" id="create-class-btn">🏫 创建班级</button>
                     <button class="candy-btn small primary" id="sync-data-btn">🔄 同步数据</button>
                     <button class="candy-btn small warning" id="clear-all-records">🗑️ 清除记录</button>
                 </div>
+                
+                <!-- 班级列表区域 -->
+                <div id="class-list" style="margin-bottom: 15px; max-height: 300px; overflow-y: auto;">
+                    <div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载班级...</div>
+                </div>
+                
                 <div class="sync-status" id="sync-status" style="text-align: center; margin-bottom: 10px; color: #28a745;">🟢 在线</div>
                 <div class="student-list" id="student-list"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div></div>
             </div>
+            
+            <!-- 生成报告标签页 -->
             <div class="teacher-tab-content" id="reports-tab" style="display: none;">
                 <div style="margin-bottom: 20px;">
                     <label for="report-student-select" style="display: block; color: #d46b8d; margin-bottom: 10px; text-align: left;">选择学生:</label>
@@ -2089,11 +2108,35 @@
                     <button class="candy-btn secondary" id="export-excel">📊 导出 Excel</button>
                 </div>
             </div>
+            
+            <!-- 班级统计标签页 -->
             <div class="teacher-tab-content" id="stats-tab" style="display: none;">
                 <div class="class-stats" id="class-stats"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div></div>
             </div>
+            
+            <!-- 管理员全校数据标签页 -->
             <div class="teacher-tab-content" id="admin-tab" style="display: none;">
                 <div class="admin-stats" id="admin-stats"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载全校数据...</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建班级模态框 -->
+    <div class="create-class-modal" id="create-class-modal" style="display: none;">
+        <div class="create-class-card">
+            <button class="close-btn" id="close-create-class">×</button>
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">🏫 创建班级</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: #d46b8d; margin-bottom: 8px;">班级名称</label>
+                <input type="text" id="new-class-name" class="auth-input" placeholder="例如：5A" style="margin-bottom: 0;">
+            </div>
+            
+            <div class="auth-error" id="create-class-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
+            
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                <button class="candy-btn primary" id="confirm-create-class">创建班级</button>
+                <button class="candy-btn home" id="cancel-create-class">取消</button>
             </div>
         </div>
     </div>
@@ -2129,7 +2172,8 @@
                     '.close-btn', '#close-auth', '#close-tutorial', '#close-gameover', '#cancel-match', 
                     '#cancel-join', '#cancel-create-tournament', '#home-btn', '#home-from-gameover-btn', 
                     '#rematch-btn', '#close-battle-btn', '#close-teacher', '#close-choice-modal',
-                    '#close-student-register', '#close-teacher-register', '#close-admin-register'
+                    '#close-student-register', '#close-teacher-register', '#close-admin-register',
+                    '#close-create-class', '#cancel-create-class'
                 ];
                 
                 setTimeout(function() {
@@ -2143,7 +2187,7 @@
                         '.auth-modal', '.tutorial-modal', '.game-over-modal', '.tournament-modal', 
                         '.battle-modal', '.join-modal', '.create-tournament-modal', '.teacher-modal',
                         '.register-choice-modal', '.student-register-modal', '.teacher-register-modal',
-                        '.admin-register-modal'
+                        '.admin-register-modal', '.create-class-modal'
                     ];
                     
                     modalSelectors.forEach(function(selector) {
@@ -2162,7 +2206,7 @@
             
             setInterval(function() {
                 var anyModalOpen = Array.from(document.querySelectorAll(
-                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal'
+                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal, .create-class-modal'
                 )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                 if (!anyModalOpen) ensureScroll();
             }, 2000);
@@ -2173,7 +2217,7 @@
                         var bodyStyle = window.getComputedStyle(document.body);
                         if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
                             var anyModalOpen = Array.from(document.querySelectorAll(
-                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal'
+                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal, .create-class-modal'
                             )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                             if (!anyModalOpen) ensureScroll();
                         }
@@ -2217,7 +2261,6 @@
                             }
                         } else {
                             console.log('管理员账号创建成功');
-                            // 创建管理员记录
                             supabaseClient.from('admins').insert([{
                                 user_id: result.data.user.id,
                                 email: 'yyssyun90@gmail.com',
@@ -2341,9 +2384,8 @@
         });
     </script>
 
-    <!-- ===== 统一按钮点击处理（最终修复版）===== -->
+    <!-- ===== 统一按钮点击处理 ===== -->
     <script>
-        // 全局用户同步函数
         function syncCurrentUser() {
             try {
                 if (window.currentUser && window.game && window.game.state) {
@@ -2365,7 +2407,6 @@
             }
         }
         
-        // 立即同步一次
         setTimeout(syncCurrentUser, 100);
         
         document.addEventListener('click', function(e) {
@@ -2373,10 +2414,8 @@
             if (!btn) return;
             var action = btn.dataset.action;
             
-            // 先同步用户
             syncCurrentUser();
             
-            // 检查登录状态
             var isLoggedIn = !!(window.currentUser || (window.game && window.game.state && window.game.state.currentUser));
             
             if (!isLoggedIn) {
@@ -2392,7 +2431,6 @@
                 return false;
             }
             
-            // 确保 window.currentUser 有值
             if (!window.currentUser && window.game && window.game.state && window.game.state.currentUser) {
                 window.currentUser = window.game.state.currentUser;
             }
@@ -2434,7 +2472,7 @@
         });
     </script>
 
-    <!-- 用户界面更新脚本（最终修复版） -->
+    <!-- 用户界面更新脚本 -->
     <script>
         (function() {
             console.log('初始化用户界面...');
@@ -2444,7 +2482,6 @@
             
             function syncAndUpdateUI() {
                 try {
-                    // 同步用户
                     if (window.currentUser && window.game && window.game.state) {
                         if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
                             window.game.state.currentUser = window.currentUser;
@@ -2464,7 +2501,6 @@
                     if (window.currentUser) {
                         if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
                         
-                        // 获取用户显示名称和角色
                         var displayName = window.currentUser.name || window.currentUser.email || '用户';
                         var role = window.currentUser.role || 'student';
                         
@@ -2476,7 +2512,6 @@
                             displayName += ' 👨‍🎓';
                         }
                         
-                        // 管理员显示特殊状态
                         if (role === 'admin') {
                             if (userStatus) userStatus.textContent = '👑 管理员 · 全校数据可见';
                         } else {
@@ -2486,17 +2521,9 @@
                         if (userName) userName.textContent = displayName;
                         if (userInfo) userInfo.style.display = 'flex';
                         
-                        // 显示或隐藏管理员标签页
                         var adminTab = document.getElementById('admin-tab-btn');
-                        var adminTabContent = document.getElementById('admin-tab');
-                        if (adminTab && adminTabContent) {
-                            if (role === 'admin') {
-                                adminTab.style.display = 'inline-block';
-                                adminTabContent.style.display = 'block';
-                            } else {
-                                adminTab.style.display = 'none';
-                                adminTabContent.style.display = 'none';
-                            }
+                        if (adminTab) {
+                            adminTab.style.display = role === 'admin' ? 'inline-block' : 'none';
                         }
                         
                         if (authButtons) {
@@ -2558,7 +2585,6 @@
                     window.supabaseClient.auth.getSession().then(function(result) {
                         if (result.data && result.data.session) { 
                             window.currentUser = result.data.session.user; 
-                            // 尝试获取用户角色
                             if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
                                 window.game.auth.getUserProfile(result.data.session.user.id).then(function(profile) {
                                     if (profile) {
@@ -2586,7 +2612,6 @@
                 }
             }
             
-            // 初始化同步
             syncAndUpdateUI();
             setTimeout(checkUserStatus, 1000);
             setTimeout(checkUserStatus, 2000);
@@ -2597,10 +2622,9 @@
         })();
     </script>
 
-    <!-- 登录/注册处理脚本（最终修复版） -->
+    <!-- 登录/注册处理脚本 -->
     <script>
         document.addEventListener('click', function(e) {
-            // 处理登录提交
             if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
                 e.preventDefault();
                 var email = document.getElementById('auth-email')?.value;
@@ -2661,19 +2685,16 @@
                 }
             }
             
-            // 关闭模态框
             if (e.target.classList.contains('close-btn') || e.target.id === 'close-auth' || (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) {
                 document.getElementById('auth-modal').style.display = 'none';
             }
             
-            // 切换到注册
             if (e.target.id === 'switch-to-register' || (e.target.closest && e.target.closest('#switch-to-register'))) { 
                 e.preventDefault(); 
                 document.getElementById('auth-modal').style.display = 'none'; 
                 document.getElementById('register-choice-modal').style.display = 'flex'; 
             }
             
-            // 返回登录
             if (e.target.id === 'back-to-login-from-choice' || (e.target.closest && e.target.closest('#back-to-login-from-choice'))) { 
                 e.preventDefault(); 
                 document.getElementById('register-choice-modal').style.display = 'none'; 
