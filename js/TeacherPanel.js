@@ -1,6 +1,6 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 3.0.5 (完整版 - 班级管理 + 学生导入导出 + 管理员全校视图)
+ * 版本: 3.0.7 (修复版 - 班级管理 + 学生导入导出 + 自动生成学号)
  * 功能：从Supabase读取数据并显示在教师面板，支持教师和管理员不同视图
  * ====================================================================
  */
@@ -127,6 +127,58 @@ class TeacherPanel {
     }
 
     /**
+     * 清理文件名（移除非法字符）
+     */
+    sanitizeFilename(filename) {
+        return filename.replace(/[\\/:*?"<>|]/g, '_').substring(0, 50);
+    }
+
+    /**
+     * 生成唯一学号（带重试机制）
+     */
+    async generateUniqueStudentId(schoolCode, className, retryCount = 0) {
+        const year = new Date().getFullYear();
+        const classShort = className ? className.replace(/[^0-9A-Z]/gi, '') : 'XXX';
+        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const studentId = `${schoolCode}_${year}_${classShort}_${randomNum}`;
+        
+        // 检查是否已存在
+        const { data: existing } = await this.supabase
+            .from('students')
+            .select('student_id')
+            .eq('student_id', studentId)
+            .maybeSingle();
+        
+        if (existing && retryCount < 5) {
+            // 递归重试，最多5次
+            return this.generateUniqueStudentId(schoolCode, className, retryCount + 1);
+        }
+        
+        return studentId;
+    }
+
+    /**
+     * 生成唯一班级代码（带重试机制）
+     */
+    async generateUniqueClassCode(schoolCode, stateCode, className, retryCount = 0) {
+        const randomCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+        const classCode = `${stateCode}_${schoolCode}_${className.replace(/[^a-zA-Z0-9]/g, '')}_${randomCode}`;
+        
+        // 检查是否已存在
+        const { data: existing } = await this.supabase
+            .from('classes')
+            .select('class_code')
+            .eq('class_code', classCode)
+            .maybeSingle();
+        
+        if (existing && retryCount < 5) {
+            return this.generateUniqueClassCode(schoolCode, stateCode, className, retryCount + 1);
+        }
+        
+        return classCode;
+    }
+
+    /**
      * 绑定事件
      */
     bindEvents() {
@@ -146,6 +198,12 @@ class TeacherPanel {
         document.querySelectorAll('[data-teacher-tab]').forEach(btn => {
             btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.teacherTab));
         });
+
+        // 下载CSV模板
+        const downloadTemplateBtn = document.getElementById('download-template-btn');
+        if (downloadTemplateBtn) {
+            downloadTemplateBtn.addEventListener('click', (e) => this.downloadCSVTemplate(e));
+        }
 
         // 导入学生
         const importBtn = document.getElementById('import-students');
@@ -364,6 +422,63 @@ class TeacherPanel {
         }
     }
 
+    // ==================== CSV模板下载 ====================
+
+    /**
+     * 下载CSV模板文件
+     */
+    async downloadCSVTemplate(e) {
+        e?.preventDefault();
+        
+        try {
+            // CSV模板内容（学号可选）
+            const headers = ['学号', '姓名', '班级'];
+            const exampleRows = [
+                ['S001', '陈小明', '5A'],
+                ['', '李小花', '5A'],      // 学号留空，系统自动生成
+                ['S003', '张伟强', '5B'],
+                ['', '王丽丽', '5B'],
+                ['S005', '刘志明', '5A']
+            ];
+            
+            // 构建CSV内容
+            let csvContent = headers.join(',') + '\n';
+            exampleRows.forEach(row => {
+                csvContent += row.join(',') + '\n';
+            });
+            
+            // 添加说明注释
+            csvContent = '# 格式说明：学号,姓名,班级\n' + csvContent;
+            csvContent += '# \n';
+            csvContent += '# 注意事项：\n';
+            csvContent += '# 1. 学号：可选，如果不填系统会自动生成（格式：学校代码_学年_班级_序号）\n';
+            csvContent += '# 2. 姓名：必填\n';
+            csvContent += '# 3. 班级：可选，如果不填则学生没有班级\n';
+            csvContent += '# 4. 如果班级不存在，系统会自动创建\n';
+            csvContent += '# 5. 学号不能重复，重复的学号会被跳过\n';
+            csvContent += '# 6. 示例数据仅供参考，导入前请删除\n';
+            
+            // 创建Blob并下载
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', `学生导入模板_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.display = 'none';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert('✅ CSV模板已下载，学号可留空，系统会自动生成');
+        } catch (error) {
+            console.error('下载模板失败:', error);
+            alert('❌ 下载失败，请重试');
+        }
+    }
+
     // ==================== 班级管理功能 ====================
 
     /**
@@ -432,8 +547,7 @@ class TeacherPanel {
             
             const schoolCode = (schoolInfo?.school_name || 'SCH').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
             const stateCode = (schoolInfo?.state || 'MY').substring(0, 2).toUpperCase();
-            const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-            const classCode = `${stateCode}_${schoolCode}_${className.replace(/[^a-zA-Z0-9]/g, '')}_${randomCode}`;
+            const classCode = await this.generateUniqueClassCode(schoolCode, stateCode, className);
             
             const academicYear = new Date().getFullYear();
             
@@ -472,7 +586,7 @@ class TeacherPanel {
     }
 
     /**
-     * 刷新班级列表
+     * 刷新班级列表（使用事件委托避免重复绑定）
      */
     async refreshClassList() {
         const classListDiv = document.getElementById('class-list');
@@ -517,7 +631,7 @@ class TeacherPanel {
                 const studentNum = studentCount || 0;
                 
                 html += `
-                    <div class="class-item" style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px; border-left: 4px solid #d46b8d;">
+                    <div class="class-item" data-class-id="${cls.id}" data-class-name="${this.escapeHtml(cls.class_name)}" style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px; border-left: 4px solid #d46b8d;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                             <div>
                                 <h4 style="color: #d46b8d; margin-bottom: 5px;">${this.escapeHtml(cls.class_name)}</h4>
@@ -528,8 +642,8 @@ class TeacherPanel {
                                 </div>
                             </div>
                             <div style="margin-top: 10px;">
-                                <button class="candy-btn small" data-class-id="${cls.id}" data-class-name="${this.escapeHtml(cls.class_name)}">📋 查看学生</button>
-                                ${cls.class_code ? `<button class="candy-btn small secondary" data-class-code="${cls.class_code}">📋 复制代码</button>` : ''}
+                                <button class="candy-btn small view-class-students" data-class-id="${cls.id}">📋 查看学生</button>
+                                ${cls.class_code ? `<button class="candy-btn small secondary copy-class-code" data-class-code="${cls.class_code}">📋 复制代码</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -538,20 +652,24 @@ class TeacherPanel {
             
             classListDiv.innerHTML = html;
             
-            // 绑定班级按钮事件
-            classListDiv.querySelectorAll('[data-class-id]').forEach(btn => {
-                btn.addEventListener('click', () => {
+            // 使用事件委托绑定按钮事件（避免重复绑定）
+            classListDiv.querySelectorAll('.view-class-students').forEach(btn => {
+                btn.removeEventListener('click', this.handleViewClassStudents);
+                this.handleViewClassStudents = (e) => {
                     const classId = btn.dataset.classId;
-                    const className = btn.dataset.className;
+                    const className = btn.closest('.class-item')?.dataset.className || '';
                     this.showClassStudents(classId, className);
-                });
+                };
+                btn.addEventListener('click', this.handleViewClassStudents);
             });
             
-            classListDiv.querySelectorAll('[data-class-code]').forEach(btn => {
-                btn.addEventListener('click', () => {
+            classListDiv.querySelectorAll('.copy-class-code').forEach(btn => {
+                btn.removeEventListener('click', this.handleCopyClassCode);
+                this.handleCopyClassCode = (e) => {
                     const classCode = btn.dataset.classCode;
                     this.copyClassCode(classCode);
-                });
+                };
+                btn.addEventListener('click', this.handleCopyClassCode);
             });
             
         } catch (error) {
@@ -694,7 +812,7 @@ class TeacherPanel {
     }
 
     /**
-     * 导入学生 (CSV)
+     * 导入学生 (CSV) - 支持自动生成学号
      */
     async importStudents(e) {
         e?.preventDefault();
@@ -721,19 +839,35 @@ class TeacherPanel {
                         return;
                     }
                     
+                    // 获取学校信息用于生成学号
+                    const schoolInfo = await this.getUserSchoolInfo();
+                    const schoolCode = (schoolInfo?.school_name || 'SCH').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+                    const stateCode = (schoolInfo?.state || 'MY').substring(0, 2).toUpperCase();
+                    const year = new Date().getFullYear();
+                    
                     const lines = e.target.result.split('\n');
                     let imported = 0;
                     let errors = 0;
+                    let skipped = 0;
                     
                     for (const line of lines) {
                         const trimmed = line.trim();
                         if (!trimmed) continue;
                         
+                        // 跳过注释行和标题行
+                        if (trimmed.startsWith('#')) continue;
+                        if (trimmed.startsWith('学号')) continue;
+                        
                         const parts = trimmed.split(',').map(s => s.trim());
                         if (parts.length >= 2) {
-                            const studentId = parts[0];
+                            let studentId = parts[0];
                             const studentName = parts[1];
                             const studentClass = parts[2] || null;
+                            
+                            // 如果没有提供学号，自动生成唯一学号
+                            if (!studentId || studentId === '') {
+                                studentId = await this.generateUniqueStudentId(schoolCode, studentClass);
+                            }
                             
                             // 检查是否已存在
                             const { data: existing } = await this.supabase
@@ -743,8 +877,41 @@ class TeacherPanel {
                                 .maybeSingle();
                             
                             if (existing) {
-                                errors++;
+                                skipped++;
                                 continue;
+                            }
+                            
+                            // 获取或创建班级
+                            let classId = null;
+                            if (studentClass) {
+                                const { data: existingClass } = await this.supabase
+                                    .from('classes')
+                                    .select('id')
+                                    .eq('school_id', userInfo.schoolId)
+                                    .eq('class_name', studentClass)
+                                    .maybeSingle();
+                                
+                                if (existingClass) {
+                                    classId = existingClass.id;
+                                } else {
+                                    // 创建新班级（使用唯一班级代码）
+                                    const classCode = await this.generateUniqueClassCode(schoolCode, stateCode, studentClass);
+                                    
+                                    const { data: newClass, error: classError } = await this.supabase
+                                        .from('classes')
+                                        .insert([{
+                                            class_name: studentClass,
+                                            school_id: userInfo.schoolId,
+                                            class_code: classCode,
+                                            academic_year: year
+                                        }])
+                                        .select()
+                                        .single();
+                                    
+                                    if (!classError && newClass) {
+                                        classId = newClass.id;
+                                    }
+                                }
                             }
                             
                             // 插入学生记录
@@ -755,23 +922,25 @@ class TeacherPanel {
                                     name: studentName,
                                     class: studentClass,
                                     school_id: userInfo.schoolId,
-                                    school: userInfo.schoolName
+                                    school: userInfo.schoolName,
+                                    class_id: classId
                                 }]);
                             
                             if (!error) {
                                 imported++;
                             } else {
                                 errors++;
+                                console.error('导入错误:', error);
                             }
                         }
                     }
                     
-                    if (imported > 0) {
-                        alert(`✅ 成功导入 ${imported} 名学生${errors > 0 ? `，${errors} 条失败` : ''}`);
-                        this.refreshData();
-                    } else {
-                        alert('❌ 导入失败，请检查文件格式（CSV格式：学号,姓名,班级）');
-                    }
+                    let message = `✅ 成功导入 ${imported} 名学生`;
+                    if (skipped > 0) message += `，${skipped} 条重复跳过`;
+                    if (errors > 0) message += `，${errors} 条失败`;
+                    alert(message);
+                    this.refreshData();
+                    
                 } catch (error) {
                     console.error('导入学生失败:', error);
                     alert('❌ 导入失败：' + error.message);
@@ -839,7 +1008,7 @@ class TeacherPanel {
             
             const fileName = userInfo.role === 'admin' 
                 ? `全校学生数据_${new Date().toISOString().slice(0,10)}.xlsx`
-                : `${userInfo.schoolName || '学校'}_学生数据_${new Date().toISOString().slice(0,10)}.xlsx`;
+                : `${this.sanitizeFilename(userInfo.schoolName || '学校')}_学生数据_${new Date().toISOString().slice(0,10)}.xlsx`;
             
             XLSX.writeFile(wb, fileName);
             
@@ -852,7 +1021,7 @@ class TeacherPanel {
     }
 
     /**
-     * 刷新班级统计
+     * 刷新班级统计（使用事件委托避免重复绑定）
      */
     async refreshClassStats() {
         const statsDiv = document.getElementById('class-stats');
@@ -895,7 +1064,7 @@ class TeacherPanel {
                 const studentNum = studentCount || 0;
                 
                 html += `
-                    <div style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px;">
+                    <div class="class-stat-item" data-class-id="${cls.id}" data-class-name="${this.escapeHtml(cls.class_name)}" style="background: #f8f9fa; border-radius: 15px; padding: 15px; margin-bottom: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                             <div>
                                 <h4 style="color: #d46b8d;">${this.escapeHtml(cls.class_name)}</h4>
@@ -905,7 +1074,7 @@ class TeacherPanel {
                                 </div>
                             </div>
                             <div style="margin-top: 8px;">
-                                <button class="candy-btn small" data-class-id="${cls.id}" data-class-name="${this.escapeHtml(cls.class_name)}">📋 查看学生</button>
+                                <button class="candy-btn small view-class-students-stat" data-class-id="${cls.id}">📋 查看学生</button>
                             </div>
                         </div>
                     </div>
@@ -914,13 +1083,15 @@ class TeacherPanel {
             
             statsDiv.innerHTML = html;
             
-            // 绑定查看学生按钮事件
-            statsDiv.querySelectorAll('[data-class-id]').forEach(btn => {
-                btn.addEventListener('click', () => {
+            // 使用事件委托绑定按钮事件
+            statsDiv.querySelectorAll('.view-class-students-stat').forEach(btn => {
+                btn.removeEventListener('click', this.handleViewClassStudentsStat);
+                this.handleViewClassStudentsStat = (e) => {
                     const classId = btn.dataset.classId;
-                    const className = btn.dataset.className;
+                    const className = btn.closest('.class-stat-item')?.dataset.className || '';
                     this.showClassStudents(classId, className);
-                });
+                };
+                btn.addEventListener('click', this.handleViewClassStudentsStat);
             });
             
         } catch (error) {
