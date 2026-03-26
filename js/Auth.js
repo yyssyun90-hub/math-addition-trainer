@@ -1,6 +1,6 @@
 /**
  * ==================== 糖果数学消消乐 - 用户认证 ====================
- * 版本: 6.0.0 (学生/教师/管理员注册版)
+ * 版本: 6.0.2 (学生注册自动生成学号版 - 修复版)
  * 功能：登录、注册（学生/教师/管理员）、密码重置、会话管理
  * =============================================================
  */
@@ -1594,7 +1594,131 @@
             return { user: null };
         }
 
-        // ==================== 学生注册 ====================
+        // ==================== 学生注册（自动生成学号版）====================
+
+        /**
+         * 获取或创建学校记录
+         */
+        async getOrCreateSchool(state, school) {
+            if (!state || !school) return null;
+            
+            // 查找现有学校
+            const { data: existingSchool } = await this.supabase
+                .from('schools')
+                .select('id')
+                .eq('school_name', school)
+                .eq('state', state)
+                .maybeSingle();
+
+            if (existingSchool) {
+                return existingSchool.id;
+            }
+
+            // 创建新学校
+            const { data: newSchool, error: schoolError } = await this.supabase
+                .from('schools')
+                .insert([{ school_name: school, state: state }])
+                .select()
+                .single();
+
+            if (schoolError) {
+                this.log('warn', '创建学校失败:', schoolError);
+                return null;
+            }
+            return newSchool.id;
+        }
+
+        /**
+         * 获取或创建班级记录
+         */
+        async getOrCreateClass(schoolId, className) {
+            if (!schoolId || !className) return { classId: null, classCode: null };
+
+            // 查找现有班级
+            const { data: existingClass } = await this.supabase
+                .from('classes')
+                .select('id, class_code')
+                .eq('school_id', schoolId)
+                .eq('class_name', className)
+                .maybeSingle();
+
+            if (existingClass) {
+                return { classId: existingClass.id, classCode: existingClass.class_code };
+            }
+
+            // 生成班级代码
+            const { data: schoolInfo } = await this.supabase
+                .from('schools')
+                .select('school_name, state')
+                .eq('id', schoolId)
+                .single();
+            
+            const schoolCode = (schoolInfo?.school_name || 'SCH').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+            const stateCode = (schoolInfo?.state || 'MY').substring(0, 2).toUpperCase();
+            const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const classCode = `${stateCode}_${schoolCode}_${className}_${randomCode}`;
+            const academicYear = new Date().getFullYear();
+
+            // 创建新班级
+            const { data: newClass, error: classError } = await this.supabase
+                .from('classes')
+                .insert([{
+                    class_name: className,
+                    school_id: schoolId,
+                    class_code: classCode,
+                    academic_year: academicYear
+                }])
+                .select()
+                .single();
+
+            if (classError) {
+                this.log('warn', '创建班级失败:', classError);
+                return { classId: null, classCode: null };
+            }
+            return { classId: newClass.id, classCode: newClass.class_code };
+        }
+
+        /**
+         * 生成学生学号
+         */
+        async generateStudentId(state, school, studentClass) {
+            // 获取或创建学校
+            const schoolId = await this.getOrCreateSchool(state, school);
+            
+            // 获取学校代码
+            let schoolCode = school.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+            if (schoolCode.length < 3) {
+                schoolCode = schoolCode.padEnd(3, 'X');
+            }
+            
+            const year = new Date().getFullYear();
+            const classShort = studentClass ? studentClass.replace(/[^0-9A-Z]/gi, '') : 'XXX';
+            const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            
+            // 格式: 学校代码_学年_班级_随机码
+            let studentId = `${schoolCode}_${year}_${classShort}_${randomNum}`;
+            
+            // 检查是否重复，如果重复则重新生成
+            let attempts = 0;
+            let isUnique = false;
+            while (!isUnique && attempts < 5) {
+                const { data: existing } = await this.supabase
+                    .from('students')
+                    .select('student_id')
+                    .eq('student_id', studentId)
+                    .maybeSingle();
+                
+                if (!existing) {
+                    isUnique = true;
+                } else {
+                    const newRandom = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                    studentId = `${schoolCode}_${year}_${classShort}_${newRandom}`;
+                    attempts++;
+                }
+            }
+            
+            return { studentId, schoolId };
+        }
 
         async registerStudent(email, password, state, school, name, studentClass) {
             this.markStart('registerStudent');
@@ -1613,6 +1737,7 @@
                     throw new Error(`密码至少需要${this.config.passwordMinLength}位`);
                 }
 
+                // 注册到 Supabase Auth
                 const { data: authData, error: authError } = await this.supabase.auth.signUp({
                     email: email,
                     password: password,
@@ -1630,8 +1755,19 @@
                 if (authError) throw authError;
                 if (!authData || !authData.user) throw new Error('注册失败：未获取到用户信息');
 
-                const studentId = this.generateUniqueId('S');
+                // 生成学号
+                const { studentId, schoolId } = await this.generateStudentId(state, school, studentClass);
+                
+                // 获取或创建班级
+                let classId = null;
+                let classCode = null;
+                if (schoolId && studentClass) {
+                    const classResult = await this.getOrCreateClass(schoolId, studentClass);
+                    classId = classResult.classId;
+                    classCode = classResult.classCode;
+                }
 
+                // 保存学生记录
                 const studentData = {
                     student_id: studentId,
                     name: name,
@@ -1640,7 +1776,9 @@
                     email: email,
                     state: state,
                     school: school,
-                    user_id: authData.user.id
+                    user_id: authData.user.id,
+                    school_id: schoolId,
+                    class_id: classId
                 };
 
                 try {
@@ -1671,7 +1809,7 @@
 
                 this.metrics.registerSuccess++;
                 
-                return { success: true, user: authData.user };
+                return { success: true, user: authData.user, studentId: studentId };
 
             } catch (error) {
                 this.metrics.registerFailures++;
@@ -1718,6 +1856,8 @@
                 if (authError) throw authError;
                 if (!authData || !authData.user) throw new Error('注册失败：未获取到用户信息');
 
+                // 获取或创建学校
+                const schoolId = await this.getOrCreateSchool(state, school);
                 const teacherId = this.generateUniqueId('T');
 
                 const teacherData = {
@@ -1727,7 +1867,8 @@
                     state: state,
                     school: school,
                     role: 'teacher',
-                    user_id: authData.user.id
+                    user_id: authData.user.id,
+                    school_id: schoolId
                 };
 
                 try {
@@ -1853,15 +1994,15 @@
             if (!userId) return null;
             
             try {
-                // 先查 admins 表
-                const { data: admin, error: adminError } = await this.supabase
-                    .from('admins')
+                // 先查 students 表（最常见）
+                const { data: student, error: studentError } = await this.supabase
+                    .from('students')
                     .select('*')
                     .eq('user_id', userId)
                     .maybeSingle();
 
-                if (!adminError && admin) {
-                    return { ...admin, role: 'admin' };
+                if (!studentError && student) {
+                    return { ...student, role: 'student' };
                 }
 
                 // 再查 teachers 表
@@ -1875,15 +2016,15 @@
                     return { ...teacher, role: 'teacher' };
                 }
 
-                // 最后查 students 表
-                const { data: student, error: studentError } = await this.supabase
-                    .from('students')
+                // 最后查 admins 表
+                const { data: admin, error: adminError } = await this.supabase
+                    .from('admins')
                     .select('*')
                     .eq('user_id', userId)
                     .maybeSingle();
 
-                if (!studentError && student) {
-                    return { ...student, role: 'student' };
+                if (!adminError && admin) {
+                    return { ...admin, role: 'admin' };
                 }
 
                 return null;
@@ -1899,8 +2040,8 @@
             
             const email = user.email || '';
             const userMeta = user.user_metadata || {};
-            const name = profile?.name || userMeta.name || this.safeGetUsername(email);
             
+            let name = '用户';
             let role = 'student';
             let school = null;
             let state = null;
@@ -1910,6 +2051,7 @@
             let permissions = null;
             
             if (profile) {
+                name = profile.name || userMeta.name || this.safeGetUsername(email);
                 role = profile.role || 'student';
                 school = profile.school || null;
                 state = profile.state || null;
@@ -1918,6 +2060,7 @@
                 teacherId = profile.teacher_id || null;
                 permissions = profile.permissions || null;
             } else {
+                name = userMeta.name || this.safeGetUsername(email);
                 role = userMeta.role || 'student';
                 school = userMeta.school || null;
                 state = userMeta.state || null;
