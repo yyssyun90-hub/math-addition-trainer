@@ -224,49 +224,40 @@ class CandyMathGame {
         try {
             console.log('初始化Supabase...');
             
-            if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
-                console.warn('Supabase配置缺失，使用本地模式');
-                this.state.supabaseReady = false;
+            // 使用 window.supabaseClient（已在 index.html 中创建）
+            if (window.supabaseClient) {
+                this.state.supabase = window.supabaseClient;
+                this.state.supabaseReady = true;
+                console.log('✅ Supabase连接成功，supabaseReady = true');
                 return;
             }
             
-            const { createClient } = window.supabase;
-            if (!createClient) {
-                throw new Error('Supabase客户端库未加载');
-            }
-            
-            this.state.supabase = createClient(
-                window.SUPABASE_URL,
-                window.SUPABASE_ANON_KEY,
-                {
-                    auth: {
-                        autoRefreshToken: true,
-                        persistSession: true,
-                        detectSessionInUrl: true
-                    }
-                }
-            );
-            
-            const { error } = await this.state.supabase
-                .from('candy_math_battles')
-                .select('count', { count: 'exact', head: true });
-            
-            if (error) {
-                console.error('Supabase连接测试失败:', error);
-                this.state.supabaseReady = false;
-                this.state.supabaseError = error.message;
+            // 如果 window.supabaseClient 不存在，尝试创建
+            if (!window.supabaseClient && window.supabase && window.supabase.createClient) {
+                const configScript = document.getElementById('supabase-config');
+                const config = configScript ? JSON.parse(configScript.textContent) : {};
                 
-                if (error.message?.includes('API key')) {
-                    console.warn('Supabase API key配置错误，请检查环境变量');
-                }
-            } else {
-                console.log('Supabase连接成功');
+                this.state.supabase = window.supabase.createClient(
+                    config.supabaseUrl || this.supabaseConfig.url,
+                    config.supabaseKey || this.supabaseConfig.anonKey,
+                    {
+                        auth: {
+                            autoRefreshToken: true,
+                            persistSession: true,
+                            detectSessionInUrl: true
+                        }
+                    }
+                );
+                window.supabaseClient = this.state.supabase;
                 this.state.supabaseReady = true;
-                this.state.supabaseError = null;
+                console.log('✅ Supabase客户端创建成功');
+            } else {
+                console.warn('⚠️ Supabase客户端不可用，使用离线模式');
+                this.state.supabaseReady = false;
             }
             
         } catch (error) {
-            console.error('Supabase初始化失败:', error);
+            console.error('❌ Supabase初始化失败:', error);
             this.state.supabaseReady = false;
             this.state.supabaseError = error.message;
         }
@@ -276,8 +267,9 @@ class CandyMathGame {
         if (!this.battle) {
             console.log('初始化对战模式...');
             this.battle = new BattleMode(this);
-            this.battle.init();
-            console.log('对战模式初始化完成');
+            // BattleMode 会在自己的 init() 方法中完成初始化
+            // 不需要在这里额外调用，避免重复初始化
+            console.log('对战模式实例已创建');
         }
         return this.battle;
     }
@@ -775,8 +767,6 @@ class CandyMathGame {
 
             card.classList.add('selected');
             this.state.selectedCards.push(card);
-
-            // 注意：这里移除了 studentRecord.startQuestion() 的调用
 
             if (this.state.selectedCards.length === 2) {
                 this.checkMatch();
