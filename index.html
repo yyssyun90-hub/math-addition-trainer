@@ -193,7 +193,6 @@
             margin-top: clamp(10px, 2vw, 20px);
         }
 
-        /* 方案7：彩色描边（彩虹四色描边） */
         h1 {
             font-size: clamp(1.8rem, 6vw, 2.8rem);
             color: #fff;
@@ -615,7 +614,6 @@
             justify-content: center !important;
         }
 
-        /* 手机屏幕适当调整 */
         @media (max-width: 480px) {
             .number-card,
             #battle-grid .number-card {
@@ -624,7 +622,6 @@
             }
         }
 
-        /* 平板屏幕优化 */
         @media (min-width: 481px) and (max-width: 768px) {
             .number-card,
             #battle-grid .number-card {
@@ -632,7 +629,6 @@
             }
         }
 
-        /* 大屏幕可以更大一些 */
         @media (min-width: 1200px) {
             .number-card,
             #battle-grid .number-card {
@@ -642,7 +638,7 @@
 
         /* 模态框样式 */
         .game-over-modal, .auth-modal, .tutorial-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal,
-        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal {
+        .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal {
             position: fixed;
             top: 0;
             left: 0;
@@ -1800,9 +1796,6 @@
                 <button class="candy-btn tournament" id="choose-teacher" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px;">
                     👩‍🏫 注册为教师
                 </button>
-                <button class="candy-btn admin" id="choose-admin" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px; background: linear-gradient(135deg, #a855f7, #7c3aed);">
-                    👑 注册为管理员
-                </button>
             </div>
             <p style="text-align: center; color: #b2869c;">
                 已有账号？ <a href="#" id="back-to-login-from-choice" style="color: #d46b8d;">返回登录</a>
@@ -1885,25 +1878,6 @@
                 <a href="#" id="back-to-login-from-teacher" style="color: #d46b8d;">返回登录</a>
                 <span style="color: #b2869c; margin: 0 5px;">|</span>
                 <a href="#" id="back-to-choice-from-teacher" style="color: #d46b8d;">返回选择</a>
-            </div>
-        </div>
-    </div>
-
-    <!-- 管理员注册模态框 -->
-    <div class="admin-register-modal" id="admin-register-modal" style="display: none;">
-        <div class="register-card">
-            <button class="close-btn" id="close-admin-register">×</button>
-            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👑 管理员注册</h2>
-            <input type="email" class="auth-input" id="admin-email" placeholder="电子邮箱" style="margin-bottom: 15px;">
-            <input type="password" class="auth-input" id="admin-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;">
-            <input type="text" class="auth-input" id="admin-name" placeholder="姓名" style="margin-bottom: 15px;">
-            <div class="auth-error" id="admin-register-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
-            <button class="start-btn auth-submit-btn" id="admin-register-submit" style="width: 100%; margin: 20px 0;">注册为管理员</button>
-            <div style="text-align: center; margin-top: 15px;">
-                <span style="color: #b2869c;">已有账号？</span>
-                <a href="#" id="back-to-login-from-admin" style="color: #d46b8d;">返回登录</a>
-                <span style="color: #b2869c; margin: 0 5px;">|</span>
-                <a href="#" id="back-to-choice-from-admin" style="color: #d46b8d;">返回选择</a>
             </div>
         </div>
     </div>
@@ -2166,7 +2140,7 @@
                     '.close-btn', '#close-auth', '#close-tutorial', '#close-gameover', '#cancel-match', 
                     '#cancel-join', '#cancel-create-tournament', '#home-btn', '#home-from-gameover-btn', 
                     '#rematch-btn', '#close-battle-btn', '#close-teacher', '#close-choice-modal',
-                    '#close-student-register', '#close-teacher-register', '#close-admin-register'
+                    '#close-student-register', '#close-teacher-register'
                 ];
                 
                 setTimeout(function() {
@@ -2179,8 +2153,7 @@
                     var modalSelectors = [
                         '.auth-modal', '.tutorial-modal', '.game-over-modal', '.tournament-modal', 
                         '.battle-modal', '.join-modal', '.create-tournament-modal', '.teacher-modal',
-                        '.register-choice-modal', '.student-register-modal', '.teacher-register-modal',
-                        '.admin-register-modal'
+                        '.register-choice-modal', '.student-register-modal', '.teacher-register-modal'
                     ];
                     
                     modalSelectors.forEach(function(selector) {
@@ -2199,7 +2172,7 @@
             
             setInterval(function() {
                 var anyModalOpen = Array.from(document.querySelectorAll(
-                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal'
+                    '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
                 )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                 if (!anyModalOpen) ensureScroll();
             }, 2000);
@@ -2210,7 +2183,7 @@
                         var bodyStyle = window.getComputedStyle(document.body);
                         if (bodyStyle.overflow === 'hidden' || bodyStyle.overflowY === 'hidden') {
                             var anyModalOpen = Array.from(document.querySelectorAll(
-                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal, .admin-register-modal'
+                                '.auth-modal, .tutorial-modal, .game-over-modal, .tournament-modal, .battle-modal, .join-modal, .create-tournament-modal, .teacher-modal, .register-choice-modal, .student-register-modal, .teacher-register-modal'
                             )).some(function(modal) { var style = window.getComputedStyle(modal); return style.display !== 'none' && style.display !== ''; });
                             if (!anyModalOpen) ensureScroll();
                         }
@@ -2239,7 +2212,7 @@
                     console.log('Supabase 客户端创建成功');
                     window.supabaseClient = supabaseClient;
                     
-                    // 预设管理员账号
+                    // 预设管理员账号 - 只有 yyssyun90@gmail.com 可以成为管理员
                     supabaseClient.auth.admin?.createUser({
                         email: 'yyssyun90@gmail.com',
                         password: 'Admin123456',
