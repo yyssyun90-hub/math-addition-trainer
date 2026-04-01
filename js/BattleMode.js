@@ -1,13 +1,10 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本：8.2.5 (终极完美版)
- * 更新说明：
- * - 修复所有自查发现的问题
- * - 完善资源清理机制
- * - 优化错误处理
- * - 增强代码健壮性
- * - 完善版本迁移
- * - 更新为柔和多彩配色
+ * 版本：8.2.6 (修复版 - 移除 init 中的自毁调用)
+ * 修复说明：
+ * - 移除 init() 方法中的 this.destroy() 调用，避免实例被立即销毁
+ * - 添加防重复销毁标志
+ * - 添加防重复初始化标志
  * ============================================================
  */
 
@@ -31,6 +28,10 @@ class BattleMode {
         this.updateLayoutHandler = null;
         this.keydownHandler = null;
         this.aiCooldownTimer = null;
+        
+        // 添加防重复销毁标志
+        this._isDestroying = false;
+        this._initialized = false;
         
         this.room = {
             roomCode: null,
@@ -143,7 +144,7 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '8.2.5',
+            STORAGE_VERSION: '8.2.6',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
@@ -310,13 +311,26 @@ class BattleMode {
         });
     }
 
+    /**
+     * 初始化对战模式
+     * 修复：移除自毁调用，避免实例被立即销毁
+     */
     init() {
+        // 防止重复初始化
+        if (this._initialized) {
+            console.log('BattleMode 已经初始化，跳过');
+            return;
+        }
+        
+        console.log('BattleMode 初始化开始...');
+        
+        // 清理之前的资源（如果有）
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
             this.initRetryTimer = null;
         }
-
-        this.destroy().then(() => {
+        
+        try {
             this.leaveBattle();
             this.bindEvents();
             this.setupReconnectionHandler();
@@ -326,10 +340,13 @@ class BattleMode {
             
             this.delayedAuthCheck(0);
             
-        }).catch(error => {
-            console.error('初始化失败:', error);
-            this.showFeedback('初始化失败，请刷新页面', '#fbb9c0');
-        });
+            this._initialized = true;
+            console.log('BattleMode 初始化完成');
+            
+        } catch (error) {
+            console.error('BattleMode 初始化失败:', error);
+            this.showFeedback('对战模式初始化失败，请刷新页面', '#fbb9c0');
+        }
     }
 
     delayedAuthCheck(retryCount = 0) {
@@ -437,8 +454,7 @@ class BattleMode {
         }
         return true;
     }
-
-    setupResponsiveLayout() {
+        setupResponsiveLayout() {
         this.updateLayoutHandler = () => {
             const width = window.innerWidth;
             const battleContainer = document.querySelector('.battle-container');
@@ -1539,8 +1555,7 @@ class BattleMode {
 
         document.head.appendChild(style);
     }
-
-    removeAllEventListeners() {
+        removeAllEventListeners() {
         const listeners = [
             { id: 'quick-match-btn', event: 'click', handler: this.quickMatchHandler },
             { id: 'join-room-btn', event: 'click', handler: this.joinRoomHandler },
@@ -2238,8 +2253,7 @@ class BattleMode {
             this.syncScores();
         }, 10000);
     }
-
-    async quickMatch() {
+        async quickMatch() {
         if (this.isMatching) {
             console.log('已经在匹配中，请稍候');
             this.showFeedback('正在匹配中，请稍候', '#fbb9c0');
@@ -3169,8 +3183,7 @@ class BattleMode {
             }
         }, this.constants.REFRESH_DEBOUNCE);
     }
-
-    cleanupMatch() {
+        cleanupMatch() {
         if (this.matchTimeoutId) {
             clearTimeout(this.matchTimeoutId);
             this.matchTimeoutId = null;
@@ -3699,6 +3712,14 @@ class BattleMode {
             return {
                 ...oldState,
                 version: '8.2.5',
+                matchRetryCount: oldState.matchRetryCount || 0,
+                isMatching: oldState.isMatching || false
+            };
+        }
+        if (oldState.version === '8.2.5') {
+            return {
+                ...oldState,
+                version: '8.2.6',
                 matchRetryCount: oldState.matchRetryCount || 0,
                 isMatching: oldState.isMatching || false
             };
@@ -5345,7 +5366,18 @@ class BattleMode {
         }
     }
 
+    /**
+     * 销毁 BattleMode 实例
+     * 修复：添加防重复销毁标志
+     */
     async destroy() {
+        // 防止重复销毁
+        if (this._isDestroying) {
+            console.log('BattleMode 正在销毁中，跳过');
+            return;
+        }
+        this._isDestroying = true;
+        
         console.log('开始销毁 BattleMode 实例...');
         
         if (this.subscriptionCheckTimer) {
@@ -5497,6 +5529,8 @@ class BattleMode {
         this.game = null;
         this.memoryStorage = null;
         this._wrappedMethods = new WeakMap();
+        this._initialized = false;
+        this._isDestroying = false;
         
         console.log('BattleMode 实例销毁完成');
     }
