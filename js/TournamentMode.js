@@ -10,6 +10,7 @@
  * 2024-01-XX - 重构为RPC调用，提高安全性
  * 2024-01-XX - 移除所有客户端业务逻辑，由数据库事务处理
  * 2024-03-XX - 支持自定义参赛人数 (2-100人)
+ * 2024-04-01 - 加强权限检查，仅限 yyssyun90@gmail.com 创建锦标赛
  * ==============================================================
  */
 
@@ -21,7 +22,7 @@ class TournamentMode {
         this.activeTab = 'lobby';
         this.initialized = false;
         
-        // 授权创建锦标赛的邮箱列表
+        // 授权创建锦标赛的邮箱列表 - 只有超级管理员
         this.authorizedCreators = ['yyssyun90@gmail.com'];
         
         // 锦标赛常量
@@ -68,6 +69,7 @@ class TournamentMode {
         if (this.initialized) return;
         this.bindEvents();
         this.initialized = true;
+        console.log('TournamentMode 初始化完成');
     }
 
     /**
@@ -183,6 +185,7 @@ class TournamentMode {
 
     /**
      * 检查当前用户是否有权创建锦标赛
+     * 只有 yyssyun90@gmail.com 可以创建锦标赛
      */
     canCreateTournament() {
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
@@ -190,7 +193,14 @@ class TournamentMode {
         }
         
         const userEmail = this.game.state.currentUser?.email;
-        return this.authorizedCreators.includes(userEmail);
+        // 只有指定的邮箱才能创建锦标赛
+        const isAuthorized = userEmail === 'yyssyun90@gmail.com';
+        
+        if (!isAuthorized && userEmail) {
+            console.log('非授权用户尝试创建锦标赛:', userEmail);
+        }
+        
+        return isAuthorized;
     }
 
     /**
@@ -206,7 +216,7 @@ class TournamentMode {
         }
 
         if (!this.canCreateTournament()) {
-            this.showFeedback('您没有权限创建锦标赛', '#ff4444');
+            this.showFeedback('只有超级管理员可以创建锦标赛', '#ff4444');
             return false;
         }
 
@@ -1355,6 +1365,7 @@ class TournamentMode {
         }
 
         this.initialized = false;
+        console.log('TournamentMode 已销毁');
     }
 }
 
