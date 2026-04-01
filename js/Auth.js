@@ -1,7 +1,8 @@
 /**
  * ==================== 糖果数学消消乐 - 用户认证 ====================
- * 版本: 6.0.2 (学生注册自动生成学号版 - 修复版)
- * 功能：登录、注册（学生/教师/管理员）、密码重置、会话管理
+ * 版本: 6.0.3 (仅限特定邮箱管理员版 - 修复版)
+ * 功能：登录、注册（学生/教师）、密码重置、会话管理
+ * 修改：管理员注册仅限 yyssyun90@gmail.com
  * =============================================================
  */
 
@@ -800,19 +801,8 @@
             }
         }
 
-        showAdminRegister() {
-            const choiceModal = document.getElementById('register-choice-modal');
-            if (choiceModal) {
-                choiceModal.style.display = 'none';
-            }
-            
-            const adminModal = document.getElementById('admin-register-modal');
-            if (adminModal) {
-                adminModal.style.display = 'flex';
-            } else {
-                this.log('error', 'admin-register-modal 元素不存在');
-            }
-        }
+        // 管理员注册方法已移除 - 不再提供注册界面
+        // 管理员账号只能通过预设方式创建 (yyssyun90@gmail.com)
 
         // ==================== 认证模态框 ====================
 
@@ -1910,9 +1900,18 @@
             }
         }
 
-        // ==================== 管理员注册 ====================
+        // ==================== 管理员注册（仅限特定邮箱）====================
 
         async registerAdmin(email, password, name) {
+            // 只允许预设的管理员邮箱注册
+            if (email !== 'yyssyun90@gmail.com') {
+                console.warn('非授权用户尝试注册管理员:', email);
+                return { 
+                    success: false, 
+                    error: '管理员账号仅限特定邮箱注册' 
+                };
+            }
+            
             this.markStart('registerAdmin');
             const requestId = this.registerRequest('register');
 
