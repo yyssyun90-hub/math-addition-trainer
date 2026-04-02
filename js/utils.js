@@ -1,9 +1,10 @@
 /**
  * ==================== 糖果数学消消乐 - 工具函数库 ====================
- * 版本: 2.0.0
+ * 版本: 2.1.0
  * 包含：音效管理、国际化、常量定义、数组工具、数字生成、格式化等
  * 作者：AI 程序员 和 TYUN
  * 日期：2026
+ * 修改：添加完整的英文翻译，支持对战模式双语
  * =================================================================
  */
 
@@ -42,12 +43,10 @@
             }
             
             async init() {
-                // 等待用户交互后初始化音频
                 const initAudio = async () => {
                     if (!this.audioContext) {
                         try {
                             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                            // 如果音频上下文是挂起状态，尝试恢复
                             if (this.audioContext.state === 'suspended') {
                                 await this.audioContext.resume();
                             }
@@ -60,19 +59,16 @@
                 document.addEventListener('click', initAudio, { once: true });
                 document.addEventListener('touchstart', initAudio, { once: true });
                 
-                // 更新UI图标，确保DOM已加载
                 this.updateIcon();
             }
             
             async play(type) {
                 if (this.muted) return;
                 
-                // 确保音频上下文已初始化
                 if (!this.audioContext) {
                     return;
                 }
                 
-                // 如果音频上下文是挂起状态，尝试恢复
                 if (this.audioContext.state === 'suspended') {
                     try {
                         await this.audioContext.resume();
@@ -155,7 +151,6 @@
             }
             
             updateIcon() {
-                // 确保DOM加载完成后再更新图标
                 const updateIconSafe = () => {
                     const icon = document.querySelector('.sound-icon');
                     if (icon) {
@@ -254,7 +249,7 @@
             lose: '惜败',
             rematch: '再战一局',
             
-            // ===== 忘记密码相关翻译 =====
+            // 忘记密码相关翻译
             forgotPassword: '忘记密码',
             sendResetLink: '发送重置链接',
             backToLogin: '返回登录',
@@ -282,18 +277,18 @@
             hidePassword: '隐藏密码',
             emailVerificationRequired: '请查收邮件验证邮箱',
             
-            // ===== 新增：登录/注册模态框 =====
+            // 登录/注册模态框
             authTitle: '登录',
             emailPlaceholder: '请输入邮箱',
             passwordPlaceholder: '请输入密码',
             submit: '提交',
             
-            // ===== 新增：加入房间模态框 =====
+            // 加入房间模态框
             enterRoomCode: '请输入6位房间码',
             join: '加入',
             cancel: '取消',
             
-            // ===== 新增：锦标赛模态框 =====
+            // 锦标赛模态框
             lobby: '大厅',
             bracket: '赛程表',
             history: '历史',
@@ -306,7 +301,7 @@
             enterEntryFee: '输入报名费',
             create: '创建',
             
-            // ===== 新增：对战模态框 =====
+            // 对战模态框
             findingOpponent: '正在寻找对手...',
             roomCode: '房间码',
             copy: '复制',
@@ -316,12 +311,82 @@
             enterMessage: '输入消息...',
             close: '关闭',
             
-            // ===== 新增：通用按钮 =====
+            // 通用按钮
             confirm: '确认',
             back: '返回',
             next: '下一步',
             previous: '上一步',
-            done: '完成'
+            done: '完成',
+            
+            // ===== 新增：对战模式相关翻译 =====
+            selectBattleMode: '选择对战模式',
+            multiplayerBattle: '双人对战',
+            multiplayerDesc: '创建/加入房间，实时对战',
+            aiBattle: 'AI对战',
+            aiDesc: '练习模式，AI有延迟答题',
+            selectAIDifficulty: '选择 AI 难度',
+            aiEasy: '简单',
+            aiEasyDesc: '延迟5-7秒，适合新手',
+            aiMedium: '中等',
+            aiMediumDesc: '延迟4-6秒，稍有挑战',
+            aiHard: '困难',
+            aiHardDesc: '延迟3-5秒，高手挑战',
+            createRoom: '创建房间',
+            joinRoomBtn: '加入房间',
+            enterRoomCodePlaceholder: '输入6位房间码',
+            waitingForOpponent: '等待对手加入...',
+            roomCodeLabel: '房间码',
+            copyCode: '复制',
+            youLabel: '你',
+            waitingLabel: '等待中...',
+            vsLabel: 'VS',
+            cancelLabel: '取消',
+            yourTurnLabel: '你的回合',
+            opponentTurnLabel: '对手回合',
+            aiThinkingLabel: 'AI思考中...',
+            timeoutTurnLabel: '时间到，轮到对方了',
+            correctLabel: '✓ 正确！',
+            wrongLabel: '✗ 不对哦',
+            victoryLabel: '胜利！',
+            defeatLabel: '惜败',
+            rematchLabel: '再战一局',
+            closeLabel: '关闭',
+            waitingForPlayers: '等待其他玩家加入...',
+            playersOnlineLabel: '当前在线玩家',
+            waitTimeLabel: '等待时间',
+            noPlayersOnlineLabel: '当前没有其他玩家在线',
+            playWithAILabel: '与AI对战',
+            continueWaitingLabel: '继续等待',
+            matchFoundLabel: '找到对手！准备开始对战...',
+            
+            // 回合时间相关
+            timeLeftLabel: '剩余时间',
+            secondsLabel: '秒',
+            
+            // 房间相关
+            roomDoesNotExist: '房间不存在或已开始',
+            cannotJoinOwnRoom: '不能加入自己创建的房间',
+            roomIsFull: '房间已满',
+            joinSuccess: '加入房间成功',
+            roomCreated: '房间创建成功',
+            createFailed: '创建房间失败',
+            joinFailed: '加入房间失败',
+            invalidRoomCode: '请输入6位房间码',
+            
+            // AI对战相关
+            aiBattleStart: '与AI对战开始！难度: {difficulty}，AI思考时间: {delay}',
+            aiThinkingMsg: 'AI 思考中... (约 {seconds} 秒后作答)',
+            aiChoseMsg: '{name} 选择了 {num1} + {num2} = {sum} {result}',
+            yourTurnTimeLimit: '你的回合，时间限制: {seconds}秒',
+            
+            // 注册相关
+            registerStudent: '注册为学生',
+            registerTeacher: '注册为教师',
+            registerAdmin: '注册为管理员',
+            chooseRole: '选择注册身份',
+            namePlaceholder: '姓名',
+            schoolPlaceholder: '学校名称',
+            classPlaceholder: '班级 (例: 5A)'
         },
         'en': {
             gameTitle: 'Candy Math Match',
@@ -401,7 +466,7 @@
             lose: 'Defeat',
             rematch: 'Rematch',
             
-            // ===== New forgot password related translations =====
+            // Forgot password related translations
             forgotPassword: 'Forgot Password',
             sendResetLink: 'Send Reset Link',
             backToLogin: 'Back to Login',
@@ -429,18 +494,18 @@
             hidePassword: 'Hide password',
             emailVerificationRequired: 'Please check your email to verify your account',
             
-            // ===== New: Login/Register Modal =====
+            // Login/Register Modal
             authTitle: 'Login',
             emailPlaceholder: 'Enter email',
             passwordPlaceholder: 'Enter password',
             submit: 'Submit',
             
-            // ===== New: Join Room Modal =====
+            // Join Room Modal
             enterRoomCode: 'Enter 6-digit room code',
             join: 'Join',
             cancel: 'Cancel',
             
-            // ===== New: Tournament Modal =====
+            // Tournament Modal
             lobby: 'Lobby',
             bracket: 'Bracket',
             history: 'History',
@@ -453,7 +518,7 @@
             enterEntryFee: 'Enter fee',
             create: 'Create',
             
-            // ===== New: Battle Modal =====
+            // Battle Modal
             findingOpponent: 'Finding opponent...',
             roomCode: 'Room Code',
             copy: 'Copy',
@@ -463,12 +528,82 @@
             enterMessage: 'Enter message...',
             close: 'Close',
             
-            // ===== New: Common Buttons =====
+            // Common Buttons
             confirm: 'Confirm',
             back: 'Back',
             next: 'Next',
             previous: 'Previous',
-            done: 'Done'
+            done: 'Done',
+            
+            // ===== New: Battle Mode Translations =====
+            selectBattleMode: 'Select Battle Mode',
+            multiplayerBattle: 'Multiplayer Battle',
+            multiplayerDesc: 'Create/Join Room, Real-time Battle',
+            aiBattle: 'AI Battle',
+            aiDesc: 'Practice Mode, AI Delayed Response',
+            selectAIDifficulty: 'Select AI Difficulty',
+            aiEasy: 'Easy',
+            aiEasyDesc: 'Delay 5-7s, for beginners',
+            aiMedium: 'Medium',
+            aiMediumDesc: 'Delay 4-6s, some challenge',
+            aiHard: 'Hard',
+            aiHardDesc: 'Delay 3-5s, for experts',
+            createRoom: 'Create Room',
+            joinRoomBtn: 'Join Room',
+            enterRoomCodePlaceholder: 'Enter 6-digit room code',
+            waitingForOpponent: 'Waiting for opponent...',
+            roomCodeLabel: 'Room Code',
+            copyCode: 'Copy',
+            youLabel: 'You',
+            waitingLabel: 'Waiting...',
+            vsLabel: 'VS',
+            cancelLabel: 'Cancel',
+            yourTurnLabel: 'Your Turn',
+            opponentTurnLabel: 'Opponent\'s Turn',
+            aiThinkingLabel: 'AI is thinking...',
+            timeoutTurnLabel: 'Time\'s up, opponent\'s turn',
+            correctLabel: '✓ Correct!',
+            wrongLabel: '✗ Try Again',
+            victoryLabel: 'Victory!',
+            defeatLabel: 'Defeat',
+            rematchLabel: 'Rematch',
+            closeLabel: 'Close',
+            waitingForPlayers: 'Waiting for other players...',
+            playersOnlineLabel: 'Players online',
+            waitTimeLabel: 'Wait time',
+            noPlayersOnlineLabel: 'No other players online',
+            playWithAILabel: 'Play with AI',
+            continueWaitingLabel: 'Continue waiting',
+            matchFoundLabel: 'Opponent found! Starting battle...',
+            
+            // Turn Time Related
+            timeLeftLabel: 'Time Left',
+            secondsLabel: 'seconds',
+            
+            // Room Related
+            roomDoesNotExist: 'Room does not exist or already started',
+            cannotJoinOwnRoom: 'Cannot join your own room',
+            roomIsFull: 'Room is full',
+            joinSuccess: 'Joined room successfully',
+            roomCreated: 'Room created successfully',
+            createFailed: 'Failed to create room',
+            joinFailed: 'Failed to join room',
+            invalidRoomCode: 'Please enter a 6-digit room code',
+            
+            // AI Battle Related
+            aiBattleStart: 'AI Battle started! Difficulty: {difficulty}, AI thinking time: {delay}',
+            aiThinkingMsg: 'AI is thinking... (about {seconds} seconds)',
+            aiChoseMsg: '{name} chose {num1} + {num2} = {sum} {result}',
+            yourTurnTimeLimit: 'Your turn, time limit: {seconds} seconds',
+            
+            // Registration Related
+            registerStudent: 'Register as Student',
+            registerTeacher: 'Register as Teacher',
+            registerAdmin: 'Register as Admin',
+            chooseRole: 'Choose Registration Role',
+            namePlaceholder: 'Full Name',
+            schoolPlaceholder: 'School Name',
+            classPlaceholder: 'Class (e.g., 5A)'
         }
     };
 
@@ -631,7 +766,6 @@
             return null;
         },
         
-        // 获取所有可能的配对
         findAllPairs(nums, target) {
             if (!nums || !Array.isArray(nums)) return [];
             const pairs = [];
@@ -665,7 +799,6 @@
             const { min, max } = range;
             const numbers = [];
             
-            // 确保至少有一对数字可以组成目标
             let pairFound = false;
             let attempts = 0;
             const maxAttempts = 50;
@@ -682,13 +815,11 @@
             }
             
             if (!pairFound) {
-                // 如果找不到配对，使用默认值
                 const fallback1 = this.random(min, max);
                 const fallback2 = target - fallback1;
                 numbers.push(fallback1, Math.max(min, Math.min(max, fallback2)));
             }
             
-            // 填充剩余的数字
             while (numbers.length < size) {
                 numbers.push(this.random(min, max));
             }
@@ -702,7 +833,6 @@
             return this.random(actualMin, actualMax);
         },
         
-        // 检查数字是否在范围内
         isInRange(num, range) {
             return num >= range.min && num <= range.max;
         }
@@ -773,7 +903,6 @@
             return password && typeof password === 'string' && password.length >= 6;
         },
         
-        // 添加新的密码验证方法
         validatePassword(password) {
             const i18n = I18n;
             if (!password) return { 
@@ -858,7 +987,6 @@
     };
 
     // ==================== 安全导出 ====================
-    // 检查是否已经存在同名对象，避免覆盖
     if (!global.SoundManager) global.SoundManager = SoundManager;
     if (!global.I18n) global.I18n = I18n;
     if (!global.GAME_CONSTANTS) global.GAME_CONSTANTS = GAME_CONSTANTS;
