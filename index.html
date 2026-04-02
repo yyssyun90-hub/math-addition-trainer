@@ -2227,7 +2227,6 @@
                             }
                         } else {
                             console.log('管理员账号创建成功');
-                            // 创建管理员记录
                             supabaseClient.from('admins').insert([{
                                 user_id: result.data.user.id,
                                 email: 'yyssyun90@gmail.com',
@@ -2321,7 +2320,7 @@
                 if (!window.game) { console.log('等待 game 对象...'); setTimeout(initModes, 100); return; }
                 console.log('game 对象已就绪，开始实例化');
                 if (window.BattleMode && !window.battleModeInstance) {
-                    try { window.battleModeInstance = new window.BattleMode(window.game); console.log('BattleMode 实例化成功'); if (typeof window.battleModeInstance.init === 'function') window.battleModeInstance.init(); } 
+                    try { window.battleModeInstance = new window.BattleMode(window.game); console.log('BattleMode 实例化成功'); } 
                     catch (e) { console.error('BattleMode 实例化失败:', e); }
                 }
                 if (window.TournamentMode && !window.tournamentModeInstance) {
@@ -2412,7 +2411,9 @@
             if (action === 'quick-match') {
                 if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
                 var battleInstance = window.battleModeInstance || window.battleMode;
-                if (battleInstance && typeof battleInstance.quickMatch === 'function') {
+                if (battleInstance && typeof battleInstance.showModeSelect === 'function') {
+                    battleInstance.showModeSelect();
+                } else if (battleInstance && typeof battleInstance.quickMatch === 'function') {
                     battleInstance.quickMatch();
                 } else {
                     if (window.BattleMode && window.game) {
@@ -2420,8 +2421,8 @@
                             var newInstance = new window.BattleMode(window.game); 
                             window.battleModeInstance = newInstance; 
                             window.battleMode = newInstance; 
-                            if (typeof newInstance.quickMatch === 'function') newInstance.quickMatch();
-                            else console.error('quickMatch 方法不存在');
+                            if (typeof newInstance.showModeSelect === 'function') newInstance.showModeSelect();
+                            else console.error('showModeSelect 方法不存在');
                         } catch (err) { 
                             console.error('快速匹配初始化失败:', err);
                             alert('快速匹配功能初始化失败，请刷新页面重试'); 
@@ -2486,7 +2487,6 @@
                             displayName += ' 👨‍🎓';
                         }
                         
-                        // 管理员显示特殊状态
                         if (role === 'admin') {
                             if (userStatus) userStatus.textContent = '👑 管理员 · 全校数据可见';
                         } else {
@@ -2496,7 +2496,6 @@
                         if (userName) userName.textContent = displayName;
                         if (userInfo) userInfo.style.display = 'flex';
                         
-                        // 显示或隐藏管理员标签页
                         var adminTab = document.getElementById('admin-tab-btn');
                         var adminTabContent = document.getElementById('admin-tab');
                         if (adminTab && adminTabContent) {
@@ -2568,7 +2567,6 @@
                     window.supabaseClient.auth.getSession().then(function(result) {
                         if (result.data && result.data.session) { 
                             window.currentUser = result.data.session.user; 
-                            // 尝试获取用户角色
                             if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
                                 window.game.auth.getUserProfile(result.data.session.user.id).then(function(profile) {
                                     if (profile) {
@@ -2596,7 +2594,6 @@
                 }
             }
             
-            // 初始化同步
             syncAndUpdateUI();
             setTimeout(checkUserStatus, 1000);
             setTimeout(checkUserStatus, 2000);
@@ -2607,10 +2604,9 @@
         })();
     </script>
 
-    <!-- 登录/注册处理脚本（最终修复版） -->
+    <!-- 登录/注册处理脚本 -->
     <script>
         document.addEventListener('click', function(e) {
-            // 处理登录提交
             if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
                 e.preventDefault();
                 var email = document.getElementById('auth-email')?.value;
@@ -2671,19 +2667,16 @@
                 }
             }
             
-            // 关闭模态框
             if (e.target.classList.contains('close-btn') || e.target.id === 'close-auth' || (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) {
                 document.getElementById('auth-modal').style.display = 'none';
             }
             
-            // 切换到注册
             if (e.target.id === 'switch-to-register' || (e.target.closest && e.target.closest('#switch-to-register'))) { 
                 e.preventDefault(); 
                 document.getElementById('auth-modal').style.display = 'none'; 
                 document.getElementById('register-choice-modal').style.display = 'flex'; 
             }
             
-            // 返回登录
             if (e.target.id === 'back-to-login-from-choice' || (e.target.closest && e.target.closest('#back-to-login-from-choice'))) { 
                 e.preventDefault(); 
                 document.getElementById('register-choice-modal').style.display = 'none'; 
