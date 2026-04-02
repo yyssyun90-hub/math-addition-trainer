@@ -1,8 +1,9 @@
 /**
  * ==================== 糖果数学消消乐 - 用户认证 ====================
- * 版本: 6.0.3 (仅限特定邮箱管理员版 - 修复版)
+ * 版本: 6.0.4 (仅限特定邮箱管理员版 - 修复版)
  * 功能：登录、注册（学生/教师）、密码重置、会话管理
  * 修改：管理员注册仅限 yyssyun90@gmail.com
+ * 修复：getUserProfile 添加 Supabase 空值检查
  * =============================================================
  */
 
@@ -801,9 +802,6 @@
             }
         }
 
-        // 管理员注册方法已移除 - 不再提供注册界面
-        // 管理员账号只能通过预设方式创建 (yyssyun90@gmail.com)
-
         // ==================== 认证模态框 ====================
 
         showAuthModal(mode, prefillEmail = '') {
@@ -1590,6 +1588,11 @@
          * 获取或创建学校记录
          */
         async getOrCreateSchool(state, school) {
+            if (!this.supabase) {
+                this.log('warn', 'getOrCreateSchool: Supabase 未初始化');
+                return null;
+            }
+            
             if (!state || !school) return null;
             
             // 查找现有学校
@@ -1622,6 +1625,11 @@
          * 获取或创建班级记录
          */
         async getOrCreateClass(schoolId, className) {
+            if (!this.supabase) {
+                this.log('warn', 'getOrCreateClass: Supabase 未初始化');
+                return { classId: null, classCode: null };
+            }
+            
             if (!schoolId || !className) return { classId: null, classCode: null };
 
             // 查找现有班级
@@ -1672,6 +1680,11 @@
          * 生成学生学号
          */
         async generateStudentId(state, school, studentClass) {
+            if (!this.supabase) {
+                this.log('warn', 'generateStudentId: Supabase 未初始化');
+                return { studentId: `TEMP_${Date.now()}`, schoolId: null };
+            }
+            
             // 获取或创建学校
             const schoolId = await this.getOrCreateSchool(state, school);
             
@@ -1725,6 +1738,10 @@
 
                 if (!this.validatePassword(password)) {
                     throw new Error(`密码至少需要${this.config.passwordMinLength}位`);
+                }
+
+                if (!this.supabase) {
+                    throw new Error('Supabase 未初始化');
                 }
 
                 // 注册到 Supabase Auth
@@ -1830,6 +1847,10 @@
                     throw new Error(`密码至少需要${this.config.passwordMinLength}位`);
                 }
 
+                if (!this.supabase) {
+                    throw new Error('Supabase 未初始化');
+                }
+
                 const { data: authData, error: authError } = await this.supabase.auth.signUp({
                     email: email,
                     password: password,
@@ -1928,6 +1949,10 @@
                     throw new Error(`密码至少需要${this.config.passwordMinLength}位`);
                 }
 
+                if (!this.supabase) {
+                    throw new Error('Supabase 未初始化');
+                }
+
                 const { data: authData, error: authError } = await this.supabase.auth.signUp({
                     email: email,
                     password: password,
@@ -1989,8 +2014,25 @@
 
         // ==================== 用户资料 ====================
 
+        /**
+         * 获取用户资料 - 修复版：添加 Supabase 空值检查
+         */
         async getUserProfile(userId) {
-            if (!userId) return null;
+            // ✅ 添加参数验证
+            if (!userId) {
+                this.log('warn', 'getUserProfile: userId 为空');
+                return null;
+            }
+            
+            // ✅ 添加 Supabase 空值检查 - 这是修复的关键
+            if (!this.supabase) {
+                this.log('warn', 'getUserProfile: Supabase 未初始化，尝试自动修复');
+                this.autoFixSupabase();
+                if (!this.supabase) {
+                    this.log('warn', 'getUserProfile: Supabase 仍未初始化，返回 null');
+                    return null;
+                }
+            }
             
             try {
                 // 先查 students 表（最常见）
@@ -2000,7 +2042,10 @@
                     .eq('user_id', userId)
                     .maybeSingle();
 
-                if (!studentError && student) {
+                // 检查是否是表不存在的错误 (42P01)
+                if (studentError && studentError.code === '42P01') {
+                    this.log('warn', 'students 表不存在，跳过查询');
+                } else if (!studentError && student) {
                     return { ...student, role: 'student' };
                 }
 
@@ -2011,7 +2056,9 @@
                     .eq('user_id', userId)
                     .maybeSingle();
 
-                if (!teacherError && teacher) {
+                if (teacherError && teacherError.code === '42P01') {
+                    this.log('warn', 'teachers 表不存在，跳过查询');
+                } else if (!teacherError && teacher) {
                     return { ...teacher, role: 'teacher' };
                 }
 
@@ -2022,14 +2069,22 @@
                     .eq('user_id', userId)
                     .maybeSingle();
 
-                if (!adminError && admin) {
+                if (adminError && adminError.code === '42P01') {
+                    this.log('warn', 'admins 表不存在，跳过查询');
+                } else if (!adminError && admin) {
                     return { ...admin, role: 'admin' };
                 }
 
+                // 如果所有表都不存在或没有记录，返回 null（不是错误）
                 return null;
 
             } catch (error) {
-                console.error('获取用户资料失败:', error);
+                // ✅ 捕获异常但返回 null，不抛出错误导致 UI 崩溃
+                this.log('error', '获取用户资料失败', { 
+                    userId: userId, 
+                    errorMessage: error?.message,
+                    errorCode: error?.code
+                });
                 return null;
             }
         }
