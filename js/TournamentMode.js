@@ -11,6 +11,8 @@
  * 2024-01-XX - 移除所有客户端业务逻辑，由数据库事务处理
  * 2024-03-XX - 支持自定义参赛人数 (2-100人)
  * 2024-04-01 - 加强权限检查，仅限 yyssyun90@gmail.com 创建锦标赛
+ * 2024-04-02 - 修复状态查询，添加 waiting 状态支持
+ * 2024-04-02 - 修复 renderTournamentList 自动创建容器
  * ==============================================================
  */
 
@@ -334,7 +336,7 @@ class TournamentMode {
     }
 
     /**
-     * 加载锦标赛大厅列表
+     * 加载锦标赛大厅列表 - 修复版：添加 waiting 状态支持
      */
     async loadTournamentLobby(forceRefresh = false) {
         try {
@@ -355,11 +357,12 @@ class TournamentMode {
 
             this.showLoading('tournament-list', '加载锦标赛列表...');
 
+            // ✅ 修复：添加 'waiting' 状态
             const { data: tournaments, error } = await this.fetchWithRetry(
                 () => this.game.state.supabase
                     .from('candy_math_tournaments')
                     .select('*')
-                    .in('status', ['registering', 'active'])
+                    .in('status', ['waiting', 'registering', 'active'])
                     .order('created_at', { ascending: false })
                     .limit(50)
             );
@@ -378,11 +381,30 @@ class TournamentMode {
     }
 
     /**
-     * 渲染锦标赛列表
+     * 渲染锦标赛列表 - 修复版：自动创建容器
      */
     renderTournamentList(tournaments) {
-        const list = document.getElementById('tournament-list');
-        if (!list) return;
+        // ✅ 确保容器存在
+        let list = document.getElementById('tournament-list');
+        if (!list) {
+            list = document.createElement('div');
+            list.id = 'tournament-list';
+            list.className = 'tournament-list';
+            list.style.cssText = 'padding: 10px; min-height: 200px;';
+            
+            // 找到合适的父容器
+            let parent = document.querySelector('.tournament-lobby, .tournament-container, .tournament-panel, .tab-content');
+            if (!parent) {
+                parent = document.querySelector('main, .game-container, body');
+            }
+            if (parent) {
+                parent.appendChild(list);
+                console.log('✅ 自动创建了 tournament-list 容器');
+            } else {
+                console.warn('⚠️ 找不到父容器，无法创建 tournament-list');
+                return;
+            }
+        }
 
         this.hideLoading('tournament-list');
 
@@ -420,12 +442,14 @@ class TournamentMode {
      */
     renderTournamentItem(tournament) {
         const statusText = {
+            'waiting': '等待中',
             'registering': '报名中',
             'active': '进行中',
             'finished': '已结束'
         }[tournament.status] || tournament.status;
 
         const statusClass = {
+            'waiting': 'status-waiting',
             'registering': 'status-registering',
             'active': 'status-active',
             'finished': 'status-finished'
@@ -441,28 +465,30 @@ class TournamentMode {
         const timeLeft = this.getRegistrationTimeLeft(tournament.created_at, tournament.status);
         const timeDisplay = timeLeft ? `<span class="time-left">⏰ ${timeLeft}</span>` : '';
 
-        const buttonHtml = tournament.status === 'registering' 
+        const buttonHtml = tournament.status === 'waiting' || tournament.status === 'registering'
             ? `<button class="join-tournament-btn" id="join-tournament-${tournament.id}">报名参赛</button>`
             : `<button class="join-tournament-btn" id="view-tournament-${tournament.id}">查看赛程</button>`;
 
         return `
-            <div class="tournament-item">
-                <div class="tournament-item-header">
-                    <div class="tournament-icon">🏆</div>
-                    <div class="tournament-item-info">
-                        <h4>${this.escapeHtml(tournament.name)}</h4>
-                        <div class="tournament-item-meta">
-                            <span>👥 ${tournament.size}人</span>
+            <div class="tournament-item" style="border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px; margin: 10px 0; background: white;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <span style="font-size: 24px;">🏆</span>
+                            <h4 style="margin: 0;">${this.escapeHtml(tournament.name)}</h4>
+                        </div>
+                        <div style="display: flex; gap: 15px; font-size: 14px; color: #666;">
+                            <span>👥 ${tournament.current_players || 1}/${tournament.max_players || tournament.size}人</span>
                             <span>${modeText}</span>
                             <span>${difficultyText}</span>
                             <span>💰 报名费: ${tournament.entry_fee || 0}</span>
                             ${timeDisplay}
                         </div>
                     </div>
-                </div>
-                <div>
-                    <span class="tournament-status ${statusClass}">${statusText}</span>
-                    ${buttonHtml}
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span class="tournament-status ${statusClass}" style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${tournament.status === 'waiting' ? '#ff9800' : tournament.status === 'registering' ? '#4caf50' : '#9e9e9e'}; color: white;">${statusText}</span>
+                        ${buttonHtml}
+                    </div>
                 </div>
             </div>
         `;
@@ -472,7 +498,7 @@ class TournamentMode {
      * 获取报名剩余时间
      */
     getRegistrationTimeLeft(createdAt, status) {
-        if (status !== 'registering') return '';
+        if (status !== 'registering' && status !== 'waiting') return '';
         
         const created = new Date(createdAt).getTime();
         const now = Date.now();
@@ -559,9 +585,12 @@ class TournamentMode {
             const secondPrize = Math.floor(totalPrize * this.tournamentConstants.PRIZE_POOL_PERCENTAGES.second);
             const thirdPrize = Math.floor(totalPrize * this.tournamentConstants.PRIZE_POOL_PERCENTAGES.third);
             
-            document.getElementById('prize-first').textContent = firstPrize;
-            document.getElementById('prize-second').textContent = secondPrize;
-            document.getElementById('prize-third').textContent = thirdPrize;
+            const firstSpan = document.getElementById('prize-first');
+            const secondSpan = document.getElementById('prize-second');
+            const thirdSpan = document.getElementById('prize-third');
+            if (firstSpan) firstSpan.textContent = firstPrize;
+            if (secondSpan) secondSpan.textContent = secondPrize;
+            if (thirdSpan) thirdSpan.textContent = thirdPrize;
             
             prizePreview.style.display = 'block';
         } else {
@@ -1157,7 +1186,7 @@ class TournamentMode {
                     <span class="history-date" style="color: #666;">${dateStr}</span>
                 </div>
                 <div class="history-details" style="display: flex; gap: 20px; font-size: 0.9rem;">
-                    <span>👥 ${tournament.size}人</span>
+                    <span>👥 ${tournament.size || tournament.max_players}人</span>
                     <span>🏆 冠军: ${prizePool.first || 0}</span>
                     <span>🥈 亚军: ${prizePool.second || 0}</span>
                 </div>
@@ -1208,7 +1237,7 @@ class TournamentMode {
 
             if (fetchError) throw fetchError;
 
-            if (tournament.status !== 'registering') {
+            if (tournament.status !== 'registering' && tournament.status !== 'waiting') {
                 this.showFeedback('比赛已开始，无法退出', '#ff4444');
                 return;
             }
