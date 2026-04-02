@@ -13,6 +13,7 @@
  * 2024-04-01 - 加强权限检查，仅限 yyssyun90@gmail.com 创建锦标赛
  * 2024-04-02 - 修复状态查询，添加 waiting 状态支持
  * 2024-04-02 - 修复 renderTournamentList 自动创建容器
+ * 2024-04-02 - 添加删除锦标赛功能（仅管理员可见）
  * ==============================================================
  */
 
@@ -381,7 +382,7 @@ class TournamentMode {
     }
 
     /**
-     * 渲染锦标赛列表 - 修复版：自动创建容器
+     * 渲染锦标赛列表 - 修复版：自动创建容器 + 添加删除按钮
      */
     renderTournamentList(tournaments) {
         // ✅ 确保容器存在
@@ -430,6 +431,15 @@ class TournamentMode {
                 viewBtn.addEventListener('click', () => this.viewTournament(t.id));
             }
             
+            // ✅ 添加删除按钮事件绑定
+            const deleteBtn = item.querySelector(`#delete-tournament-${t.id}`);
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deleteTournament(t.id);
+                });
+            }
+            
             fragment.appendChild(item);
         });
 
@@ -438,7 +448,7 @@ class TournamentMode {
     }
 
     /**
-     * 渲染锦标赛列表项
+     * 渲染锦标赛列表项 - 添加删除按钮
      */
     renderTournamentItem(tournament) {
         const statusText = {
@@ -466,18 +476,24 @@ class TournamentMode {
         const timeDisplay = timeLeft ? `<span class="time-left">⏰ ${timeLeft}</span>` : '';
 
         const buttonHtml = tournament.status === 'waiting' || tournament.status === 'registering'
-            ? `<button class="join-tournament-btn" id="join-tournament-${tournament.id}">报名参赛</button>`
-            : `<button class="join-tournament-btn" id="view-tournament-${tournament.id}">查看赛程</button>`;
+            ? `<button class="join-tournament-btn" id="join-tournament-${tournament.id}" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">报名参赛</button>`
+            : `<button class="join-tournament-btn" id="view-tournament-${tournament.id}" style="background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">查看赛程</button>`;
+
+        // ✅ 管理员可见删除按钮
+        const isAdmin = this.canCreateTournament();
+        const deleteButton = isAdmin 
+            ? `<button class="delete-tournament-btn" id="delete-tournament-${tournament.id}" style="background: #ff4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-left: 10px;">🗑️ 删除</button>` 
+            : '';
 
         return `
-            <div class="tournament-item" style="border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px; margin: 10px 0; background: white;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
+            <div class="tournament-item" style="border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px; margin: 10px 0; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                             <span style="font-size: 24px;">🏆</span>
-                            <h4 style="margin: 0;">${this.escapeHtml(tournament.name)}</h4>
+                            <h4 style="margin: 0; color: #333;">${this.escapeHtml(tournament.name)}</h4>
                         </div>
-                        <div style="display: flex; gap: 15px; font-size: 14px; color: #666;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 14px; color: #666;">
                             <span>👥 ${tournament.current_players || 1}/${tournament.max_players || tournament.size}人</span>
                             <span>${modeText}</span>
                             <span>${difficultyText}</span>
@@ -485,9 +501,10 @@ class TournamentMode {
                             ${timeDisplay}
                         </div>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: center;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <span class="tournament-status ${statusClass}" style="padding: 4px 12px; border-radius: 20px; font-size: 12px; background: ${tournament.status === 'waiting' ? '#ff9800' : tournament.status === 'registering' ? '#4caf50' : '#9e9e9e'}; color: white;">${statusText}</span>
                         ${buttonHtml}
+                        ${deleteButton}
                     </div>
                 </div>
             </div>
@@ -735,6 +752,68 @@ class TournamentMode {
                 createBtn.disabled = false;
                 createBtn.textContent = '确认创建';
             }
+        }
+    }
+
+    // ==================== 删除锦标赛 ====================
+
+    /**
+     * 删除锦标赛（仅管理员）
+     */
+    async deleteTournament(tournamentId) {
+        // 检查权限
+        if (!this.canCreateTournament()) {
+            this.showFeedback('只有管理员可以删除锦标赛', '#ff4444');
+            return;
+        }
+
+        if (!confirm('⚠️ 确定要删除这个锦标赛吗？\n\n此操作不可恢复，所有相关数据（参赛者、比赛记录）将被永久删除！')) {
+            return;
+        }
+
+        if (!this.game.state.supabaseReady || !this.game.state.supabase) {
+            this.showFeedback('Supabase未连接', '#ff4444');
+            return;
+        }
+
+        try {
+            this.showFeedback('正在删除...', '#ff9800');
+
+            // 先删除参赛者记录
+            const { error: playersError } = await this.game.state.supabase
+                .from('candy_math_tournament_players')
+                .delete()
+                .eq('tournament_id', tournamentId);
+
+            if (playersError) {
+                console.warn('删除参赛者记录失败:', playersError);
+            }
+
+            // 再删除比赛记录
+            const { error: matchesError } = await this.game.state.supabase
+                .from('candy_math_tournament_matches')
+                .delete()
+                .eq('tournament_id', tournamentId);
+
+            if (matchesError) {
+                console.warn('删除比赛记录失败:', matchesError);
+            }
+
+            // 最后删除锦标赛
+            const { error } = await this.game.state.supabase
+                .from('candy_math_tournaments')
+                .delete()
+                .eq('id', tournamentId);
+
+            if (error) throw error;
+
+            this.showFeedback('✅ 锦标赛已删除', '#4CAF50');
+            this.clearCache();
+            await this.loadTournamentLobby(true);
+
+        } catch (error) {
+            console.error('删除锦标赛失败:', error);
+            this.showFeedback(this.getFriendlyErrorMessage(error), '#ff4444');
         }
     }
 
