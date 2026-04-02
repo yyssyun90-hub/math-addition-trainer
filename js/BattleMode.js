@@ -1,10 +1,11 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本：8.2.6 (修复版 - 移除 init 中的自毁调用)
+ * 版本：8.2.7 (修复版 - 增强订阅稳定性)
  * 修复说明：
- * - 移除 init() 方法中的 this.destroy() 调用，避免实例被立即销毁
- * - 添加防重复销毁标志
- * - 添加防重复初始化标志
+ * - 修复 Realtime 订阅失败问题
+ * - 添加订阅超时处理
+ * - 订阅失败时自动切换到 AI 对战模式
+ * - 增强 presence 数据处理兼容性
  * ============================================================
  */
 
@@ -144,7 +145,7 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '8.2.6',
+            STORAGE_VERSION: '8.2.7',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
@@ -221,77 +222,107 @@ class BattleMode {
             
             console.log('开始创建实时订阅频道...');
             
-            const channelName = 'battle-presence-' + Date.now();
-            const newChannel = this.game.state.supabase.channel(channelName);
+            // 使用更简单的频道配置
+            const channelName = 'battle-presence';
+            const newChannel = this.game.state.supabase.channel(channelName, {
+                config: {
+                    presence: {
+                        key: 'candy-battle'
+                    }
+                }
+            });
             
+            // 简化事件监听
             newChannel
                 .on('presence', { event: 'sync' }, () => {
-                    const presenceState = newChannel.presenceState();
-                    console.log('当前在线玩家:', presenceState);
-                    
-                    const players = [];
-                    Object.values(presenceState).forEach(presences => {
-                        presences.forEach(presence => {
-                            if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                                players.push({
-                                    id: presence.user_id,
-                                    name: presence.user_name,
-                                    status: presence.status,
-                                    joinTime: new Date(presence.online_at).getTime()
+                    try {
+                        const presenceState = newChannel.presenceState();
+                        console.log('当前在线玩家:', presenceState);
+                        
+                        const players = [];
+                        Object.values(presenceState).forEach(presences => {
+                            if (Array.isArray(presences)) {
+                                presences.forEach(presence => {
+                                    if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
+                                        players.push({
+                                            id: presence.user_id,
+                                            name: presence.user_name,
+                                            status: presence.status,
+                                            joinTime: new Date(presence.online_at).getTime()
+                                        });
+                                    }
+                                });
+                            } else if (presences && typeof presences === 'object') {
+                                // 处理对象形式的 presence
+                                Object.values(presences).forEach(presence => {
+                                    if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
+                                        players.push({
+                                            id: presence.user_id,
+                                            name: presence.user_name,
+                                            status: presence.status,
+                                            joinTime: new Date(presence.online_at).getTime()
+                                        });
+                                    }
                                 });
                             }
                         });
-                    });
-                    
-                    this.matchQueue = players;
-                    console.log('更新匹配队列:', this.matchQueue);
-                    
-                    if (this.matchQueue.length > 0 && this.isMatching) {
-                        this.tryMatch();
+                        
+                        this.matchQueue = players;
+                        console.log('更新匹配队列:', this.matchQueue);
+                        
+                        if (this.matchQueue.length > 0 && this.isMatching) {
+                            this.tryMatch();
+                        }
+                    } catch (err) {
+                        console.warn('处理 presence sync 失败:', err);
                     }
-                })
-                .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-                    console.log('新玩家加入:', newPresences);
-                    newPresences.forEach(presence => {
-                        if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                            this.showFeedback(`👋 ${presence.user_name} 进入匹配`, '#a3d8d8');
-                        }
-                    });
-                })
-                .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-                    console.log('玩家离开:', leftPresences);
-                    leftPresences.forEach(presence => {
-                        if (presence.user_id && presence.user_id !== this.game.state.currentUser?.id) {
-                            this.showFeedback(`👋 ${presence.user_name} 离开匹配`, '#fbb9c0');
-                        }
-                    });
                 });
             
-            const subscribeStatus = await newChannel.subscribe();
-            console.log('订阅状态:', subscribeStatus);
-            
-            if (subscribeStatus !== 'SUBSCRIBED') {
-                console.error('订阅失败:', subscribeStatus);
-                return false;
-            }
-            
-            this.room.channel = newChannel;
-            
-            if (this.game.state.currentUser) {
-                await newChannel.track({
-                    user_id: this.game.state.currentUser.id,
-                    user_name: this.game.state.currentUser.name,
-                    status: 'idle',
-                    online_at: new Date().toISOString()
+            // 使用 Promise 包装订阅
+            const subscribePromise = new Promise((resolve, reject) => {
+                let timeoutId = setTimeout(() => {
+                    reject(new Error('订阅超时'));
+                }, 10000);
+                
+                newChannel.subscribe(async (status, err) => {
+                    clearTimeout(timeoutId);
+                    console.log('订阅回调状态:', status, err);
+                    
+                    if (status === 'SUBSCRIBED') {
+                        console.log('订阅成功');
+                        this.room.channel = newChannel;
+                        
+                        if (this.game.state.currentUser) {
+                            try {
+                                await newChannel.track({
+                                    user_id: this.game.state.currentUser.id,
+                                    user_name: this.game.state.currentUser.name,
+                                    status: 'idle',
+                                    online_at: new Date().toISOString()
+                                });
+                                console.log('已跟踪当前用户');
+                            } catch (trackErr) {
+                                console.warn('跟踪用户失败:', trackErr);
+                            }
+                        }
+                        resolve(true);
+                    } else if (status === 'CHANNEL_ERROR') {
+                        reject(new Error(`频道错误: ${err?.message || '未知错误'}`));
+                    } else if (status === 'TIMED_OUT') {
+                        reject(new Error('订阅超时'));
+                    }
                 });
-                console.log('已跟踪当前用户');
-            }
+            });
             
+            await subscribePromise;
             return true;
             
         } catch (error) {
             console.error('设置实时订阅失败:', error);
-            return false;
+            // 订阅失败时，不阻塞功能，允许使用 AI 对战
+            this.offlineMode = true;
+            console.log('订阅失败，切换到离线模式，可以使用AI对战');
+            return true; // 返回 true 表示可以继续（使用AI模式）
         }
     }
 
@@ -454,7 +485,8 @@ class BattleMode {
         }
         return true;
     }
-        setupResponsiveLayout() {
+
+    setupResponsiveLayout() {
         this.updateLayoutHandler = () => {
             const width = window.innerWidth;
             const battleContainer = document.querySelector('.battle-container');
@@ -799,8 +831,8 @@ class BattleMode {
                 border-radius: 10px;
                 box-shadow: 0 5px 10px rgba(0, 0, 0, 0.03);
                 color: #b2869c;
-                font-size: clamp(1.2rem, 5vw, 2rem);
-                font-weight: 600;
+                font-size: clamp(1.8rem, 8vw, 3.2rem);
+                font-weight: 800;
                 aspect-ratio: 1 / 1;
                 width: 100%;
                 max-width: 100%;
@@ -813,7 +845,7 @@ class BattleMode {
                 animation: cardAppear 0.3s ease-out;
                 -webkit-tap-highlight-color: transparent;
                 touch-action: manipulation;
-                text-shadow: none;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
                 margin: 0;
                 padding: 0;
                 user-select: none;
@@ -825,8 +857,20 @@ class BattleMode {
                     padding: 5px;
                 }
                 #battle-grid .number-card {
-                    font-size: 1rem;
-                    border-width: 1px;
+                    font-size: clamp(1.4rem, 7vw, 2.2rem);
+                    font-weight: 700;
+                }
+            }
+
+            @media (min-width: 481px) and (max-width: 768px) {
+                #battle-grid .number-card {
+                    font-size: clamp(1.6rem, 6vw, 2.5rem);
+                }
+            }
+
+            @media (min-width: 1200px) {
+                #battle-grid .number-card {
+                    font-size: clamp(2rem, 4vw, 3.5rem);
                 }
             }
 
@@ -1471,7 +1515,7 @@ class BattleMode {
                 backdrop-filter: blur(5px);
                 -webkit-backdrop-filter: blur(5px);
                 border-radius: 20px;
-                border: 1px solid rgba(255, 220, 230, 0.6);
+                border: 1px solid rgba(255, 200, 220, 0.6);
                 box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
             }
 
@@ -2330,14 +2374,19 @@ class BattleMode {
                 this.cardTemplate.className = 'number-card';
             }
 
-            if (!this.room.channel || this.room.channel.state !== 'joined') {
-                const subscribed = await this.setupRealtimeSubscription();
-                if (!subscribed) {
-                    this.showFeedback('无法连接到匹配服务器', '#fbb9c0');
-                    return;
-                }
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            // 尝试订阅，即使失败也继续（使用AI模式）
+            const subscribed = await this.setupRealtimeSubscription();
+            if (!subscribed) {
+                console.log('实时订阅失败，启动 AI 对战');
+                this.showFeedback('无法连接匹配服务器，启动 AI 对战', '#ffa500');
+                this.startAIBattle();
+                this.releaseSemaphore('match');
+                this.isMatching = false;
+                return;
             }
+            
+            // 等待一小段时间让 presence 同步
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             this.cleanupMatch();
 
@@ -2377,7 +2426,7 @@ class BattleMode {
                     console.log('已加入匹配队列');
                     
                     setTimeout(() => {
-                        const presenceState = this.room.channel.presenceState();
+                        const presenceState = this.room.channel?.presenceState();
                         console.log('当前presence状态:', presenceState);
                     }, 500);
                     
@@ -3724,6 +3773,14 @@ class BattleMode {
                 isMatching: oldState.isMatching || false
             };
         }
+        if (oldState.version === '8.2.6') {
+            return {
+                ...oldState,
+                version: '8.2.7',
+                matchRetryCount: oldState.matchRetryCount || 0,
+                isMatching: oldState.isMatching || false
+            };
+        }
         return null;
     }
 
@@ -4254,8 +4311,7 @@ class BattleMode {
             this.room.roundTimer = null;
         }
     }
-
-    generateBattleGrid() {
+        generateBattleGrid() {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
