@@ -4,7 +4,7 @@
  * 包含：音效管理、国际化、常量定义、数组工具、数字生成、格式化等
  * 作者：AI 程序员 和 TYUN
  * 日期：2026
- * 修改：添加完整的英文翻译，支持对战模式双语
+ * 修改：添加完整的英文翻译，支持对战模式双语和教师面板双语
  * =================================================================
  */
 
@@ -318,7 +318,7 @@
             previous: '上一步',
             done: '完成',
             
-            // ===== 新增：对战模式相关翻译 =====
+            // ===== 对战模式相关翻译 =====
             selectBattleMode: '选择对战模式',
             multiplayerBattle: '双人对战',
             multiplayerDesc: '创建/加入房间，实时对战',
@@ -386,7 +386,55 @@
             chooseRole: '选择注册身份',
             namePlaceholder: '姓名',
             schoolPlaceholder: '学校名称',
-            classPlaceholder: '班级 (例: 5A)'
+            classPlaceholder: '班级 (例: 5A)',
+            
+            // ===== 教师面板相关翻译 =====
+            teacherPanel: '教师控制面板',
+            studentList: '学生列表',
+            generateReport: '生成报告',
+            classStats: '班级统计',
+            allSchoolData: '全校数据',
+            importStudents: '导入学生',
+            syncData: '同步数据',
+            clearRecords: '清除记录',
+            selectStudent: '选择学生',
+            classReport: '全班报告',
+            generatePDF: '生成 PDF 报告',
+            exportExcel: '导出 Excel',
+            loading: '加载中...',
+            noData: '暂无数据',
+            studentId: '学号',
+            studentName: '姓名',
+            class: '班级',
+            school: '学校',
+            registerDate: '注册日期',
+            totalQuestions: '总答题数',
+            correctRate: '正确率',
+            avgTime: '平均用时',
+            lastActive: '最后活动',
+            classCode: '班级代码',
+            studentCount: '学生人数',
+            academicYear: '学年',
+            viewStudents: '查看学生',
+            copyCodeBtn: '复制代码',
+            classList: '班级列表',
+            createClass: '创建班级',
+            className: '班级名称',
+            confirmCreate: '确认创建',
+            cancelCreate: '取消',
+            classCreated: '班级创建成功',
+            classCreateFailed: '创建班级失败',
+            studentImported: '成功导入 {count} 名学生',
+            studentImportFailed: '导入失败',
+            exportStudents: '导出学生',
+            downloadTemplate: '下载模板',
+            studentDetail: '学生详情',
+            viewDetail: '点击查看详情',
+            accuracy: '正确率',
+            completedQuestions: '完成题数',
+            totalScore: '总分',
+            online: '在线',
+            offline: '离线'
         },
         'en': {
             gameTitle: 'Candy Math Match',
@@ -535,7 +583,7 @@
             previous: 'Previous',
             done: 'Done',
             
-            // ===== New: Battle Mode Translations =====
+            // ===== Battle Mode Translations =====
             selectBattleMode: 'Select Battle Mode',
             multiplayerBattle: 'Multiplayer Battle',
             multiplayerDesc: 'Create/Join Room, Real-time Battle',
@@ -603,7 +651,55 @@
             chooseRole: 'Choose Registration Role',
             namePlaceholder: 'Full Name',
             schoolPlaceholder: 'School Name',
-            classPlaceholder: 'Class (e.g., 5A)'
+            classPlaceholder: 'Class (e.g., 5A)',
+            
+            // ===== Teacher Panel Translations =====
+            teacherPanel: 'Teacher Panel',
+            studentList: 'Student List',
+            generateReport: 'Generate Report',
+            classStats: 'Class Statistics',
+            allSchoolData: 'School Data',
+            importStudents: 'Import Students',
+            syncData: 'Sync Data',
+            clearRecords: 'Clear Records',
+            selectStudent: 'Select Student',
+            classReport: 'Class Report',
+            generatePDF: 'Generate PDF Report',
+            exportExcel: 'Export Excel',
+            loading: 'Loading...',
+            noData: 'No Data',
+            studentId: 'Student ID',
+            studentName: 'Student Name',
+            class: 'Class',
+            school: 'School',
+            registerDate: 'Register Date',
+            totalQuestions: 'Total Questions',
+            correctRate: 'Accuracy',
+            avgTime: 'Avg Time',
+            lastActive: 'Last Active',
+            classCode: 'Class Code',
+            studentCount: 'Students',
+            academicYear: 'Academic Year',
+            viewStudents: 'View Students',
+            copyCodeBtn: 'Copy Code',
+            classList: 'Class List',
+            createClass: 'Create Class',
+            className: 'Class Name',
+            confirmCreate: 'Confirm',
+            cancelCreate: 'Cancel',
+            classCreated: 'Class created successfully',
+            classCreateFailed: 'Failed to create class',
+            studentImported: 'Successfully imported {count} students',
+            studentImportFailed: 'Import failed',
+            exportStudents: 'Export Students',
+            downloadTemplate: 'Download Template',
+            studentDetail: 'Student Details',
+            viewDetail: 'Click to view details',
+            accuracy: 'Accuracy',
+            completedQuestions: 'Completed',
+            totalScore: 'Total Score',
+            online: 'Online',
+            offline: 'Offline'
         }
     };
 
