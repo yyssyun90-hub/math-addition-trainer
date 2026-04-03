@@ -1,7 +1,9 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 3.0.7 (修复版 - 班级管理 + 学生导入导出 + 自动生成学号)
+ * 版本: 3.1.0 (修复版 - 班级管理 + 学生导入导出 + 自动生成学号 + I18n翻译)
  * 功能：从Supabase读取数据并显示在教师面板，支持教师和管理员不同视图
+ * 修改记录：
+ * 2024-04-03 - 添加 I18n 国际化支持（中英文翻译）
  * ====================================================================
  */
 
@@ -20,6 +22,16 @@ class TeacherPanel {
         
         this.initSupabase();
         this.init();
+    }
+
+    /**
+     * 获取翻译文本
+     */
+    t(key) {
+        if (typeof I18n !== 'undefined' && I18n.t) {
+            return I18n.t(key);
+        }
+        return key;
     }
 
     /**
@@ -296,7 +308,9 @@ class TeacherPanel {
     handleNetworkChange() {
         const statusEl = document.getElementById('sync-status');
         if (statusEl) {
-            statusEl.textContent = navigator.onLine ? '🟢 在线' : '🔴 离线';
+            statusEl.textContent = navigator.onLine 
+                ? `🟢 ${this.t('online') || '在线'}` 
+                : `🔴 ${this.t('offline') || '离线'}`;
             statusEl.style.color = navigator.onLine ? '#28a745' : '#dc3545';
         }
     }
@@ -308,7 +322,7 @@ class TeacherPanel {
         e?.preventDefault();
         
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
-            alert('请先登录');
+            alert(this.t('loginRequired') || '请先登录');
             if (this.game.auth) {
                 this.game.auth.showAuthModal('login');
             }
@@ -320,7 +334,7 @@ class TeacherPanel {
         
         // 检查权限：只有教师或管理员可以访问
         if (userInfo.role !== 'teacher' && userInfo.role !== 'admin') {
-            alert('只有教师或管理员可以访问此面板');
+            alert(this.t('teacherOnly') || '只有教师或管理员可以访问此面板');
             return;
         }
 
@@ -432,13 +446,13 @@ class TeacherPanel {
         
         try {
             // CSV模板内容（学号可选）
-            const headers = ['学号', '姓名', '班级'];
+            const headers = [this.t('studentId') || '学号', this.t('name') || '姓名', this.t('class') || '班级'];
             const exampleRows = [
-                ['S001', '陈小明', '5A'],
-                ['', '李小花', '5A'],      // 学号留空，系统自动生成
-                ['S003', '张伟强', '5B'],
-                ['', '王丽丽', '5B'],
-                ['S005', '刘志明', '5A']
+                ['S001', this.t('exampleName1') || '陈小明', '5A'],
+                ['', this.t('exampleName2') || '李小花', '5A'],
+                ['S003', this.t('exampleName3') || '张伟强', '5B'],
+                ['', this.t('exampleName4') || '王丽丽', '5B'],
+                ['S005', this.t('exampleName5') || '刘志明', '5A']
             ];
             
             // 构建CSV内容
@@ -448,15 +462,15 @@ class TeacherPanel {
             });
             
             // 添加说明注释
-            csvContent = '# 格式说明：学号,姓名,班级\n' + csvContent;
+            csvContent = '# ' + (this.t('csvFormatHint') || '格式说明：学号,姓名,班级') + '\n' + csvContent;
             csvContent += '# \n';
-            csvContent += '# 注意事项：\n';
-            csvContent += '# 1. 学号：可选，如果不填系统会自动生成（格式：学校代码_学年_班级_序号）\n';
-            csvContent += '# 2. 姓名：必填\n';
-            csvContent += '# 3. 班级：可选，如果不填则学生没有班级\n';
-            csvContent += '# 4. 如果班级不存在，系统会自动创建\n';
-            csvContent += '# 5. 学号不能重复，重复的学号会被跳过\n';
-            csvContent += '# 6. 示例数据仅供参考，导入前请删除\n';
+            csvContent += '# ' + (this.t('csvNote1') || '注意事项：') + '\n';
+            csvContent += '# 1. ' + (this.t('csvNote2') || '学号：可选，如果不填系统会自动生成（格式：学校代码_学年_班级_序号）') + '\n';
+            csvContent += '# 2. ' + (this.t('csvNote3') || '姓名：必填') + '\n';
+            csvContent += '# 3. ' + (this.t('csvNote4') || '班级：可选，如果不填则学生没有班级') + '\n';
+            csvContent += '# 4. ' + (this.t('csvNote5') || '如果班级不存在，系统会自动创建') + '\n';
+            csvContent += '# 5. ' + (this.t('csvNote6') || '学号不能重复，重复的学号会被跳过') + '\n';
+            csvContent += '# 6. ' + (this.t('csvNote7') || '示例数据仅供参考，导入前请删除') + '\n';
             
             // 创建Blob并下载
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -464,7 +478,7 @@ class TeacherPanel {
             const url = URL.createObjectURL(blob);
             
             link.setAttribute('href', url);
-            link.setAttribute('download', `学生导入模板_${new Date().toISOString().slice(0,10)}.csv`);
+            link.setAttribute('download', `${this.t('studentImportTemplate') || '学生导入模板'}_${new Date().toISOString().slice(0,10)}.csv`);
             link.style.display = 'none';
             
             document.body.appendChild(link);
@@ -472,10 +486,10 @@ class TeacherPanel {
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
             
-            alert('✅ CSV模板已下载，学号可留空，系统会自动生成');
+            alert(`✅ ${this.t('templateDownloaded') || 'CSV模板已下载，学号可留空，系统会自动生成'}`);
         } catch (error) {
             console.error('下载模板失败:', error);
-            alert('❌ 下载失败，请重试');
+            alert(`❌ ${this.t('downloadFailed') || '下载失败，请重试'}`);
         }
     }
 
@@ -520,14 +534,14 @@ class TeacherPanel {
         
         if (!className) {
             if (errorDiv) {
-                errorDiv.textContent = '❌ 请输入班级名称';
+                errorDiv.textContent = `❌ ${this.t('classNameRequired') || '请输入班级名称'}`;
                 errorDiv.style.color = '#ff4444';
             }
             return;
         }
         
         if (errorDiv) {
-            errorDiv.textContent = '⏳ 创建中...';
+            errorDiv.textContent = `⏳ ${this.t('creating') || '创建中...'}`;
             errorDiv.style.color = '#666';
         }
         
@@ -535,11 +549,11 @@ class TeacherPanel {
             const userInfo = await this.getUserRoleAndSchool();
             
             if (userInfo.role !== 'teacher') {
-                throw new Error('只有教师可以创建班级');
+                throw new Error(this.t('teacherOnlyCreate') || '只有教师可以创建班级');
             }
             
             if (!userInfo.schoolId) {
-                throw new Error('无法获取学校信息，请确保您的教师账号已关联学校');
+                throw new Error(this.t('schoolInfoMissing') || '无法获取学校信息，请确保您的教师账号已关联学校');
             }
             
             // 生成班级代码
@@ -566,7 +580,7 @@ class TeacherPanel {
             if (error) throw error;
             
             if (errorDiv) {
-                errorDiv.textContent = '✅ 班级创建成功！';
+                errorDiv.textContent = `✅ ${this.t('classCreated') || '班级创建成功！'}`;
                 errorDiv.style.color = '#4CAF50';
             }
             
@@ -579,7 +593,7 @@ class TeacherPanel {
         } catch (error) {
             console.error('创建班级失败:', error);
             if (errorDiv) {
-                errorDiv.textContent = '❌ ' + (error.message || '创建失败');
+                errorDiv.textContent = `❌ ${error.message || this.t('createFailed') || '创建失败'}`;
                 errorDiv.style.color = '#ff4444';
             }
         }
@@ -616,7 +630,7 @@ class TeacherPanel {
             if (error) throw error;
             
             if (!classes || classes.length === 0) {
-                classListDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无班级，点击"创建班级"开始</div>';
+                classListDiv.innerHTML = `<div style="text-align: center; color: #b2869c; padding: 20px;">📭 ${this.t('noClasses') || '暂无班级，点击"创建班级"开始'}</div>`;
                 return;
             }
             
@@ -636,14 +650,14 @@ class TeacherPanel {
                             <div>
                                 <h4 style="color: #d46b8d; margin-bottom: 5px;">${this.escapeHtml(cls.class_name)}</h4>
                                 <div style="font-size: 0.85rem; color: #666;">
-                                    班级代码: <code style="background: #fff; padding: 2px 6px; border-radius: 10px;">${cls.class_code || '未生成'}</code><br>
-                                    学生人数: ${studentNum} 人<br>
-                                    学年: ${cls.academic_year}
+                                    ${this.t('classCode') || '班级代码'}: <code style="background: #fff; padding: 2px 6px; border-radius: 10px;">${cls.class_code || this.t('notGenerated') || '未生成'}</code><br>
+                                    ${this.t('studentCount') || '学生人数'}: ${studentNum} ${this.t('studentsUnit') || '人'}<br>
+                                    ${this.t('academicYear') || '学年'}: ${cls.academic_year}
                                 </div>
                             </div>
                             <div style="margin-top: 10px;">
-                                <button class="candy-btn small view-class-students" data-class-id="${cls.id}">📋 查看学生</button>
-                                ${cls.class_code ? `<button class="candy-btn small secondary copy-class-code" data-class-code="${cls.class_code}">📋 复制代码</button>` : ''}
+                                <button class="candy-btn small view-class-students" data-class-id="${cls.id}">📋 ${this.t('viewStudents') || '查看学生'}</button>
+                                ${cls.class_code ? `<button class="candy-btn small secondary copy-class-code" data-class-code="${cls.class_code}">📋 ${this.t('copyCode') || '复制代码'}</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -674,7 +688,7 @@ class TeacherPanel {
             
         } catch (error) {
             console.error('刷新班级列表失败:', error);
-            classListDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+            classListDiv.innerHTML = `<div style="text-align: center; color: #ff4444; padding: 20px;">❌ ${this.t('loadFailed') || '加载失败'}</div>`;
         }
     }
 
@@ -692,30 +706,30 @@ class TeacherPanel {
             if (error) throw error;
             
             if (!students || students.length === 0) {
-                alert(`班级 "${className}" 暂无学生`);
+                alert(`${this.t('classNoStudents') || '班级 "'}${className}" ${this.t('noStudents') || '暂无学生'}`);
                 return;
             }
             
-            let message = `📋 班级 "${className}" 学生列表:\n\n`;
+            let message = `📋 ${this.t('classStudentList') || '班级 "'}${className}" ${this.t('studentList') || '学生列表'}:\n\n`;
             message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            message += `序号 │ 学号 │ 姓名\n`;
+            message += `${this.t('no') || '序号'} │ ${this.t('studentId') || '学号'} │ ${this.t('name') || '姓名'}\n`;
             message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
             
             students.forEach((s, index) => {
                 const num = (index + 1).toString().padStart(3);
                 const id = (s.student_id || '-').padEnd(12);
-                const name = s.name || '未知';
+                const name = s.name || this.t('unknown') || '未知';
                 message += `${num} │ ${id} │ ${name}\n`;
             });
             
             message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            message += `共 ${students.length} 名学生`;
+            message += `${this.t('totalStudents') || '共'} ${students.length} ${this.t('studentsUnit') || '名学生'}`;
             
             alert(message);
             
         } catch (error) {
             console.error('获取班级学生失败:', error);
-            alert('获取学生列表失败');
+            alert(this.t('loadStudentsFailed') || '获取学生列表失败');
         }
     }
 
@@ -724,14 +738,14 @@ class TeacherPanel {
      */
     copyClassCode(code) {
         if (!code) {
-            alert('没有班级代码');
+            alert(this.t('noClassCode') || '没有班级代码');
             return;
         }
         
         navigator.clipboard.writeText(code).then(() => {
-            alert('✅ 班级代码已复制');
+            alert(`✅ ${this.t('codeCopied') || '班级代码已复制'}`);
         }).catch(() => {
-            alert('❌ 复制失败，请手动复制');
+            alert(`❌ ${this.t('copyFailed') || '复制失败，请手动复制'}`);
         });
     }
 
@@ -745,7 +759,7 @@ class TeacherPanel {
         if (!list) return;
 
         try {
-            list.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
+            list.innerHTML = `<div style="text-align: center; padding: 20px;">⏳ ${this.t('loading') || '加载中...'}</div>`;
 
             const userInfo = await this.getUserRoleAndSchool();
             let students = [];
@@ -768,26 +782,26 @@ class TeacherPanel {
             }
 
             if (students.length === 0) {
-                list.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无学生数据</div>';
+                list.innerHTML = `<div style="text-align: center; color: #b2869c; padding: 20px;">📭 ${this.t('noStudentData') || '暂无学生数据'}</div>`;
                 return;
             }
 
             let html = '<div style="margin-bottom: 10px; display: flex; justify-content: space-between;">';
-            html += `<span>👥 共 ${students.length} 名学生</span>`;
-            html += `<span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 在线' : '🔴 离线'}</span>`;
+            html += `<span>👥 ${this.t('totalStudents') || '共'} ${students.length} ${this.t('studentsUnit') || '名学生'}</span>`;
+            html += `<span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 ' + (this.t('online') || '在线') : '🔴 ' + (this.t('offline') || '离线')}</span>`;
             html += '</div>';
 
             students.forEach(student => {
                 html += `
                     <div class="student-list-item" data-student-id="${this.escapeHtml(student.student_id || '')}" style="cursor: pointer;">
                         <div class="student-info">
-                            <h4>${this.escapeHtml(student.name || '未知')}</h4>
-                            <p>学号: ${this.escapeHtml(student.student_id || '-')} · 班级: ${this.escapeHtml(student.class || '未分配')}</p>
-                            <p style="font-size: 0.8rem; color: #999;">学校: ${this.escapeHtml(student.school || '-')}</p>
+                            <h4>${this.escapeHtml(student.name || this.t('unknown') || '未知')}</h4>
+                            <p>${this.t('studentId') || '学号'}: ${this.escapeHtml(student.student_id || '-')} · ${this.t('class') || '班级'}: ${this.escapeHtml(student.class || this.t('unassigned') || '未分配')}</p>
+                            <p style="font-size: 0.8rem; color: #999;">${this.t('school') || '学校'}: ${this.escapeHtml(student.school || '-')}</p>
                         </div>
                         <div class="student-stats">
                             <div class="student-accuracy">📚</div>
-                            <div class="student-questions">点击查看详情</div>
+                            <div class="student-questions">${this.t('clickForDetail') || '点击查看详情'}</div>
                         </div>
                     </div>
                 `;
@@ -807,7 +821,7 @@ class TeacherPanel {
 
         } catch (error) {
             console.error('刷新学生列表失败:', error);
-            list.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+            list.innerHTML = `<div style="text-align: center; color: #ff4444; padding: 20px;">❌ ${this.t('loadFailed') || '加载失败'}</div>`;
         }
     }
 
@@ -830,12 +844,12 @@ class TeacherPanel {
                 try {
                     const userInfo = await this.getUserRoleAndSchool();
                     if (userInfo.role !== 'teacher') {
-                        alert('只有教师可以导入学生');
+                        alert(this.t('teacherOnlyImport') || '只有教师可以导入学生');
                         return;
                     }
                     
                     if (!userInfo.schoolId) {
-                        alert('无法获取学校信息');
+                        alert(this.t('schoolInfoMissing') || '无法获取学校信息');
                         return;
                     }
                     
@@ -856,7 +870,7 @@ class TeacherPanel {
                         
                         // 跳过注释行和标题行
                         if (trimmed.startsWith('#')) continue;
-                        if (trimmed.startsWith('学号')) continue;
+                        if (trimmed.startsWith(this.t('studentId') || '学号')) continue;
                         
                         const parts = trimmed.split(',').map(s => s.trim());
                         if (parts.length >= 2) {
@@ -935,15 +949,15 @@ class TeacherPanel {
                         }
                     }
                     
-                    let message = `✅ 成功导入 ${imported} 名学生`;
-                    if (skipped > 0) message += `，${skipped} 条重复跳过`;
-                    if (errors > 0) message += `，${errors} 条失败`;
+                    let message = `✅ ${this.t('importSuccess') || '成功导入'} ${imported} ${this.t('studentsUnit') || '名学生'}`;
+                    if (skipped > 0) message += `，${skipped} ${this.t('duplicateSkipped') || '条重复跳过'}`;
+                    if (errors > 0) message += `，${errors} ${this.t('failedCount') || '条失败'}`;
                     alert(message);
                     this.refreshData();
                     
                 } catch (error) {
                     console.error('导入学生失败:', error);
-                    alert('❌ 导入失败：' + error.message);
+                    alert(`❌ ${this.t('importFailed') || '导入失败'}：${error.message}`);
                 }
             };
             reader.readAsText(file);
@@ -959,7 +973,7 @@ class TeacherPanel {
         e?.preventDefault();
         
         if (!this.supabase || !navigator.onLine) {
-            alert('需要网络连接才能导出');
+            alert(this.t('networkRequired') || '需要网络连接才能导出');
             return;
         }
         
@@ -979,13 +993,13 @@ class TeacherPanel {
             if (error) throw error;
             
             if (!students || students.length === 0) {
-                alert('没有学生数据可导出');
+                alert(this.t('noDataToExport') || '没有学生数据可导出');
                 return;
             }
             
             // 准备Excel数据
             const wsData = [
-                ['学号', '姓名', '班级', '学校', '注册日期']
+                [this.t('studentId') || '学号', this.t('name') || '姓名', this.t('class') || '班级', this.t('school') || '学校', this.t('registerDate') || '注册日期']
             ];
             
             students.forEach(s => {
@@ -1004,19 +1018,19 @@ class TeacherPanel {
             // 调整列宽
             ws['!cols'] = [{wch:15}, {wch:12}, {wch:10}, {wch:20}, {wch:12}];
             
-            XLSX.utils.book_append_sheet(wb, ws, '学生列表');
+            XLSX.utils.book_append_sheet(wb, ws, this.t('studentList') || '学生列表');
             
             const fileName = userInfo.role === 'admin' 
-                ? `全校学生数据_${new Date().toISOString().slice(0,10)}.xlsx`
-                : `${this.sanitizeFilename(userInfo.schoolName || '学校')}_学生数据_${new Date().toISOString().slice(0,10)}.xlsx`;
+                ? `${this.t('allSchoolData') || '全校学生数据'}_${new Date().toISOString().slice(0,10)}.xlsx`
+                : `${this.sanitizeFilename(userInfo.schoolName || this.t('school') || '学校')}_${this.t('studentData') || '学生数据'}_${new Date().toISOString().slice(0,10)}.xlsx`;
             
             XLSX.writeFile(wb, fileName);
             
-            alert(`✅ 成功导出 ${students.length} 名学生数据`);
+            alert(`✅ ${this.t('exportSuccess') || '成功导出'} ${students.length} ${this.t('studentsUnit') || '名学生'}${this.t('data') || '数据'}`);
             
         } catch (error) {
             console.error('导出学生失败:', error);
-            alert('❌ 导出失败: ' + error.message);
+            alert(`❌ ${this.t('exportFailed') || '导出失败'}: ${error.message}`);
         }
     }
 
@@ -1028,7 +1042,7 @@ class TeacherPanel {
         if (!statsDiv) return;
 
         try {
-            statsDiv.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载中...</div>';
+            statsDiv.innerHTML = `<div style="text-align: center; padding: 20px;">⏳ ${this.t('loading') || '加载中...'}</div>`;
 
             const userInfo = await this.getUserRoleAndSchool();
             
@@ -1046,12 +1060,12 @@ class TeacherPanel {
             if (error) throw error;
             
             if (!classes || classes.length === 0) {
-                statsDiv.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无班级数据</div>';
+                statsDiv.innerHTML = `<div style="text-align: center; color: #b2869c; padding: 20px;">📭 ${this.t('noClassData') || '暂无班级数据'}</div>`;
                 return;
             }
             
             let html = `<div style="margin-bottom: 15px;">
-                <h3 style="color: #d46b8d;">📚 班级列表</h3>
+                <h3 style="color: #d46b8d;">📚 ${this.t('classList') || '班级列表'}</h3>
             </div>`;
             
             for (const cls of classes) {
@@ -1069,12 +1083,12 @@ class TeacherPanel {
                             <div>
                                 <h4 style="color: #d46b8d;">${this.escapeHtml(cls.class_name)}</h4>
                                 <div style="font-size: 0.85rem; color: #666;">
-                                    班级代码: ${cls.class_code || '未生成'}<br>
-                                    学生人数: ${studentNum} 人
+                                    ${this.t('classCode') || '班级代码'}: ${cls.class_code || this.t('notGenerated') || '未生成'}<br>
+                                    ${this.t('studentCount') || '学生人数'}: ${studentNum} ${this.t('studentsUnit') || '人'}
                                 </div>
                             </div>
                             <div style="margin-top: 8px;">
-                                <button class="candy-btn small view-class-students-stat" data-class-id="${cls.id}">📋 查看学生</button>
+                                <button class="candy-btn small view-class-students-stat" data-class-id="${cls.id}">📋 ${this.t('viewStudents') || '查看学生'}</button>
                             </div>
                         </div>
                     </div>
@@ -1096,7 +1110,7 @@ class TeacherPanel {
             
         } catch (error) {
             console.error('刷新班级统计失败:', error);
-            statsDiv.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+            statsDiv.innerHTML = `<div style="text-align: center; color: #ff4444; padding: 20px;">❌ ${this.t('loadFailed') || '加载失败'}</div>`;
         }
     }
 
@@ -1127,12 +1141,12 @@ class TeacherPanel {
                 }
             }
 
-            select.innerHTML = '<option value="all">📊 全班报告</option>';
+            select.innerHTML = `<option value="all">📊 ${this.t('classReport') || '全班报告'}</option>`;
 
             students.forEach(student => {
                 const option = document.createElement('option');
                 option.value = student.student_id;
-                option.textContent = student.name || '未知';
+                option.textContent = student.name || this.t('unknown') || '未知';
                 select.appendChild(option);
             });
 
@@ -1149,7 +1163,7 @@ class TeacherPanel {
         if (!adminTab) return;
 
         try {
-            adminTab.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ 加载全校数据...</div>';
+            adminTab.innerHTML = `<div style="text-align: center; padding: 20px;">⏳ ${this.t('loadingSchoolData') || '加载全校数据...'}</div>`;
 
             // 获取所有学校
             const { data: schools, error: schoolsError } = await this.supabase
@@ -1160,7 +1174,7 @@ class TeacherPanel {
             if (schoolsError) throw schoolsError;
             
             if (!schools || schools.length === 0) {
-                adminTab.innerHTML = '<div style="text-align: center; color: #b2869c; padding: 20px;">📭 暂无学校数据</div>';
+                adminTab.innerHTML = `<div style="text-align: center; color: #b2869c; padding: 20px;">📭 ${this.t('noSchoolData') || '暂无学校数据'}</div>`;
                 return;
             }
             
@@ -1207,30 +1221,30 @@ class TeacherPanel {
             
             let html = `
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 20px; margin-bottom: 20px; color: white;">
-                    <h3 style="margin-bottom: 15px;">📊 全国统计</h3>
+                    <h3 style="margin-bottom: 15px;">📊 ${this.t('nationalStats') || '全国统计'}</h3>
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center;">
                         <div>
                             <div style="font-size: 2rem; font-weight: bold;">${schools.length}</div>
-                            <div style="font-size: 0.9rem;">学校数量</div>
+                            <div style="font-size: 0.9rem;">${this.t('schoolCount') || '学校数量'}</div>
                         </div>
                         <div>
                             <div style="font-size: 2rem; font-weight: bold;">${totalStudents}</div>
-                            <div style="font-size: 0.9rem;">学生总数</div>
+                            <div style="font-size: 0.9rem;">${this.t('totalStudents') || '学生总数'}</div>
                         </div>
                         <div>
                             <div style="font-size: 2rem; font-weight: bold;">${totalTeachers}</div>
-                            <div style="font-size: 0.9rem;">教师总数</div>
+                            <div style="font-size: 0.9rem;">${this.t('totalTeachers') || '教师总数'}</div>
                         </div>
                         <div>
                             <div style="font-size: 2rem; font-weight: bold;">${totalClasses}</div>
-                            <div style="font-size: 0.9rem;">班级总数</div>
+                            <div style="font-size: 0.9rem;">${this.t('totalClasses') || '班级总数'}</div>
                         </div>
                     </div>
                 </div>
             `;
             
             // 学校列表
-            html += `<h3 style="color: #d46b8d; margin: 20px 0 15px;">🏫 学校列表</h3>`;
+            html += `<h3 style="color: #d46b8d; margin: 20px 0 15px;">🏫 ${this.t('schoolList') || '学校列表'}</h3>`;
             
             for (const school of schoolStats) {
                 html += `
@@ -1238,9 +1252,11 @@ class TeacherPanel {
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                             <div>
                                 <h4 style="color: #d46b8d;">${this.escapeHtml(school.school_name)}</h4>
-                                <div style="font-size: 0.85rem; color: #666;">州属: ${this.escapeHtml(school.state)}</div>
+                                <div style="font-size: 0.85rem; color: #666;">${this.t('state') || '州属'}: ${this.escapeHtml(school.state)}</div>
                                 <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
-                                    教师: ${school.teacher_count}人 · 学生: ${school.student_count}人 · 班级: ${school.class_count}个
+                                    ${this.t('teachers') || '教师'}: ${school.teacher_count}${this.t('teachersUnit') || '人'} · 
+                                    ${this.t('students') || '学生'}: ${school.student_count}${this.t('studentsUnit') || '人'} · 
+                                    ${this.t('classes') || '班级'}: ${school.class_count}${this.t('classesUnit') || '个'}
                                 </div>
                             </div>
                         </div>
@@ -1252,7 +1268,7 @@ class TeacherPanel {
             
         } catch (error) {
             console.error('刷新管理员仪表盘失败:', error);
-            adminTab.innerHTML = '<div style="text-align: center; color: #ff4444; padding: 20px;">❌ 加载失败</div>';
+            adminTab.innerHTML = `<div style="text-align: center; color: #ff4444; padding: 20px;">❌ ${this.t('loadFailed') || '加载失败'}</div>`;
         }
     }
 
@@ -1263,22 +1279,22 @@ class TeacherPanel {
         e?.preventDefault();
 
         if (!this.supabase || !navigator.onLine) {
-            alert('网络离线，无法同步');
+            alert(this.t('offlineCannotSync') || '网络离线，无法同步');
             return;
         }
 
         const syncBtn = document.getElementById('sync-data-btn');
         const originalText = syncBtn.textContent;
-        syncBtn.textContent = '⏳ 同步中...';
+        syncBtn.textContent = `⏳ ${this.t('syncing') || '同步中...'}`;
         syncBtn.disabled = true;
 
         try {
             await this.studentRecord.processOfflineQueue();
             await this.refreshData();
-            alert('✅ 数据同步完成');
+            alert(`✅ ${this.t('syncSuccess') || '数据同步完成'}`);
         } catch (error) {
             console.error('同步失败:', error);
-            alert('❌ 同步失败: ' + error.message);
+            alert(`❌ ${this.t('syncFailed') || '同步失败'}: ${error.message}`);
         } finally {
             syncBtn.textContent = originalText;
             syncBtn.disabled = false;
@@ -1297,7 +1313,7 @@ class TeacherPanel {
                 .maybeSingle();
             
             if (error || !student) {
-                alert('找不到该学生数据');
+                alert(this.t('studentNotFound') || '找不到该学生数据');
                 return;
             }
             
@@ -1319,34 +1335,34 @@ class TeacherPanel {
 
             const detailHtml = `
                 <div style="background: white; border-radius: 40px; padding: 30px; max-width: 450px; width: 90%;">
-                    <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(student.name || '未知')} 详情</h3>
+                    <h3 style="color: #d46b8d; margin-bottom: 20px;">${this.escapeHtml(student.name || this.t('unknown') || '未知')} ${this.t('studentDetail') || '详情'}</h3>
                     
                     <div style="margin-bottom: 20px;">
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">学号:</span>
+                            <span style="color: #666;">${this.t('studentId') || '学号'}:</span>
                             <span style="font-weight: bold;">${this.escapeHtml(student.student_id || '-')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">姓名:</span>
+                            <span style="color: #666;">${this.t('name') || '姓名'}:</span>
                             <span style="font-weight: bold;">${this.escapeHtml(student.name || '-')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">班级:</span>
-                            <span style="font-weight: bold;">${this.escapeHtml(student.class || '未分配')}</span>
+                            <span style="color: #666;">${this.t('class') || '班级'}:</span>
+                            <span style="font-weight: bold;">${this.escapeHtml(student.class || this.t('unassigned') || '未分配')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                            <span style="color: #666;">学校:</span>
+                            <span style="color: #666;">${this.t('school') || '学校'}:</span>
                             <span style="font-weight: bold;">${this.escapeHtml(student.school || '-')}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                            <span style="color: #666;">注册时间:</span>
+                            <span style="color: #666;">${this.t('registerDate') || '注册时间'}:</span>
                             <span style="font-weight: bold;">${student.created_at ? new Date(student.created_at).toLocaleDateString() : '-'}</span>
                         </div>
                     </div>
 
                     <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <button class="candy-btn primary" id="generate-student-pdf">📄 生成报告</button>
-                        <button class="candy-btn home" id="close-detail">关闭</button>
+                        <button class="candy-btn primary" id="generate-student-pdf">📄 ${this.t('generateReport') || '生成报告'}</button>
+                        <button class="candy-btn home" id="close-detail">${this.t('close') || '关闭'}</button>
                     </div>
                 </div>
             `;
@@ -1371,7 +1387,7 @@ class TeacherPanel {
 
         } catch (error) {
             console.error('显示学生详情失败:', error);
-            alert('加载失败: ' + error.message);
+            alert(`${this.t('loadFailed') || '加载失败'}: ${error.message}`);
         }
     }
 
@@ -1380,7 +1396,7 @@ class TeacherPanel {
      */
     async exportStudentExcel(studentId) {
         if (!this.supabase || !navigator.onLine) {
-            alert('需要网络连接才能导出');
+            alert(this.t('networkRequired') || '需要网络连接才能导出');
             return;
         }
 
@@ -1394,12 +1410,12 @@ class TeacherPanel {
             if (error) throw error;
 
             if (!data || data.length === 0) {
-                alert('没有数据可导出');
+                alert(this.t('noDataToExport') || '没有数据可导出');
                 return;
             }
 
             const wsData = [
-                ['学生ID', '题目', '数字1', '数字2', '是否正确', '用时(秒)', '时间戳']
+                [this.t('studentId') || '学生ID', this.t('question') || '题目', this.t('num1') || '数字1', this.t('num2') || '数字2', this.t('isCorrect') || '是否正确', this.t('timeSeconds') || '用时(秒)', this.t('timestamp') || '时间戳']
             ];
 
             data.forEach(q => {
@@ -1416,12 +1432,12 @@ class TeacherPanel {
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(wsData);
-            XLSX.utils.book_append_sheet(wb, ws, '答题记录');
+            XLSX.utils.book_append_sheet(wb, ws, this.t('answerRecords') || '答题记录');
             XLSX.writeFile(wb, `student_${studentId}_data.xlsx`);
 
         } catch (error) {
             console.error('导出失败:', error);
-            alert('导出失败: ' + error.message);
+            alert(`${this.t('exportFailed') || '导出失败'}: ${error.message}`);
         }
     }
 
@@ -1431,7 +1447,7 @@ class TeacherPanel {
     clearAllRecords(e) {
         e?.preventDefault();
         
-        if (confirm('确定要清除所有学生记录吗？此操作不可恢复。')) {
+        if (confirm(this.t('clearConfirm') || '确定要清除所有学生记录吗？此操作不可恢复。')) {
             if (this.studentRecord.clearAllRecords()) {
                 this.refreshData();
             }
