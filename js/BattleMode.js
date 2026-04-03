@@ -11,6 +11,13 @@
  * - 简单：延迟 5-7秒，准确率 60%，回合时间 30秒
  * - 中等：延迟 4-6秒，准确率 80%，回合时间 20秒
  * - 困难：延迟 3-5秒，准确率 95%，回合时间 15秒
+ * 
+ * 包含完整功能：
+ * - ELO 排名系统
+ * - 锦标赛集成
+ * - 本地存储恢复
+ * - 断线重连机制
+ * - 完整订阅管理
  * ============================================================
  */
 
@@ -54,7 +61,11 @@ class BattleMode {
             subscriptionId: null,
             gameActive: false,
             selectedCards: [],
-            timeLeft: 30
+            timeLeft: 30,
+            tournamentMode: false,
+            tournamentId: null,
+            tournamentMatchId: null,
+            tournamentChannel: null
         };
         
         // AI 延迟配置
@@ -530,7 +541,8 @@ class BattleMode {
         }
         return true;
     }
-        setupResponsiveLayout() {
+
+    setupResponsiveLayout() {
         this.updateLayoutHandler = () => {
             const width = window.innerWidth;
             const battleContainer = document.querySelector('.battle-container');
@@ -1644,7 +1656,8 @@ class BattleMode {
 
         document.head.appendChild(style);
     }
-        removeAllEventListeners() {
+
+    removeAllEventListeners() {
         const listeners = [
             { id: 'quick-match-btn', event: 'click', handler: this.quickMatchHandler },
             { id: 'join-room-btn', event: 'click', handler: this.joinRoomHandler },
@@ -2035,7 +2048,8 @@ class BattleMode {
         const asyncMethods = [
             'quickMatch', 'joinQueue', 'createBattleRoom', 'startBattle',
             'checkBattleMatch', 'updateBattleScore', 'endTurn', 'endBattle',
-            'sendChatMessage', 'rematch', 'attemptReconnect', 'confirmJoin'
+            'sendChatMessage', 'rematch', 'attemptReconnect', 'confirmJoin',
+            'joinTournamentMatch', 'updateELOAfterBattle'
         ];
         
         asyncMethods.forEach(methodName => {
@@ -2422,7 +2436,8 @@ class BattleMode {
             };
         }
     }
-        // ==================== AI 对战 ====================
+
+    // ==================== AI 对战 ====================
 
     startAIBattleWithDifficulty(difficulty) {
         console.log(`启动 AI 对战，难度: ${difficulty}`);
@@ -3062,7 +3077,8 @@ class BattleMode {
             this.endTurnInProgress = false;
         }
     }
-        // ==================== 快速匹配 ====================
+
+    // ==================== 快速匹配 ====================
 
     async quickMatch() {
         if (this.isMatching) {
@@ -3807,303 +3823,217 @@ class BattleMode {
         if (player1Progress) player1Progress.classList.add('player1');
         if (player2Progress) player2Progress.classList.add('player2');
     }
-        async endBattle(winnerId) {
-        this.room.gameActive = false;
-        this.stopTurnTimer();
-        this.refreshCount = 0;
-        this.aiMoveRetryCount = 0;
-        this.aiGlobalRetryCount = 0;
 
-        if (this.room.opponentIsAI) {
-            this.endAIBattle(winnerId);
-            return;
+    // ==================== ELO 排名系统 ====================
+
+    async updateELOAfterBattle(battle, winnerId) {
+        if (!this.isSupabaseAvailable()) return;
+
+        try {
+            const player1ELO = battle.player1_elo || 1200;
+            const player2ELO = battle.player2_elo || 1200;
+            
+            const player1Result = winnerId === battle.player1_id ? 'win' : 
+                                  winnerId === 'draw' ? 'draw' : 'lose';
+            const player2Result = winnerId === battle.player2_id ? 'win' : 
+                                  winnerId === 'draw' ? 'draw' : 'lose';
+            
+            const player1NewELO = this.calculateNewELO(player1ELO, player2ELO, player1Result);
+            const player2NewELO = this.calculateNewELO(player2ELO, player1ELO, player2Result);
+
+            const { data: currentStats } = await this.game.state.supabase
+                .from('player_elo')
+                .select('battles, wins')
+                .in('user_id', [battle.player1_id, battle.player2_id]);
+
+            const statsMap = {};
+            if (currentStats) {
+                currentStats.forEach(s => {
+                    statsMap[s.user_id] = s;
+                });
+            }
+
+            await this.game.state.supabase
+                .from('player_elo')
+                .upsert([
+                    {
+                        user_id: battle.player1_id,
+                        elo: Math.round(player1NewELO),
+                        battles: (statsMap[battle.player1_id]?.battles || 0) + 1,
+                        wins: winnerId === battle.player1_id ? 
+                            (statsMap[battle.player1_id]?.wins || 0) + 1 : 
+                            (statsMap[battle.player1_id]?.wins || 0),
+                        win_rate: this.calculateWinRate(
+                            winnerId === battle.player1_id ? 
+                                (statsMap[battle.player1_id]?.wins || 0) + 1 : 
+                                (statsMap[battle.player1_id]?.wins || 0),
+                            (statsMap[battle.player1_id]?.battles || 0) + 1
+                        ),
+                        updated_at: new Date().toISOString()
+                    },
+                    {
+                        user_id: battle.player2_id,
+                        elo: Math.round(player2NewELO),
+                        battles: (statsMap[battle.player2_id]?.battles || 0) + 1,
+                        wins: winnerId === battle.player2_id ? 
+                            (statsMap[battle.player2_id]?.wins || 0) + 1 : 
+                            (statsMap[battle.player2_id]?.wins || 0),
+                        win_rate: this.calculateWinRate(
+                            winnerId === battle.player2_id ? 
+                                (statsMap[battle.player2_id]?.wins || 0) + 1 : 
+                                (statsMap[battle.player2_id]?.wins || 0),
+                            (statsMap[battle.player2_id]?.battles || 0) + 1
+                        ),
+                        updated_at: new Date().toISOString()
+                    }
+                ], { onConflict: 'user_id' });
+                
+            if (this.game.state.currentUser && this.game.state.currentUser.id === battle.player1_id) {
+                this.game.state.currentUser.elo = Math.round(player1NewELO);
+            } else if (this.game.state.currentUser && this.game.state.currentUser.id === battle.player2_id) {
+                this.game.state.currentUser.elo = Math.round(player2NewELO);
+            }
+        } catch (error) {
+            console.error('更新ELO失败:', error);
         }
+    }
 
-        if (!navigator.onLine || this.offlineMode) {
-            this.endBattleCommon(winnerId);
-            return;
-        }
+    calculateNewELO(myELO, opponentELO, result) {
+        myELO = parseInt(myELO) || 1200;
+        opponentELO = parseInt(opponentELO) || 1200;
+        
+        if (myELO < 100) myELO = 1200;
+        if (opponentELO < 100) opponentELO = 1200;
+        
+        const exponent = (opponentELO - myELO) / 400;
+        const expected = 1 / (1 + Math.pow(10, exponent));
+        
+        let actual;
+        if (result === 'win') actual = 1;
+        else if (result === 'draw') actual = 0.5;
+        else actual = 0;
+        
+        let newELO = myELO + this.constants.ELO_K_FACTOR * (actual - expected);
+        newELO = Math.max(400, Math.min(3000, newELO));
+        
+        return Math.round(newELO * 10) / 10;
+    }
 
+    calculateWinRate(wins, battles) {
+        if (battles === 0) return 0;
+        return Math.round((wins / battles) * 100 * 10) / 10;
+    }
+
+    // ==================== 锦标赛集成 ====================
+
+    async joinTournamentMatch(tournamentId, matchId) {
         if (!this.isSupabaseAvailable()) {
-            this.endBattleCommon(winnerId);
+            this.showFeedback('Supabase未连接，无法开始比赛', '#ff4444');
+            return;
+        }
+
+        const user = this.game.state.currentUser;
+        if (!user) {
+            this.showFeedback('请先登录', '#ff4444');
             return;
         }
 
         try {
-            const { data: battle, error: fetchError } = await this.game.state.supabase
-                .from('candy_math_battles')
+            const { data: match, error } = await this.game.state.supabase
+                .from('candy_math_tournament_matches')
                 .select('*')
-                .eq('id', this.room.battleId)
+                .eq('id', matchId)
                 .single();
 
-            if (fetchError) throw fetchError;
-
-            if (battle.status === 'finished') {
-                this.showBattleResult(battle);
+            if (error || !match) {
+                this.showFeedback('比赛不存在', '#ff4444');
                 return;
             }
 
-            const { error: updateError } = await this.game.state.supabase
-                .from('candy_math_battles')
-                .update({
-                    status: 'finished',
-                    winner_id: winnerId,
-                    finished_at: new Date().toISOString()
-                })
-                .eq('id', this.room.battleId);
+            const roomCode = this.generateRoomCode();
+            const opponentId = match.player1_id === user.id ? match.player2_id : match.player1_id;
+            const opponentName = match.player1_id === user.id ? match.player2_name : match.player1_name;
 
-            if (updateError) throw updateError;
-
-            const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
-            await this.sendSystemMessage(`🏆 ${winner} 获胜！`);
-            
-            const { data: updatedBattle } = await this.game.state.supabase
+            const { data: battle, error: battleError } = await this.game.state.supabase
                 .from('candy_math_battles')
-                .select('*')
-                .eq('id', this.room.battleId)
+                .insert([{
+                    room_code: roomCode,
+                    player1_id: user.id,
+                    player1_name: user.name,
+                    player2_id: opponentId,
+                    player2_name: opponentName,
+                    status: 'playing',
+                    mode: 'challenge',
+                    difficulty: 'medium',
+                    started_at: new Date().toISOString(),
+                    current_turn: user.id,
+                    tournament_id: tournamentId,
+                    tournament_match_id: matchId
+                }])
+                .select()
                 .single();
-                
-            this.showBattleResult(updatedBattle || battle);
-            
+
+            if (battleError) throw battleError;
+
+            this.room.battleId = battle.id;
+            this.room.roomCode = roomCode;
+            this.room.playerRole = 'player1';
+            this.room.opponentId = opponentId;
+            this.room.opponentName = opponentName;
+            this.room.status = 'playing';
+            this.room.gameActive = true;
+            this.room.myTurn = true;
+            this.room.opponentIsAI = false;
+            this.room.tournamentMode = true;
+            this.room.tournamentId = tournamentId;
+            this.room.tournamentMatchId = matchId;
+
+            this.startBattleAfterJoin();
+            this.subscribeToTournamentMatch(matchId);
+
         } catch (error) {
-            console.error('结束对战失败:', error);
-            this.endBattleCommon(winnerId);
+            console.error('加入锦标赛比赛失败:', error);
+            this.showFeedback('开始比赛失败', '#ff4444');
         }
-        
-        this.disableChatInput(true);
+    }
+
+    subscribeToTournamentMatch(matchId) {
+        if (!this.isSupabaseAvailable()) return;
+
+        const channel = this.game.state.supabase
+            .channel(`tournament-match-${matchId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'candy_math_tournament_matches',
+                filter: `id=eq.${matchId}`
+            }, (payload) => {
+                const match = payload.new;
+                if (match.status === 'finished') {
+                    this.showFeedback('比赛已结束', '#a3d8d8');
+                    this.endTournamentMatch(match);
+                }
+            })
+            .subscribe();
+
+        this.room.tournamentChannel = channel;
+    }
+
+    async endTournamentMatch(match) {
         if (this.pollingInterval) {
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
         }
-        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
-    }
 
-    endAIBattle(winnerId) {
-        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
-        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
-        this.displayBattleResult(winnerId, myScore, opponentScore);
+        const winner = match.winner_id === this.game.state.currentUser.id ? '你' : this.room.opponentName;
+        this.addSystemMessage(`🏆 锦标赛比赛结束，${winner} 获胜！`);
         
-        const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
-        this.addSystemMessage(`🏆 对战结束，${winner} 获胜！`);
-        this.disableChatInput(true);
-        this.cleanupAIResources();
-    }
-
-    endBattleCommon(winnerId) {
-        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
-        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
-        this.displayBattleResult(winnerId, myScore, opponentScore);
-        this.disableChatInput(true);
-    }
-
-    displayBattleResult(winnerId, player1Score, player2Score) {
-        const activeDiv = document.getElementById('battle-active');
-        const resultDiv = document.getElementById('battle-result');
-        
-        if (activeDiv) activeDiv.style.display = 'none';
-        if (resultDiv) resultDiv.style.display = 'block';
-
-        const iWon = winnerId === this.game.state.currentUser.id;
-        
-        const resultTitle = document.getElementById('result-title');
-        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
-
-        const finalPlayerScore = document.getElementById('final-player-score');
-        const finalOpponentScore = document.getElementById('final-opponent-score');
-        
-        if (finalPlayerScore) finalPlayerScore.textContent = player1Score || 0;
-        if (finalOpponentScore) finalOpponentScore.textContent = player2Score || 0;
-
-        const myResultCard = document.querySelector('.result-score-card:first-child');
-        const opponentResultCard = document.querySelector('.result-score-card:last-child');
-        
-        if (myResultCard && opponentResultCard) {
-            if (iWon) {
-                myResultCard.classList.add('winner');
-                opponentResultCard.classList.remove('winner');
-            } else {
-                opponentResultCard.classList.add('winner');
-                myResultCard.classList.remove('winner');
+        setTimeout(() => {
+            this.leaveBattle();
+            if (this.game.ui) {
+                this.game.ui.closeModal('battle-modal');
             }
-        }
-
-        this.playSound(iWon ? 'achievement' : 'wrong');
-    }
-
-    showBattleResult(battle) {
-        const myScore = this.room.playerRole === 'player1' ? battle.player1_score : battle.player2_score;
-        const opponentScore = this.room.playerRole === 'player1' ? battle.player2_score : battle.player1_score;
-        this.displayBattleResult(battle.winner_id, myScore, opponentScore);
-    }
-
-    // ==================== 聊天功能 ====================
-
-    async sendChatMessage() {
-        const input = document.getElementById('chat-input');
-        if (!input || !input.value.trim()) return;
-
-        let text = input.value.trim();
-        text = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
-        
-        if (text.length > 200) {
-            text = text.substring(0, 200) + '...';
-        }
-        
-        if (text.length === 0) return;
-        
-        input.value = '';
-
-        if (this.room.opponentIsAI) {
-            this.addChatMessage({
-                player_id: this.game.state.currentUser.id,
-                player_name: this.game.state.currentUser.name,
-                message: text
-            });
-            this.handleAIResponse(text);
-            this.saveLocalBattleState();
-            return;
-        }
-
-        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
-
-        try {
-            await this.game.state.supabase
-                .from('candy_math_battle_messages')
-                .insert([{
-                    battle_id: this.room.battleId,
-                    player_id: this.game.state.currentUser.id,
-                    player_name: this.game.state.currentUser.name,
-                    message: text
-                }]);
-        } catch (error) {
-            console.error('发送消息失败:', error);
-        }
-    }
-
-    handleAIResponse(userMessage) {
-        if (this.aiResponseTimer) {
-            clearTimeout(this.aiResponseTimer);
-            this.aiResponseTimer = null;
-        }
-        
-        if (this.aiResponsePending) {
-            this.aiResponsePending = false;
-        }
-        
-        this.aiResponsePending = true;
-        
-        this.aiResponseTimer = setTimeout(() => {
-            this.aiResponseTimer = null;
-            this.aiResponsePending = false;
-            
-            if (!this.room.gameActive) return;
-            
-            const aiResponses = [
-                '好的！', '继续加油！', '你太厉害了！', '再来一局？',
-                '🤖 正在计算...', '这个选择不错', '我学会了！', '轮到我了！',
-                '看我的！', '😊', '👍', '🎯 好准！', '⚡ 快速！'
-            ];
-            const response = aiResponses[Math.floor(Math.random() * aiResponses.length)];
-            this.addChatMessage({
-                player_id: this.room.opponentId,
-                player_name: this.room.opponentName,
-                message: response
-            });
-        }, 1000);
-    }
-
-    async sendSystemMessage(text) {
-        if (this.room.opponentIsAI) {
-            this.addSystemMessage(text);
-            return;
-        }
-
-        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
-
-        try {
-            await this.game.state.supabase
-                .from('candy_math_battle_messages')
-                .insert([{
-                    battle_id: this.room.battleId,
-                    player_id: 'system',
-                    player_name: '系统',
-                    message: text,
-                    message_type: 'system'
-                }]);
-        } catch (error) {
-            console.error('发送系统消息失败:', error);
-        }
-    }
-
-    addSystemMessage(text) {
-        const chat = document.getElementById('chat-messages');
-        if (!chat) return;
-
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message system';
-        msgDiv.textContent = text;
-        chat.appendChild(msgDiv);
-        
-        this.limitChatMessages(chat);
-        chat.scrollTop = chat.scrollHeight;
-    }
-
-    addChatMessage(message) {
-        const chat = document.getElementById('chat-messages');
-        if (!chat) return;
-
-        const msgDiv = document.createElement('div');
-        const displayMessage = message.message.length > 100 
-            ? message.message.substring(0, 100) + '...' 
-            : message.message;
-        const safeMessage = this.escapeHtml(displayMessage || '');
-        
-        if (message.player_id === 'system') {
-            msgDiv.className = 'message system';
-            msgDiv.textContent = safeMessage;
-        } else if (message.player_id === this.game.state?.currentUser?.id) {
-            msgDiv.className = 'message self';
-            msgDiv.innerHTML = `<span class="message-sender">你:</span> ${safeMessage}`;
-        } else {
-            msgDiv.className = 'message opponent';
-            const senderName = (message.player_name || '对手');
-            msgDiv.innerHTML = `<span class="message-sender">${this.escapeHtml(senderName)}:</span> ${safeMessage}`;
-        }
-
-        chat.appendChild(msgDiv);
-        this.limitChatMessages(chat);
-        chat.scrollTop = chat.scrollHeight;
-    }
-
-    addOpponentMove(round) {
-        const chat = document.getElementById('chat-messages');
-        if (!chat) return;
-
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message system';
-        const result = round.is_correct ? '✓ 正确' : '✗ 错误';
-        msgDiv.textContent = `${this.room.opponentName} 选择了 ${round.num1} + ${round.num2} = ${round.num1 + round.num2} ${result}`;
-        
-        chat.appendChild(msgDiv);
-        this.limitChatMessages(chat);
-        chat.scrollTop = chat.scrollHeight;
-    }
-
-    limitChatMessages(chat) {
-        while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
-            chat.removeChild(chat.firstChild);
-        }
-    }
-
-    disableChatInput(disabled = true) {
-        const chatInput = document.getElementById('chat-input');
-        const sendButton = document.getElementById('send-message');
-        
-        if (chatInput) {
-            chatInput.disabled = disabled;
-            chatInput.placeholder = disabled ? '对战已结束' : '输入消息...';
-        }
-        if (sendButton) sendButton.disabled = disabled;
+        }, 3000);
     }
 
     // ==================== 本地存储和重连 ====================
@@ -4131,6 +4061,9 @@ class BattleMode {
                 chatMessages: this.saveChatState(),
                 matchRetryCount: this.matchRetryCount,
                 isMatching: this.isMatching,
+                tournamentMode: this.room.tournamentMode || false,
+                tournamentId: this.room.tournamentId,
+                tournamentMatchId: this.room.tournamentMatchId,
                 timestamp: Date.now()
             };
             this.safeStorage().setItem(this.constants.LOCAL_STORAGE_KEY, JSON.stringify(state));
@@ -4169,9 +4102,14 @@ class BattleMode {
             const state = JSON.parse(saved);
             
             if (state.version !== this.constants.STORAGE_VERSION) {
-                console.log('检测到旧版本存储，跳过');
-                this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
-                return false;
+                const migrated = this.migrateStorageState(state);
+                if (migrated) {
+                    this.safeStorage().setItem(this.constants.LOCAL_STORAGE_KEY, JSON.stringify(migrated));
+                    return this.loadLocalBattleState();
+                } else {
+                    this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+                    return false;
+                }
             }
             
             if (Date.now() - state.timestamp > this.constants.STORAGE_EXPIRY) {
@@ -4190,6 +4128,9 @@ class BattleMode {
             this.offlineMode = state.offlineMode || false;
             this.matchRetryCount = state.matchRetryCount || 0;
             this.isMatching = state.isMatching || false;
+            this.room.tournamentMode = state.tournamentMode || false;
+            this.room.tournamentId = state.tournamentId || null;
+            this.room.tournamentMatchId = state.tournamentMatchId || null;
             
             this.restoreUIFromState(state);
             return true;
@@ -4252,6 +4193,96 @@ class BattleMode {
         
         chat.innerHTML = '';
         chat.appendChild(fragment);
+    }
+
+    migrateStorageState(oldState) {
+        const migrations = {
+            '7.3.0': (s) => ({ ...s, version: '8.0.0', offlineMode: s.offlineMode || false }),
+            '8.0.0': (s) => ({ ...s, version: '8.1.0' }),
+            '8.1.0': (s) => ({ ...s, version: '8.2.0' }),
+            '8.2.0': (s) => ({ ...s, version: '8.2.1' }),
+            '8.2.1': (s) => ({ ...s, version: '8.2.2' }),
+            '8.2.2': (s) => ({ ...s, version: '8.2.3' }),
+            '8.2.3': (s) => ({ ...s, version: '8.2.4', matchRetryCount: s.matchRetryCount || 0, isMatching: s.isMatching || false }),
+            '8.2.4': (s) => ({ ...s, version: '8.2.5' }),
+            '8.2.5': (s) => ({ ...s, version: '8.2.6' }),
+            '8.2.6': (s) => ({ ...s, version: '9.0.0', tournamentMode: false })
+        };
+
+        let current = oldState;
+        while (current.version !== this.constants.STORAGE_VERSION && migrations[current.version]) {
+            current = migrations[current.version](current);
+        }
+
+        this.safeStorage().setItem(this.constants.LOCAL_STORAGE_KEY, JSON.stringify(current));
+        return current;
+    }
+
+    restoreFullStateFromStorage() {
+        const saved = this.safeStorage().getItem(this.constants.LOCAL_STORAGE_KEY);
+        if (!saved) return false;
+
+        try {
+            const state = JSON.parse(saved);
+            
+            if (state.version !== this.constants.STORAGE_VERSION) {
+                this.migrateStorageState(state);
+            }
+
+            if (Date.now() - state.timestamp > this.constants.STORAGE_EXPIRY) {
+                this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+                return false;
+            }
+
+            this.room.battleId = state.battleId;
+            this.room.roomCode = state.roomCode;
+            this.room.opponentName = state.opponentName;
+            this.room.opponentIsAI = state.opponentIsAI;
+            this.room.aiDifficulty = state.aiDifficulty;
+            this.room.myTurn = state.myTurn;
+            this.room.gameActive = state.gameActive;
+            this.offlineMode = state.offlineMode || false;
+            this.matchRetryCount = state.matchRetryCount || 0;
+            this.isMatching = state.isMatching || false;
+            this.room.tournamentMode = state.tournamentMode || false;
+            this.room.tournamentId = state.tournamentId || null;
+            this.room.tournamentMatchId = state.tournamentMatchId || null;
+
+            this.restoreFullUIFromState(state);
+            return true;
+        } catch (error) {
+            console.error('恢复存储状态失败:', error);
+            return false;
+        }
+    }
+
+    restoreFullUIFromState(state) {
+        const player1Score = document.getElementById('player1-score');
+        const player2Score = document.getElementById('player2-score');
+        if (player1Score) player1Score.textContent = state.player1Score || '0';
+        if (player2Score) player2Score.textContent = state.player2Score || '0';
+
+        const player1Progress = document.getElementById('player1-progress');
+        const player2Progress = document.getElementById('player2-progress');
+        if (player1Progress) player1Progress.style.width = state.player1Progress || '0%';
+        if (player2Progress) player2Progress.style.width = state.player2Progress || '0%';
+
+        const targetNumber = document.getElementById('battle-target-number');
+        if (targetNumber) targetNumber.textContent = state.targetNumber || '10';
+
+        this.loadGridState(state.gridCards);
+        this.loadChatState(state.chatMessages);
+        this.updateTurnIndicator();
+
+        if (this.room.gameActive && !this.room.opponentIsAI) {
+            this.startBattlePolling();
+        } else if (this.room.gameActive && this.room.opponentIsAI) {
+            if (!this.room.myTurn) {
+                this.scheduleAIMove();
+            } else {
+                this.startTurnTimer();
+            }
+        }
     }
 
     async attemptReconnect() {
@@ -4543,6 +4574,298 @@ class BattleMode {
         this.addChatMessage(message);
     }
 
+    // ==================== 结束对战 ====================
+
+    async endBattle(winnerId) {
+        this.room.gameActive = false;
+        this.stopTurnTimer();
+        this.refreshCount = 0;
+        this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
+
+        if (this.room.opponentIsAI) {
+            this.endAIBattle(winnerId);
+            return;
+        }
+
+        if (!navigator.onLine || this.offlineMode) {
+            this.endBattleCommon(winnerId);
+            return;
+        }
+
+        if (!this.isSupabaseAvailable()) {
+            this.endBattleCommon(winnerId);
+            return;
+        }
+
+        try {
+            const { data: battle, error: fetchError } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('*')
+                .eq('id', this.room.battleId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            if (battle.status === 'finished') {
+                this.showBattleResult(battle);
+                return;
+            }
+
+            const { error: updateError } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .update({
+                    status: 'finished',
+                    winner_id: winnerId,
+                    finished_at: new Date().toISOString()
+                })
+                .eq('id', this.room.battleId);
+
+            if (updateError) throw updateError;
+
+            const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
+            await this.sendSystemMessage(`🏆 ${winner} 获胜！`);
+            
+            await this.updateELOAfterBattle(battle, winnerId);
+            
+            const { data: updatedBattle } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('*')
+                .eq('id', this.room.battleId)
+                .single();
+                
+            this.showBattleResult(updatedBattle || battle);
+            
+        } catch (error) {
+            console.error('结束对战失败:', error);
+            this.endBattleCommon(winnerId);
+        }
+        
+        this.disableChatInput(true);
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+    }
+
+    endAIBattle(winnerId) {
+        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
+        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
+        this.displayBattleResult(winnerId, myScore, opponentScore);
+        
+        const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
+        this.addSystemMessage(`🏆 对战结束，${winner} 获胜！`);
+        this.disableChatInput(true);
+        this.cleanupAIResources();
+    }
+
+    endBattleCommon(winnerId) {
+        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
+        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
+        this.displayBattleResult(winnerId, myScore, opponentScore);
+        this.disableChatInput(true);
+    }
+
+    displayBattleResult(winnerId, player1Score, player2Score) {
+        const activeDiv = document.getElementById('battle-active');
+        const resultDiv = document.getElementById('battle-result');
+        
+        if (activeDiv) activeDiv.style.display = 'none';
+        if (resultDiv) resultDiv.style.display = 'block';
+
+        const iWon = winnerId === this.game.state.currentUser.id;
+        
+        const resultTitle = document.getElementById('result-title');
+        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
+
+        const finalPlayerScore = document.getElementById('final-player-score');
+        const finalOpponentScore = document.getElementById('final-opponent-score');
+        
+        if (finalPlayerScore) finalPlayerScore.textContent = player1Score || 0;
+        if (finalOpponentScore) finalOpponentScore.textContent = player2Score || 0;
+
+        const myResultCard = document.querySelector('.result-score-card:first-child');
+        const opponentResultCard = document.querySelector('.result-score-card:last-child');
+        
+        if (myResultCard && opponentResultCard) {
+            if (iWon) {
+                myResultCard.classList.add('winner');
+                opponentResultCard.classList.remove('winner');
+            } else {
+                opponentResultCard.classList.add('winner');
+                myResultCard.classList.remove('winner');
+            }
+        }
+
+        this.playSound(iWon ? 'achievement' : 'wrong');
+    }
+
+    showBattleResult(battle) {
+        const myScore = this.room.playerRole === 'player1' ? battle.player1_score : battle.player2_score;
+        const opponentScore = this.room.playerRole === 'player1' ? battle.player2_score : battle.player1_score;
+        this.displayBattleResult(battle.winner_id, myScore, opponentScore);
+    }
+
+    // ==================== 聊天功能 ====================
+
+    async sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        if (!input || !input.value.trim()) return;
+
+        let text = input.value.trim();
+        text = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        
+        if (text.length > 200) {
+            text = text.substring(0, 200) + '...';
+        }
+        
+        if (text.length === 0) return;
+        
+        input.value = '';
+
+        if (this.room.opponentIsAI) {
+            this.addChatMessage({
+                player_id: this.game.state.currentUser.id,
+                player_name: this.game.state.currentUser.name,
+                message: text
+            });
+            this.handleAIResponse(text);
+            this.saveLocalBattleState();
+            return;
+        }
+
+        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
+
+        try {
+            await this.game.state.supabase
+                .from('candy_math_battle_messages')
+                .insert([{
+                    battle_id: this.room.battleId,
+                    player_id: this.game.state.currentUser.id,
+                    player_name: this.game.state.currentUser.name,
+                    message: text
+                }]);
+        } catch (error) {
+            console.error('发送消息失败:', error);
+        }
+    }
+
+    handleAIResponse(userMessage) {
+        if (this.aiResponseTimer) {
+            clearTimeout(this.aiResponseTimer);
+            this.aiResponseTimer = null;
+        }
+        
+        if (this.aiResponsePending) {
+            this.aiResponsePending = false;
+        }
+        
+        this.aiResponsePending = true;
+        
+        this.aiResponseTimer = setTimeout(() => {
+            this.aiResponseTimer = null;
+            this.aiResponsePending = false;
+            
+            if (!this.room.gameActive) return;
+            
+            const aiResponses = [
+                '好的！', '继续加油！', '你太厉害了！', '再来一局？',
+                '🤖 正在计算...', '这个选择不错', '我学会了！', '轮到我了！',
+                '看我的！', '😊', '👍', '🎯 好准！', '⚡ 快速！'
+            ];
+            const response = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+            this.addChatMessage({
+                player_id: this.room.opponentId,
+                player_name: this.room.opponentName,
+                message: response
+            });
+        }, 1000);
+    }
+
+    async sendSystemMessage(text) {
+        if (this.room.opponentIsAI) {
+            this.addSystemMessage(text);
+            return;
+        }
+
+        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
+
+        try {
+            await this.game.state.supabase
+                .from('candy_math_battle_messages')
+                .insert([{
+                    battle_id: this.room.battleId,
+                    player_id: 'system',
+                    player_name: '系统',
+                    message: text,
+                    message_type: 'system'
+                }]);
+        } catch (error) {
+            console.error('发送系统消息失败:', error);
+        }
+    }
+
+    addSystemMessage(text) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return;
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message system';
+        msgDiv.textContent = text;
+        chat.appendChild(msgDiv);
+        
+        this.limitChatMessages(chat);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    addChatMessage(message) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return;
+
+        const msgDiv = document.createElement('div');
+        const displayMessage = message.message.length > 100 
+            ? message.message.substring(0, 100) + '...' 
+            : message.message;
+        const safeMessage = this.escapeHtml(displayMessage || '');
+        
+        if (message.player_id === 'system') {
+            msgDiv.className = 'message system';
+            msgDiv.textContent = safeMessage;
+        } else if (message.player_id === this.game.state?.currentUser?.id) {
+            msgDiv.className = 'message self';
+            msgDiv.innerHTML = `<span class="message-sender">你:</span> ${safeMessage}`;
+        } else {
+            msgDiv.className = 'message opponent';
+            const senderName = (message.player_name || '对手');
+            msgDiv.innerHTML = `<span class="message-sender">${this.escapeHtml(senderName)}:</span> ${safeMessage}`;
+        }
+
+        chat.appendChild(msgDiv);
+        this.limitChatMessages(chat);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    addOpponentMove(round) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return;
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message system';
+        const result = round.is_correct ? '✓ 正确' : '✗ 错误';
+        msgDiv.textContent = `${this.room.opponentName} 选择了 ${round.num1} + ${round.num2} = ${round.num1 + round.num2} ${result}`;
+        
+        chat.appendChild(msgDiv);
+        this.limitChatMessages(chat);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    limitChatMessages(chat) {
+        while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
+            chat.removeChild(chat.firstChild);
+        }
+    }
+
     // ==================== 清理和销毁 ====================
 
     leaveBattle() {
@@ -4560,6 +4883,11 @@ class BattleMode {
             if (this.pollingInterval) {
                 clearInterval(this.pollingInterval);
                 this.pollingInterval = null;
+            }
+            
+            if (this.room.tournamentChannel) {
+                this.room.tournamentChannel.unsubscribe();
+                this.room.tournamentChannel = null;
             }
             
             if (this.room.channel) {
@@ -4660,7 +4988,8 @@ class BattleMode {
             roomCode: null, battleId: null, playerRole: null, opponentId: null,
             opponentName: null, opponentIsAI: false, aiDifficulty: 'medium',
             status: 'waiting', myTurn: false, roundTimer: null, channel: null,
-            subscriptionId: null, gameActive: false, selectedCards: [], timeLeft: 30
+            subscriptionId: null, gameActive: false, selectedCards: [], timeLeft: 30,
+            tournamentMode: false, tournamentId: null, tournamentMatchId: null, tournamentChannel: null
         };
         
         this.matchQueue = [];
@@ -4779,6 +5108,11 @@ class BattleMode {
         this.cleanupMatch();
         this.cleanupAIResources();
         this.stopAllTimers();
+        
+        if (this.room.tournamentChannel) {
+            this.room.tournamentChannel.unsubscribe();
+            this.room.tournamentChannel = null;
+        }
         
         if (this.room.channel) {
             try {
