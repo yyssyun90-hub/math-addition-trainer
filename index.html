@@ -1669,34 +1669,34 @@
 
         <div class="settings-panel" id="settings-panel">
             <div class="mode-row">
-                <button class="mode-btn active" data-mode="challenge" id="mode-challenge">⚡ <span class="mode-text">挑战模式</span></button>
-                <button class="mode-btn" data-mode="standard" id="mode-standard">📚 <span class="mode-text">标准模式</span></button>
-                <button class="mode-btn" data-mode="practice" id="mode-practice">🎯 <span class="mode-text">练习模式</span></button>
+                <button class="mode-btn active" data-mode="challenge" id="mode-challenge">⚡ <span class="mode-text" data-i18n="challengeMode">挑战模式</span></button>
+                <button class="mode-btn" data-mode="standard" id="mode-standard">📚 <span class="mode-text" data-i18n="standardMode">标准模式</span></button>
+                <button class="mode-btn" data-mode="practice" id="mode-practice">🎯 <span class="mode-text" data-i18n="practiceMode">练习模式</span></button>
             </div>
 
             <div class="difficulty-row">
-                <button class="difficulty-btn easy active" data-difficulty="easy" id="difficulty-easy">🍬 <span class="difficulty-text">简单</span></button>
-                <button class="difficulty-btn medium" data-difficulty="medium" id="difficulty-medium">🍭 <span class="difficulty-text">中等</span></button>
-                <button class="difficulty-btn hard" data-difficulty="hard" id="difficulty-hard">🍫 <span class="difficulty-text">困难</span></button>
+                <button class="difficulty-btn easy active" data-difficulty="easy" id="difficulty-easy">🍬 <span class="difficulty-text" data-i18n="difficultyEasy">简单</span></button>
+                <button class="difficulty-btn medium" data-difficulty="medium" id="difficulty-medium">🍭 <span class="difficulty-text" data-i18n="difficultyMedium">中等</span></button>
+                <button class="difficulty-btn hard" data-difficulty="hard" id="difficulty-hard">🍫 <span class="difficulty-text" data-i18n="difficultyHard">困难</span></button>
             </div>
 
             <div class="start-btn-wrapper">
                 <button class="start-btn" id="start-game-btn">
                     <span>🍬</span>
-                    <span id="start-text">开始游戏</span>
+                    <span id="start-text" data-i18n="startGame">开始游戏</span>
                     <span>🍭</span>
                 </button>
             </div>
 
             <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center; flex-wrap: wrap;">
                 <button class="candy-btn battle" id="quick-match-btn" data-action="quick-match">
-                    ⚡ <span class="btn-text">快速匹配</span>
+                    ⚡ <span class="btn-text" data-i18n="quickMatch">快速匹配</span>
                 </button>
                 <button class="candy-btn tournament" id="tournament-btn" data-action="tournament">
-                    🏆 <span class="btn-text">锦标赛</span>
+                    🏆 <span class="btn-text" data-i18n="tournament">锦标赛</span>
                 </button>
                 <button class="candy-btn battle" id="join-room-btn" data-action="join-room">
-                    🔑 <span class="btn-text">加入房间</span>
+                    🔑 <span class="btn-text" data-i18n="joinRoom">加入房间</span>
                 </button>
             </div>
         </div>
@@ -1704,25 +1704,25 @@
         <div id="game-area" style="display: none;">
             <div class="stats-panel">
                 <div class="stat-item">
-                    <div class="stat-label" id="stat-score">得分</div>
+                    <div class="stat-label" data-i18n="statScore">得分</div>
                     <div class="stat-value" id="score">0</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label" id="stat-completed">完成</div>
+                    <div class="stat-label" data-i18n="statCompleted">完成</div>
                     <div class="stat-value" id="completed">0/30</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label" id="time-label">剩余时间</div>
+                    <div class="stat-label" data-i18n="timeLabel">剩余时间</div>
                     <div class="stat-value" id="time">90</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label" id="stat-accuracy">正确率</div>
+                    <div class="stat-label" data-i18n="statAccuracy">正确率</div>
                     <div class="stat-value" id="accuracy">100%</div>
                 </div>
             </div>
 
             <div class="target-box">
-                <div class="target-label" id="target-label">目标和</div>
+                <div class="target-label" data-i18n="targetLabel">目标和</div>
                 <div class="target-number" id="target-sum">10</div>
             </div>
 
@@ -1730,11 +1730,11 @@
             <div class="feedback" id="feedback"></div>
 
             <div class="controls">
-                <button class="candy-btn primary" id="hint-btn">💡 <span class="btn-text">提示</span></button>
-                <button class="candy-btn secondary" id="refresh-btn">🔄 <span class="btn-text">刷新</span></button>
-                <button class="candy-btn pause" id="pause-btn">⏸️ <span class="btn-text">暂停</span></button>
-                <button class="candy-btn warning" id="endgame-btn">🏁 <span class="btn-text">结束游戏</span></button>
-                <button class="candy-btn home" id="home-btn">🏠 <span class="btn-text">首页</span></button>
+                <button class="candy-btn primary" id="hint-btn">💡 <span class="btn-text" data-i18n="hint">提示</span></button>
+                <button class="candy-btn secondary" id="refresh-btn">🔄 <span class="btn-text" data-i18n="refresh">刷新</span></button>
+                <button class="candy-btn pause" id="pause-btn">⏸️ <span class="btn-text" data-i18n="pause">暂停</span></button>
+                <button class="candy-btn warning" id="endgame-btn">🏁 <span class="btn-text" data-i18n="endGame">结束游戏</span></button>
+                <button class="candy-btn home" id="home-btn">🏠 <span class="btn-text" data-i18n="home">首页</span></button>
             </div>
         </div>
     </div>
@@ -1743,23 +1743,23 @@
     <div class="game-over-modal" id="game-over-modal">
         <div class="game-over-card">
             <button class="close-btn" id="close-gameover">×</button>
-            <div class="game-over-title" id="gameover-title">🎉 游戏结束</div>
+            <div class="game-over-title" id="gameover-title" data-i18n="gameoverTitle">🎉 游戏结束</div>
             <div class="result-item">
-                <span id="final-score-label">最终得分</span>
+                <span data-i18n="finalScore">最终得分</span>
                 <span class="result-value" id="final-score">0</span>
             </div>
             <div class="result-item">
-                <span id="final-completed-label">完成题数</span>
+                <span data-i18n="finalCompleted">完成题数</span>
                 <span class="result-value" id="final-completed">0</span>
             </div>
             <div class="result-item">
-                <span id="final-accuracy-label">正确率</span>
+                <span data-i18n="finalAccuracy">正确率</span>
                 <span class="result-value" id="final-accuracy">100%</span>
             </div>
             <div class="game-over-buttons">
-                <button class="candy-btn primary" id="play-again-btn"><span id="play-again-text">再玩一次</span> <span class="btn-icon">🍭</span></button>
-                <button class="candy-btn home" id="home-from-gameover-btn"><span class="btn-icon">🏠</span> <span id="home-text">首页</span></button>
-                <button class="candy-btn secondary" id="export-data-btn"><span class="btn-icon">💾</span> <span id="export-text">导出数据</span></button>
+                <button class="candy-btn primary" id="play-again-btn"><span id="play-again-text" data-i18n="playAgain">再玩一次</span> <span class="btn-icon">🍭</span></button>
+                <button class="candy-btn home" id="home-from-gameover-btn"><span class="btn-icon">🏠</span> <span data-i18n="home">首页</span></button>
+                <button class="candy-btn secondary" id="export-data-btn"><span class="btn-icon">💾</span> <span data-i18n="exportData">导出数据</span></button>
             </div>
         </div>
     </div>
@@ -1768,16 +1768,16 @@
     <div class="auth-modal" id="auth-modal">
         <div class="auth-card">
             <button class="close-btn" id="close-auth">×</button>
-            <div class="auth-title" id="auth-title">🔐 登录</div>
-            <input type="email" class="auth-input" id="auth-email" placeholder="邮箱">
-            <input type="password" class="auth-input" id="auth-password" placeholder="密码">
+            <div class="auth-title" id="auth-title" data-i18n="authTitle">🔐 登录</div>
+            <input type="email" class="auth-input" id="auth-email" placeholder="邮箱" data-i18n-placeholder="emailPlaceholder">
+            <input type="password" class="auth-input" id="auth-password" placeholder="密码" data-i18n-placeholder="passwordPlaceholder">
             <div id="forgot-password-link" style="margin-top: 5px; text-align: right; padding-right: 10px;">
-                <a href="#" id="forgot-password-btn" style="color: #d46b8d; text-decoration: none; font-size: 0.9rem;">忘记密码？</a>
+                <a href="#" id="forgot-password-btn" style="color: #d46b8d; text-decoration: none; font-size: 0.9rem;" data-i18n="forgotPassword">忘记密码？</a>
             </div>
             <div class="auth-error" id="auth-error"></div>
-            <button class="start-btn auth-submit-btn" id="auth-submit">登录</button>
+            <button class="start-btn auth-submit-btn" id="auth-submit" data-i18n="submit">登录</button>
             <div class="auth-switch" id="auth-switch">
-                <span id="switch-to-register">没有账号？立即注册</span>
+                <span id="switch-to-register" data-i18n="registerNow">没有账号？立即注册</span>
             </div>
         </div>
     </div>
@@ -1788,17 +1788,17 @@
     <div class="register-choice-modal" id="register-choice-modal" style="display: none;">
         <div class="register-choice-card">
             <button class="close-btn" id="close-choice-modal">×</button>
-            <h2 style="color: #d46b8d; margin-bottom: 30px; text-align: center;">选择注册身份</h2>
+            <h2 style="color: #d46b8d; margin-bottom: 30px; text-align: center;" data-i18n="chooseRole">选择注册身份</h2>
             <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px;">
                 <button class="candy-btn primary" id="choose-student" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px;">
-                    👨‍🎓 注册为学生
+                    👨‍🎓 <span data-i18n="registerStudent">注册为学生</span>
                 </button>
                 <button class="candy-btn tournament" id="choose-teacher" style="padding: 20px 30px; font-size: 1.2rem; flex: 1; min-width: 150px;">
-                    👩‍🏫 注册为教师
+                    👩‍🏫 <span data-i18n="registerTeacher">注册为教师</span>
                 </button>
             </div>
             <p style="text-align: center; color: #b2869c;">
-                已有账号？ <a href="#" id="back-to-login-from-choice" style="color: #d46b8d;">返回登录</a>
+                <span data-i18n="hasAccount">已有账号？</span> <a href="#" id="back-to-login-from-choice" style="color: #d46b8d;" data-i18n="loginNow">返回登录</a>
             </p>
         </div>
     </div>
@@ -1807,11 +1807,11 @@
     <div class="student-register-modal" id="student-register-modal" style="display: none;">
         <div class="register-card">
             <button class="close-btn" id="close-student-register">×</button>
-            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👨‍🎓 学生注册</h2>
-            <input type="email" class="auth-input" id="student-email" placeholder="电子邮箱" style="margin-bottom: 15px;">
-            <input type="password" class="auth-input" id="student-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;">
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;" data-i18n="registerStudent">👨‍🎓 学生注册</h2>
+            <input type="email" class="auth-input" id="student-email" placeholder="电子邮箱" style="margin-bottom: 15px;" data-i18n-placeholder="emailPlaceholder">
+            <input type="password" class="auth-input" id="student-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;" data-i18n-placeholder="passwordPlaceholder">
             <select class="auth-input" id="student-state" style="margin-bottom: 15px;">
-                <option value="">请选择州属</option>
+                <option value="" data-i18n="selectState">请选择州属</option>
                 <option value="Johor">Johor</option>
                 <option value="Kedah">Kedah</option>
                 <option value="Kelantan">Kelantan</option>
@@ -1829,16 +1829,16 @@
                 <option value="Labuan">Labuan</option>
                 <option value="Putrajaya">Putrajaya</option>
             </select>
-            <input type="text" class="auth-input" id="student-school" placeholder="学校名称" style="margin-bottom: 15px;">
-            <input type="text" class="auth-input" id="student-name" placeholder="姓名" style="margin-bottom: 15px;">
-            <input type="text" class="auth-input" id="student-class" placeholder="班级 (例: 5A)" style="margin-bottom: 15px;">
+            <input type="text" class="auth-input" id="student-school" placeholder="学校名称" style="margin-bottom: 15px;" data-i18n-placeholder="schoolPlaceholder">
+            <input type="text" class="auth-input" id="student-name" placeholder="姓名" style="margin-bottom: 15px;" data-i18n-placeholder="namePlaceholder">
+            <input type="text" class="auth-input" id="student-class" placeholder="班级 (例: 5A)" style="margin-bottom: 15px;" data-i18n-placeholder="classPlaceholder">
             <div class="auth-error" id="student-register-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
-            <button class="start-btn auth-submit-btn" id="student-register-submit" style="width: 100%; margin: 20px 0;">注册为学生</button>
+            <button class="start-btn auth-submit-btn" id="student-register-submit" style="width: 100%; margin: 20px 0;" data-i18n="registerStudent">注册为学生</button>
             <div style="text-align: center; margin-top: 15px;">
-                <span style="color: #b2869c;">已有账号？</span>
-                <a href="#" id="back-to-login-from-student" style="color: #d46b8d;">返回登录</a>
+                <span style="color: #b2869c;" data-i18n="hasAccount">已有账号？</span>
+                <a href="#" id="back-to-login-from-student" style="color: #d46b8d;" data-i18n="loginNow">返回登录</a>
                 <span style="color: #b2869c; margin: 0 5px;">|</span>
-                <a href="#" id="back-to-choice-from-student" style="color: #d46b8d;">返回选择</a>
+                <a href="#" id="back-to-choice-from-student" style="color: #d46b8d;" data-i18n="back">返回选择</a>
             </div>
         </div>
     </div>
@@ -1847,12 +1847,12 @@
     <div class="teacher-register-modal" id="teacher-register-modal" style="display: none;">
         <div class="register-card">
             <button class="close-btn" id="close-teacher-register">×</button>
-            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👩‍🏫 教师注册</h2>
-            <input type="email" class="auth-input" id="teacher-email" placeholder="电子邮箱" style="margin-bottom: 15px;">
-            <input type="password" class="auth-input" id="teacher-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;">
-            <input type="text" class="auth-input" id="teacher-name" placeholder="姓名" style="margin-bottom: 15px;">
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;" data-i18n="registerTeacher">👩‍🏫 教师注册</h2>
+            <input type="email" class="auth-input" id="teacher-email" placeholder="电子邮箱" style="margin-bottom: 15px;" data-i18n-placeholder="emailPlaceholder">
+            <input type="password" class="auth-input" id="teacher-password" placeholder="密码 (至少6位)" style="margin-bottom: 15px;" data-i18n-placeholder="passwordPlaceholder">
+            <input type="text" class="auth-input" id="teacher-name" placeholder="姓名" style="margin-bottom: 15px;" data-i18n-placeholder="namePlaceholder">
             <select class="auth-input" id="teacher-state" style="margin-bottom: 15px;">
-                <option value="">请选择州属</option>
+                <option value="" data-i18n="selectState">请选择州属</option>
                 <option value="Johor">Johor</option>
                 <option value="Kedah">Kedah</option>
                 <option value="Kelantan">Kelantan</option>
@@ -1870,14 +1870,14 @@
                 <option value="Labuan">Labuan</option>
                 <option value="Putrajaya">Putrajaya</option>
             </select>
-            <input type="text" class="auth-input" id="teacher-school" placeholder="学校名称" style="margin-bottom: 15px;">
+            <input type="text" class="auth-input" id="teacher-school" placeholder="学校名称" style="margin-bottom: 15px;" data-i18n-placeholder="schoolPlaceholder">
             <div class="auth-error" id="teacher-register-error" style="color: #ff4444; text-align: center; min-height: 30px;"></div>
-            <button class="start-btn auth-submit-btn" id="teacher-register-submit" style="width: 100%; margin: 20px 0;">注册为教师</button>
+            <button class="start-btn auth-submit-btn" id="teacher-register-submit" style="width: 100%; margin: 20px 0;" data-i18n="registerTeacher">注册为教师</button>
             <div style="text-align: center; margin-top: 15px;">
-                <span style="color: #b2869c;">已有账号？</span>
-                <a href="#" id="back-to-login-from-teacher" style="color: #d46b8d;">返回登录</a>
+                <span style="color: #b2869c;" data-i18n="hasAccount">已有账号？</span>
+                <a href="#" id="back-to-login-from-teacher" style="color: #d46b8d;" data-i18n="loginNow">返回登录</a>
                 <span style="color: #b2869c; margin: 0 5px;">|</span>
-                <a href="#" id="back-to-choice-from-teacher" style="color: #d46b8d;">返回选择</a>
+                <a href="#" id="back-to-choice-from-teacher" style="color: #d46b8d;" data-i18n="back">返回选择</a>
             </div>
         </div>
     </div>
@@ -1905,7 +1905,7 @@
                         <span>👆</span>
                         <span>🎯</span>
                     </div>
-                    <div class="step-hint" id="step1-hint">⭐ 选两张卡片，加起来等于 🎯</div>
+                    <div class="step-hint" id="step1-hint" data-i18n="tutorial1">⭐ 选两张卡片，加起来等于 🎯</div>
                 </div>
                 <div class="step" data-step="2" style="display: none;">
                     <div class="demo-row">
@@ -1920,7 +1920,7 @@
                         <span style="font-size: 2rem;">✨</span>
                         <span class="demo-check">✓</span>
                     </div>
-                    <div class="step-hint" id="step2-hint">⭐ 正确！卡片会消失 ✨</div>
+                    <div class="step-hint" id="step2-hint" data-i18n="tutorial2">⭐ 正确！卡片会消失 ✨</div>
                 </div>
                 <div class="step" data-step="3" style="display: none;">
                     <div class="demo-row" style="flex-wrap: wrap;">
@@ -1931,11 +1931,11 @@
                     </div>
                     <div class="demo-row">
                         <span class="demo-cross">✗</span>
-                        <span class="no-match-text" id="no-match-text" style="font-size: 1.2rem;">没有数字能组成 8</span>
+                        <span class="no-match-text" id="no-match-text" style="font-size: 1.2rem;" data-i18n="noMatch">没有数字能组成 8</span>
                         <span class="demo-cross">✗</span>
                     </div>
                     <div class="refresh-icon">🔄</div>
-                    <div class="step-hint" id="step3-hint">⭐ 没得配？点刷新换一批</div>
+                    <div class="step-hint" id="step3-hint" data-i18n="tutorial3">⭐ 没得配？点刷新换一批</div>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
@@ -1945,7 +1945,7 @@
             </div>
             <div class="dont-show">
                 <input type="checkbox" id="dont-show-tutorial">
-                <label for="dont-show-tutorial" id="dont-show-label">不再显示</label>
+                <label for="dont-show-tutorial" id="dont-show-label" data-i18n="dontShow">不再显示</label>
             </div>
         </div>
     </div>
@@ -1956,15 +1956,15 @@
             <div class="tournament-header">
                 <h2 style="color: #d46b8d;">🏆 糖果锦标赛</h2>
                 <div class="tournament-tabs">
-                    <button class="tab-btn active" data-tab="lobby">大厅</button>
-                    <button class="tab-btn" data-tab="bracket">赛程表</button>
-                    <button class="tab-btn" data-tab="history">历史</button>
-                    <button class="tab-btn" data-tab="ranking">排名</button>
+                    <button class="tab-btn active" data-tab="lobby" data-i18n="lobby">大厅</button>
+                    <button class="tab-btn" data-tab="bracket" data-i18n="bracket">赛程表</button>
+                    <button class="tab-btn" data-tab="history" data-i18n="history">历史</button>
+                    <button class="tab-btn" data-tab="ranking" data-i18n="ranking">排名</button>
                 </div>
             </div>
             <div class="tab-content active" id="lobby-tab">
                 <div class="tournament-list" id="tournament-list"></div>
-                <button class="create-tournament-btn" id="create-tournament-btn">➕ 创建锦标赛</button>
+                <button class="create-tournament-btn" id="create-tournament-btn" data-i18n="createTournament">➕ 创建锦标赛</button>
             </div>
             <div class="tab-content" id="bracket-tab" style="display: none;">
                 <div class="bracket-container" id="bracket-container"></div>
@@ -1981,36 +1981,36 @@
     <!-- 创建锦标赛模态框 -->
     <div class="create-tournament-modal" id="create-tournament-modal">
         <div class="create-card">
-            <h3 style="color: #d46b8d; margin-bottom: 20px;">🏆 创建锦标赛</h3>
+            <h3 style="color: #d46b8d; margin-bottom: 20px;" data-i18n="createTournament">🏆 创建锦标赛</h3>
             <div class="form-group">
-                <label for="tournament-name-input">锦标赛名称</label>
-                <input type="text" id="tournament-name-input" placeholder="例如：班级杯 2024" maxlength="50">
+                <label for="tournament-name-input" data-i18n="tournamentName">锦标赛名称</label>
+                <input type="text" id="tournament-name-input" placeholder="例如：班级杯 2024" maxlength="50" data-i18n-placeholder="enterTournamentName">
             </div>
             <div class="form-group">
-                <label for="tournament-size-input">参赛人数</label>
+                <label for="tournament-size-input" data-i18n="playerCount">参赛人数</label>
                 <input type="number" id="tournament-size-input" min="2" max="100" value="16" step="1">
             </div>
             <div class="form-group">
-                <label for="tournament-mode">比赛模式</label>
+                <label for="tournament-mode" data-i18n="gameMode">比赛模式</label>
                 <select id="tournament-mode">
-                    <option value="challenge">挑战模式 (90秒)</option>
-                    <option value="standard">标准模式 (30题)</option>
+                    <option value="challenge" data-i18n="challengeMode">挑战模式 (90秒)</option>
+                    <option value="standard" data-i18n="standardMode">标准模式 (30题)</option>
                 </select>
             </div>
             <div class="form-group">
-                <label for="tournament-difficulty">难度</label>
+                <label for="tournament-difficulty" data-i18n="difficulty">难度</label>
                 <select id="tournament-difficulty">
-                    <option value="easy">🍬 简单</option>
-                    <option value="medium" selected>🍭 中等</option>
-                    <option value="hard">🍫 困难</option>
+                    <option value="easy" data-i18n="difficultyEasy">🍬 简单</option>
+                    <option value="medium" selected data-i18n="difficultyMedium">🍭 中等</option>
+                    <option value="hard" data-i18n="difficultyHard">🍫 困难</option>
                 </select>
             </div>
             <div class="form-group">
-                <label for="tournament-entry-fee">报名费 (积分)</label>
+                <label for="tournament-entry-fee" data-i18n="entryFee">报名费 (积分)</label>
                 <input type="number" id="tournament-entry-fee" value="0" min="0" step="10" max="10000">
             </div>
             <div class="prize-pool" id="prize-pool-preview" style="margin: 15px 0; padding: 10px; background: rgba(255, 240, 245, 0.7); border-radius: 20px; display: none;">
-                <div style="font-weight: bold; color: #d46b8d; margin-bottom: 8px;">🏆 奖池分配</div>
+                <div style="font-weight: bold; color: #d46b8d; margin-bottom: 8px;" data-i18n="prizePool">🏆 奖池分配</div>
                 <div style="display: flex; justify-content: space-around; text-align: center;">
                     <div><div style="font-size: 1.2rem;">🥇</div><div style="font-size: 0.9rem; color: #d46b8d;" id="prize-first">0</div></div>
                     <div><div style="font-size: 1.2rem;">🥈</div><div style="font-size: 0.9rem; color: #d46b8d;" id="prize-second">0</div></div>
@@ -2018,8 +2018,8 @@
                 </div>
             </div>
             <div class="form-actions">
-                <button class="candy-btn primary" id="confirm-create-tournament">创建</button>
-                <button class="candy-btn home" id="cancel-create-tournament">取消</button>
+                <button class="candy-btn primary" id="confirm-create-tournament" data-i18n="confirmCreate">创建</button>
+                <button class="candy-btn home" id="cancel-create-tournament" data-i18n="cancelCreate">取消</button>
             </div>
         </div>
     </div>
@@ -2029,34 +2029,34 @@
         <div class="battle-card">
             <div class="battle-waiting" id="battle-waiting">
                 <div class="waiting-spinner">🔄</div>
-                <h3 style="color: #d46b8d;">正在寻找对手...</h3>
-                <div class="room-code-display">房间码: <span id="room-code">123456</span><button class="copy-btn" id="copy-room-code">📋</button></div>
+                <h3 style="color: #d46b8d;" data-i18n="waitingForOpponent">正在寻找对手...</h3>
+                <div class="room-code-display"><span data-i18n="roomCodeLabel">房间码</span>: <span id="room-code">123456</span><button class="copy-btn" id="copy-room-code">📋</button></div>
                 <div class="waiting-players">
-                    <div class="player-slot"><div class="player-avatar">👤</div><div class="player-name">你</div></div>
+                    <div class="player-slot"><div class="player-avatar">👤</div><div class="player-name" data-i18n="youLabel">你</div></div>
                     <div class="vs-divider">VS</div>
-                    <div class="player-slot empty"><div class="player-avatar">❓</div><div class="player-name">等待中...</div></div>
+                    <div class="player-slot empty"><div class="player-avatar">❓</div><div class="player-name" data-i18n="waitingLabel">等待中...</div></div>
                 </div>
-                <button class="cancel-btn" id="cancel-match">取消</button>
+                <button class="cancel-btn" id="cancel-match" data-i18n="cancelLabel">取消</button>
             </div>
             <div class="battle-active" id="battle-active" style="display: none;">
                 <div class="battle-header">
-                    <div class="battle-player" id="player1-info"><div class="battle-avatar" id="player1-avatar">🍬</div><div class="battle-name" id="player1-name">你</div><div class="battle-score" id="player1-score">0</div><div class="battle-progress"><div class="progress-bar" id="player1-progress" style="width: 0%"></div></div></div>
+                    <div class="battle-player" id="player1-info"><div class="battle-avatar" id="player1-avatar">🍬</div><div class="battle-name" id="player1-name" data-i18n="youLabel">你</div><div class="battle-score" id="player1-score">0</div><div class="battle-progress"><div class="progress-bar" id="player1-progress" style="width: 0%"></div></div></div>
                     <div class="battle-vs">VS</div>
-                    <div class="battle-player" id="player2-info"><div class="battle-avatar" id="player2-avatar">🍭</div><div class="battle-name" id="player2-name">对手</div><div class="battle-score" id="player2-score">0</div><div class="battle-progress"><div class="progress-bar" id="player2-progress" style="width: 0%"></div></div></div>
+                    <div class="battle-player" id="player2-info"><div class="battle-avatar" id="player2-avatar">🍭</div><div class="battle-name" id="player2-name" data-i18n="opponent">对手</div><div class="battle-score" id="player2-score">0</div><div class="battle-progress"><div class="progress-bar" id="player2-progress" style="width: 0%"></div></div></div>
                 </div>
-                <div class="turn-indicator" id="turn-indicator"><span class="turn-light"></span><span class="turn-text">你的回合</span><span class="timer" id="turn-timer">30s</span></div>
+                <div class="turn-indicator" id="turn-indicator"><span class="turn-light"></span><span class="turn-text" data-i18n="yourTurn">你的回合</span><span class="timer" id="turn-timer">30s</span></div>
                 <div class="battle-game-area"><div class="target-box" id="battle-target"><div class="target-number" id="battle-target-number">10</div></div><div class="game-grid" id="battle-grid"></div></div>
-                <div class="battle-chat"><div class="chat-messages" id="chat-messages"></div><div class="chat-input"><input type="text" id="chat-input" placeholder="输入消息..."><button class="send-btn" id="send-message">发送</button></div></div>
+                <div class="battle-chat"><div class="chat-messages" id="chat-messages"></div><div class="chat-input"><input type="text" id="chat-input" placeholder="输入消息..." data-i18n-placeholder="enterMessage"><button class="send-btn" id="send-message" data-i18n="send">发送</button></div></div>
             </div>
             <div class="battle-result" id="battle-result" style="display: none;">
                 <div class="result-title" id="result-title">🏆 胜利！</div>
                 <div class="result-stats">
-                    <div class="result-player"><div class="result-avatar">🍬</div><div class="result-name">你</div><div class="result-score" id="final-player-score">120</div></div>
+                    <div class="result-player"><div class="result-avatar">🍬</div><div class="result-name" data-i18n="youLabel">你</div><div class="result-score" id="final-player-score">120</div></div>
                     <div class="result-vs">VS</div>
-                    <div class="result-player"><div class="result-avatar">🍭</div><div class="result-name">对手</div><div class="result-score" id="final-opponent-score">80</div></div>
+                    <div class="result-player"><div class="result-avatar">🍭</div><div class="result-name" data-i18n="opponent">对手</div><div class="result-score" id="final-opponent-score">80</div></div>
                 </div>
-                <div class="result-details"><div class="detail-item">赢得赌注: <span id="won-bet">50</span> 分</div><div class="detail-item">新排名: <span id="new-rank">#42</span></div></div>
-                <div class="result-actions"><button class="candy-btn primary" id="rematch-btn">🔄 再战一局</button><button class="candy-btn home" id="close-battle-btn">关闭</button></div>
+                <div class="result-details"><div class="detail-item"><span data-i18n="wonBet">赢得赌注</span>: <span id="won-bet">50</span> 分</div><div class="detail-item"><span data-i18n="newRank">新排名</span>: <span id="new-rank">#42</span></div></div>
+                <div class="result-actions"><button class="candy-btn primary" id="rematch-btn" data-i18n="rematch">🔄 再战一局</button><button class="candy-btn home" id="close-battle-btn" data-i18n="close">关闭</button></div>
             </div>
         </div>
     </div>
@@ -2064,9 +2064,9 @@
     <!-- 加入房间模态框 -->
     <div class="join-modal" id="join-modal">
         <div class="join-card">
-            <h3>🔑 加入房间</h3>
-            <input type="text" id="room-code-input" placeholder="输入6位房间码" maxlength="6">
-            <div class="join-actions"><button class="candy-btn primary" id="confirm-join">加入</button><button class="candy-btn home" id="cancel-join">取消</button></div>
+            <h3 data-i18n="joinRoom">🔑 加入房间</h3>
+            <input type="text" id="room-code-input" placeholder="输入6位房间码" maxlength="6" data-i18n-placeholder="enterRoomCode">
+            <div class="join-actions"><button class="candy-btn primary" id="confirm-join" data-i18n="join">加入</button><button class="candy-btn home" id="cancel-join" data-i18n="cancel">取消</button></div>
         </div>
     </div>
 
@@ -2074,37 +2074,37 @@
     <div class="teacher-modal" id="teacher-modal" style="display: none;">
         <div class="teacher-card">
             <button class="close-btn" id="close-teacher">×</button>
-            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;">👩‍🏫 教师控制面板</h2>
+            <h2 style="color: #d46b8d; margin-bottom: 20px; text-align: center;" data-i18n="teacherPanel">👩‍🏫 教师控制面板</h2>
             <div class="teacher-tabs">
-                <button class="tab-btn active" data-teacher-tab="students">📋 学生列表</button>
-                <button class="tab-btn" data-teacher-tab="reports">📊 生成报告</button>
-                <button class="tab-btn" data-teacher-tab="stats">📈 班级统计</button>
-                <button class="tab-btn" data-teacher-tab="admin" style="display: none;" id="admin-tab-btn">👑 全校数据</button>
+                <button class="tab-btn active" data-teacher-tab="students" data-i18n="studentList">📋 学生列表</button>
+                <button class="tab-btn" data-teacher-tab="reports" data-i18n="generateReport">📊 生成报告</button>
+                <button class="tab-btn" data-teacher-tab="stats" data-i18n="classStats">📈 班级统计</button>
+                <button class="tab-btn" data-teacher-tab="admin" style="display: none;" id="admin-tab-btn" data-i18n="allSchoolData">👑 全校数据</button>
             </div>
             <div class="teacher-tab-content" id="students-tab">
                 <div style="display: flex; gap: 10px; margin-bottom: 15px; justify-content: space-between; flex-wrap: wrap;">
-                    <button class="candy-btn small" id="import-students">📥 导入学生</button>
-                    <button class="candy-btn small primary" id="sync-data-btn">🔄 同步数据</button>
-                    <button class="candy-btn small warning" id="clear-all-records">🗑️ 清除记录</button>
+                    <button class="candy-btn small" id="import-students" data-i18n="importStudents">📥 导入学生</button>
+                    <button class="candy-btn small primary" id="sync-data-btn" data-i18n="syncData">🔄 同步数据</button>
+                    <button class="candy-btn small warning" id="clear-all-records" data-i18n="clearRecords">🗑️ 清除记录</button>
                 </div>
                 <div class="sync-status" id="sync-status" style="text-align: center; margin-bottom: 10px; color: #28a745;">🟢 在线</div>
-                <div class="student-list" id="student-list"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div></div>
+                <div class="student-list" id="student-list"><div style="text-align: center; color: #b2869c; padding: 20px;" data-i18n="loading">⏳ 加载中...</div></div>
             </div>
             <div class="teacher-tab-content" id="reports-tab" style="display: none;">
                 <div style="margin-bottom: 20px;">
-                    <label for="report-student-select" style="display: block; color: #d46b8d; margin-bottom: 10px; text-align: left;">选择学生:</label>
-                    <select id="report-student-select" style="width: 100%; padding: 12px; border: 2px solid #ffb6c1; border-radius: 30px; margin-bottom: 15px;"><option value="all">📊 全班报告</option></select>
+                    <label for="report-student-select" style="display: block; color: #d46b8d; margin-bottom: 10px; text-align: left;" data-i18n="selectStudent">选择学生:</label>
+                    <select id="report-student-select" style="width: 100%; padding: 12px; border: 2px solid #ffb6c1; border-radius: 30px; margin-bottom: 15px;"><option value="all" data-i18n="classReport">📊 全班报告</option></select>
                 </div>
                 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
-                    <button class="candy-btn primary" id="generate-pdf">📄 生成 PDF 报告</button>
-                    <button class="candy-btn secondary" id="export-excel">📊 导出 Excel</button>
+                    <button class="candy-btn primary" id="generate-pdf" data-i18n="generatePDF">📄 生成 PDF 报告</button>
+                    <button class="candy-btn secondary" id="export-excel" data-i18n="exportExcel">📊 导出 Excel</button>
                 </div>
             </div>
             <div class="teacher-tab-content" id="stats-tab" style="display: none;">
-                <div class="class-stats" id="class-stats"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载中...</div></div>
+                <div class="class-stats" id="class-stats"><div style="text-align: center; color: #b2869c; padding: 20px;" data-i18n="loading">⏳ 加载中...</div></div>
             </div>
             <div class="teacher-tab-content" id="admin-tab" style="display: none;">
-                <div class="admin-stats" id="admin-stats"><div style="text-align: center; color: #b2869c; padding: 20px;">⏳ 加载全校数据...</div></div>
+                <div class="admin-stats" id="admin-stats"><div style="text-align: center; color: #b2869c; padding: 20px;" data-i18n="loadingSchoolData">⏳ 加载全校数据...</div></div>
             </div>
         </div>
     </div>
@@ -2117,8 +2117,24 @@
 
     <!-- 教师控制面板按钮 -->
     <div class="teacher-controls">
-        <button class="candy-btn primary" id="teacher-panel-btn">👩‍🏫 <span class="btn-text">教师面板</span></button>
+        <button class="candy-btn primary" id="teacher-panel-btn">👩‍🏫 <span class="btn-text" data-i18n="teacherPanel">教师面板</span></button>
     </div>
+
+    <!-- 创建班级模态框 -->
+    <div id="create-class-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); z-index: 6000; display: none; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 30px; padding: 25px; max-width: 400px; width: 90%;">
+            <h3 style="color: #d46b8d; margin-bottom: 20px; text-align: center;" data-i18n="createClass">创建班级</h3>
+            <input type="text" id="new-class-name" placeholder="班级名称" style="width: 100%; padding: 12px; border: 2px solid #ffb6c1; border-radius: 30px; margin-bottom: 15px;" data-i18n-placeholder="className">
+            <div id="create-class-error" style="color: #ff4444; text-align: center; margin-bottom: 10px;"></div>
+            <div style="display: flex; gap: 15px; justify-content: center;">
+                <button class="candy-btn primary" id="confirm-create-class" data-i18n="confirmCreate">确认创建</button>
+                <button class="candy-btn home" id="cancel-create-class" data-i18n="cancelCreate">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 班级列表容器 -->
+    <div id="class-list-container" style="display: none;"></div>
 
     <!-- 修复滚动条问题的脚本 -->
     <script>
@@ -2194,6 +2210,85 @@
         })();
     </script>
 
+    <!-- 语言切换脚本 -->
+    <script>
+        (function() {
+            // 等待 I18n 加载完成后更新界面
+            function updateUILanguage() {
+                if (typeof I18n === 'undefined') {
+                    console.log('I18n 未加载，稍后重试...');
+                    setTimeout(updateUILanguage, 500);
+                    return;
+                }
+                
+                // 更新所有带 data-i18n 属性的元素
+                document.querySelectorAll('[data-i18n]').forEach(el => {
+                    const key = el.dataset.i18n;
+                    const translation = I18n.t(key);
+                    if (translation && translation !== key) {
+                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                            if (el.placeholder !== undefined) {
+                                el.placeholder = translation;
+                            } else {
+                                el.textContent = translation;
+                            }
+                        } else {
+                            el.textContent = translation;
+                        }
+                    }
+                });
+                
+                // 更新带 data-i18n-placeholder 属性的输入框
+                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                    const key = el.dataset.i18nPlaceholder;
+                    const translation = I18n.t(key);
+                    if (translation && translation !== key) {
+                        el.placeholder = translation;
+                    }
+                });
+                
+                // 更新语言按钮文字
+                const langText = document.getElementById('lang-text');
+                const langIcon = document.getElementById('lang-icon');
+                if (langText) {
+                    langText.textContent = I18n.currentLang === 'zh' ? '中文' : 'English';
+                    langIcon.textContent = I18n.currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
+                }
+                
+                console.log('界面语言已更新:', I18n.currentLang);
+            }
+            
+            // 监听语言切换事件
+            document.addEventListener('click', function(e) {
+                const langBtn = e.target.closest('#lang-switch');
+                if (langBtn) {
+                    e.preventDefault();
+                    const newLang = I18n.currentLang === 'zh' ? 'en' : 'zh';
+                    I18n.setLang(newLang);
+                    updateUILanguage();
+                    
+                    // 触发游戏内组件的语言更新
+                    if (window.game?.ui?.updateLanguage) {
+                        window.game.ui.updateLanguage();
+                    }
+                    if (window.game?.battle?.updateUILanguage) {
+                        window.game.battle.updateUILanguage();
+                    }
+                    if (window.game?.tournament?.updateUILanguage) {
+                        window.game.tournament.updateUILanguage();
+                    }
+                }
+            });
+            
+            // 页面加载完成后更新语言
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateUILanguage);
+            } else {
+                setTimeout(updateUILanguage, 100);
+            }
+        })();
+    </script>
+
     <!-- Supabase 连接修复和初始化脚本 -->
     <script>
         (function() {
@@ -2212,34 +2307,6 @@
                     console.log('Supabase 客户端创建成功');
                     window.supabaseClient = supabaseClient;
                     
-                    // 预设管理员账号 - 只有 yyssyun90@gmail.com 可以成为管理员
-                    supabaseClient.auth.admin?.createUser({
-                        email: 'yyssyun90@gmail.com',
-                        password: 'Admin123456',
-                        email_confirm: true,
-                        user_metadata: { name: '超级管理员', role: 'admin' }
-                    }).then(function(result) {
-                        if (result.error) {
-                            if (result.error.message.includes('already registered')) {
-                                console.log('管理员账号已存在');
-                            } else {
-                                console.error('创建管理员账号失败:', result.error);
-                            }
-                        } else {
-                            console.log('管理员账号创建成功');
-                            supabaseClient.from('admins').insert([{
-                                user_id: result.data.user.id,
-                                email: 'yyssyun90@gmail.com',
-                                name: '超级管理员',
-                                role: 'admin',
-                                permissions: ['view_all', 'manage_schools', 'manage_teachers']
-                            }]).then(function(adminResult) {
-                                if (adminResult.error) console.warn('创建管理员记录失败:', adminResult.error);
-                                else console.log('管理员记录创建成功');
-                            });
-                        }
-                    }).catch(function(err) { console.log('管理员账号可能已存在:', err); });
-                    
                     supabaseClient.auth.getSession().then(function(result) {
                         if (result.error) console.error('Supabase 连接测试失败:', result.error.message);
                         else { 
@@ -2256,48 +2323,6 @@
                 } else console.error('Supabase 库未加载');
             } catch (err) { console.error('创建 Supabase 客户端失败:', err); }
         })();
-    </script>
-
-    <!-- 模拟登录模式（默认关闭） -->
-    <script>
-        var USE_MOCK_AUTH = false;
-        if (USE_MOCK_AUTH) {
-            console.log('使用模拟登录模式');
-            window.mockLogin = function(email, password) {
-                console.log('模拟登录成功:', email);
-                var mockUser = { id: 'mock-user-' + Date.now(), email: email, user_metadata: { name: email.split('@')[0] }, role: email === 'yyssyun90@gmail.com' ? 'admin' : 'student' };
-                localStorage.setItem('mock_user', JSON.stringify(mockUser));
-                var userName = document.getElementById('user-name');
-                var userStatus = document.getElementById('user-status');
-                var userInfo = document.getElementById('user-info');
-                var authButtons = document.getElementById('auth-buttons');
-                if (userName) userName.textContent = mockUser.email.split('@')[0];
-                if (userStatus) userStatus.textContent = '已登录（模拟）';
-                if (userInfo) userInfo.style.display = 'flex';
-                if (authButtons) {
-                    authButtons.innerHTML = '<button class="auth-btn logout" id="mock-logout-btn">🚪 <span class="btn-text">退出</span></button>';
-                    var logoutBtn = document.getElementById('mock-logout-btn');
-                    if (logoutBtn) {
-                        logoutBtn.addEventListener('click', function() { localStorage.removeItem('mock_user'); location.reload(); });
-                    }
-                }
-                var authModal = document.getElementById('auth-modal');
-                if (authModal) authModal.style.display = 'none';
-                window.currentUser = mockUser;
-                if (window.game && window.game.state) window.game.state.currentUser = mockUser;
-                return mockUser;
-            };
-            document.addEventListener('click', function(e) {
-                if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
-                    e.preventDefault();
-                    var email = document.getElementById('auth-email')?.value || 'test@example.com';
-                    var password = document.getElementById('auth-password')?.value || '123456';
-                    window.mockLogin(email, password);
-                }
-            });
-            var savedMockUser = localStorage.getItem('mock_user');
-            if (savedMockUser) { try { var user = JSON.parse(savedMockUser); window.mockLogin(user.email, ''); } catch (e) {} }
-        }
     </script>
 
     <!-- 按照正确顺序加载JS模块 -->
@@ -2350,7 +2375,7 @@
         });
     </script>
 
-    <!-- ===== 统一按钮点击处理（最终修复版）===== -->
+    <!-- 统一按钮点击处理 -->
     <script>
         // 全局用户同步函数
         function syncCurrentUser() {
@@ -2382,10 +2407,8 @@
             if (!btn) return;
             var action = btn.dataset.action;
             
-            // 先同步用户
             syncCurrentUser();
             
-            // 检查登录状态
             var isLoggedIn = !!(window.currentUser || (window.game && window.game.state && window.game.state.currentUser));
             
             if (!isLoggedIn) {
@@ -2396,12 +2419,11 @@
                 var authTitle = document.getElementById('auth-title');
                 var authError = document.getElementById('auth-error');
                 if (authModal) authModal.style.display = 'flex';
-                if (authTitle) authTitle.textContent = '🔐 登录';
-                if (authError) authError.textContent = '请先登录后再使用此功能';
+                if (authTitle) authTitle.textContent = I18n?.t('authTitle') || '🔐 登录';
+                if (authError) authError.textContent = I18n?.t('loginRequired') || '请先登录后再使用此功能';
                 return false;
             }
             
-            // 确保 window.currentUser 有值
             if (!window.currentUser && window.game && window.game.state && window.game.state.currentUser) {
                 window.currentUser = window.game.state.currentUser;
             }
@@ -2425,10 +2447,10 @@
                             else console.error('showModeSelect 方法不存在');
                         } catch (err) { 
                             console.error('快速匹配初始化失败:', err);
-                            alert('快速匹配功能初始化失败，请刷新页面重试'); 
+                            alert(I18n?.t('initFailed') || '快速匹配功能初始化失败，请刷新页面重试'); 
                         }
                     } else {
-                        alert('快速匹配功能暂不可用，请刷新页面重试');
+                        alert(I18n?.t('featureUnavailable') || '快速匹配功能暂不可用，请刷新页面重试');
                     }
                 }
             } else if (action === 'tournament') {
@@ -2445,7 +2467,7 @@
         });
     </script>
 
-    <!-- 用户界面更新脚本（最终修复版） -->
+    <!-- 用户界面更新脚本 -->
     <script>
         (function() {
             console.log('初始化用户界面...');
@@ -2455,7 +2477,6 @@
             
             function syncAndUpdateUI() {
                 try {
-                    // 同步用户
                     if (window.currentUser && window.game && window.game.state) {
                         if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
                             window.game.state.currentUser = window.currentUser;
@@ -2475,8 +2496,7 @@
                     if (window.currentUser) {
                         if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
                         
-                        // 获取用户显示名称和角色
-                        var displayName = window.currentUser.name || window.currentUser.email || '用户';
+                        var displayName = window.currentUser.name || window.currentUser.email || (I18n?.t('user') || '用户');
                         var role = window.currentUser.role || 'student';
                         
                         if (role === 'admin') {
@@ -2488,9 +2508,9 @@
                         }
                         
                         if (role === 'admin') {
-                            if (userStatus) userStatus.textContent = '👑 管理员 · 全校数据可见';
+                            if (userStatus) userStatus.textContent = (I18n?.t('adminStatus') || '👑 管理员 · 全校数据可见');
                         } else {
-                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? '✨ 在线' : '📴 离线';
+                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? (I18n?.t('online') || '✨ 在线') : (I18n?.t('offline') || '📴 离线');
                         }
                         
                         if (userName) userName.textContent = displayName;
@@ -2501,10 +2521,8 @@
                         if (adminTab && adminTabContent) {
                             if (role === 'admin') {
                                 adminTab.style.display = 'inline-block';
-                                adminTabContent.style.display = 'block';
                             } else {
                                 adminTab.style.display = 'none';
-                                adminTabContent.style.display = 'none';
                             }
                         }
                         
@@ -2514,7 +2532,7 @@
                                 if (oldBtn) oldBtn.removeEventListener('click', logoutHandler);
                             }
                             
-                            authButtons.innerHTML = '<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">退出</span></button>';
+                            authButtons.innerHTML = '<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text" data-i18n="logout">退出</span></button>';
                             var logoutBtn = document.getElementById('logout-btn');
                             if (logoutBtn) {
                                 logoutHandler = function() {
@@ -2536,7 +2554,7 @@
                     } else {
                         if (userInfo) userInfo.style.display = 'none';
                         if (authButtons) {
-                            authButtons.innerHTML = '<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">登录</span></button><button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">注册</span></button>';
+                            authButtons.innerHTML = '<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text" data-i18n="login">登录</span></button><button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text" data-i18n="register">注册</span></button>';
                             
                             var loginBtn = document.getElementById('show-login-btn');
                             var registerBtn = document.getElementById('show-register-btn');
@@ -2544,8 +2562,8 @@
                             if (loginBtn) {
                                 loginBtn.onclick = function() { 
                                     document.getElementById('auth-modal').style.display = 'flex'; 
-                                    document.getElementById('auth-title').textContent = '🔐 登录'; 
-                                    document.getElementById('auth-submit').textContent = '登录'; 
+                                    document.getElementById('auth-title').textContent = I18n?.t('authTitle') || '🔐 登录'; 
+                                    document.getElementById('auth-submit').textContent = I18n?.t('submit') || '登录'; 
                                     var errorDiv = document.getElementById('auth-error');
                                     if (errorDiv) errorDiv.textContent = '';
                                 };
@@ -2615,21 +2633,21 @@
                 var errorDiv = document.getElementById('auth-error');
                 
                 if (!email || !password) { 
-                    if (errorDiv) errorDiv.textContent = '请填写邮箱和密码'; 
+                    if (errorDiv) errorDiv.textContent = I18n?.t('emailAndPasswordRequired') || '请填写邮箱和密码'; 
                     return; 
                 }
-                if (errorDiv) errorDiv.textContent = '正在处理...';
+                if (errorDiv) errorDiv.textContent = I18n?.t('processing') || '正在处理...';
                 if (!window.supabaseClient) { 
                     if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; 
                     return; 
                 }
                 
-                if (title && title.indexOf('登录') !== -1) {
+                if (title && (title.indexOf('登录') !== -1 || title.indexOf('Login') !== -1)) {
                     window.supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(result) {
                         if (result.error) { 
                             if (errorDiv) errorDiv.textContent = result.error.message; 
                         } else { 
-                            if (errorDiv) errorDiv.textContent = '登录成功！'; 
+                            if (errorDiv) errorDiv.textContent = I18n?.t('loginSuccess') || '登录成功！'; 
                             window.currentUser = result.data.user; 
                             
                             if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
