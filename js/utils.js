@@ -1,10 +1,11 @@
 /**
  * ==================== 糖果数学消消乐 - 工具函数库 ====================
- * 版本: 2.1.0
+ * 版本: 2.2.0
  * 包含：音效管理、国际化、常量定义、数组工具、数字生成、格式化等
  * 作者：AI 程序员 和 TYUN
  * 日期：2026
  * 修改：添加完整的英文翻译，支持对战模式双语和教师面板双语
+ * 修改：添加语言切换时自动刷新认证模态框功能
  * =================================================================
  */
 
@@ -729,6 +730,12 @@
                 } catch (e) {
                     console.warn('无法保存语言设置');
                 }
+                
+                // ✅ 触发语言更新事件，通知其他模块刷新UI
+                this.triggerLanguageUpdate();
+                
+                // ✅ 刷新认证模态框的文字
+                this.refreshAuthModalLanguage();
             }
             return this.currentLang;
         },
@@ -750,6 +757,79 @@
                 });
             }
             return message;
+        },
+        
+        // ✅ 新增：触发语言更新事件
+        triggerLanguageUpdate() {
+            const event = new CustomEvent('languageChanged', { detail: { lang: this.currentLang } });
+            window.dispatchEvent(event);
+            console.log('✅ 语言已切换为:', this.currentLang);
+        },
+        
+        // ✅ 新增：刷新认证模态框的文字
+        refreshAuthModalLanguage() {
+            const authModal = document.getElementById('auth-modal');
+            if (!authModal || authModal.style.display !== 'flex') return;
+            
+            // 获取当前模式
+            const mode = window.game?.auth?.authMode || 'login';
+            
+            // 更新标题
+            const title = document.getElementById('auth-title');
+            if (title) {
+                title.innerHTML = mode === 'login' ? '🔐 ' + this.t('login') : '📝 ' + this.t('register');
+            }
+            
+            // 更新提交按钮
+            const submitBtn = document.getElementById('auth-submit');
+            if (submitBtn) {
+                submitBtn.innerHTML = this.t(mode === 'login' ? 'login' : 'register');
+            }
+            
+            // 更新切换链接区域
+            const switchDiv = document.getElementById('auth-switch');
+            if (switchDiv) {
+                if (mode === 'login') {
+                    // 更新"没有账号？"文字
+                    const textNode = switchDiv.firstChild;
+                    if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                        textNode.textContent = this.t('noAccount') + ' ';
+                    }
+                    // 更新"立即注册"链接
+                    const registerSpan = switchDiv.querySelector('#switch-to-register');
+                    if (registerSpan) {
+                        registerSpan.textContent = this.t('registerNow');
+                    }
+                } else if (mode === 'register') {
+                    // 更新"已有账号？"文字
+                    const textNode = switchDiv.firstChild;
+                    if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                        textNode.textContent = this.t('hasAccount') + ' ';
+                    }
+                    // 更新"立即登录"链接
+                    const loginSpan = switchDiv.querySelector('#switch-to-login');
+                    if (loginSpan) {
+                        loginSpan.textContent = this.t('loginNow');
+                    }
+                }
+            }
+            
+            // 更新忘记密码链接
+            const forgotPasswordDiv = document.getElementById('forgot-password-link');
+            if (forgotPasswordDiv && mode === 'login') {
+                const forgotSpan = forgotPasswordDiv.querySelector('#forgot-password');
+                if (forgotSpan) {
+                    forgotSpan.textContent = (this.t('forgotPassword') || '忘记密码') + '?';
+                }
+            }
+            
+            // 更新错误提示区域（保持为空）
+            const authError = document.getElementById('auth-error');
+            if (authError && authError.textContent) {
+                // 如果有错误信息，不清空，让用户自己处理
+            }
+            
+            console.log('✅ 认证模态框语言已刷新');
         }
     };
 
