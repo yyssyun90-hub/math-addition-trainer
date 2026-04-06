@@ -1,11 +1,12 @@
 /**
  * ==================== 糖果数学消消乐 - 工具函数库 ====================
- * 版本: 2.2.0
+ * 版本: 2.3.0
  * 包含：音效管理、国际化、常量定义、数组工具、数字生成、格式化等
  * 作者：AI 程序员 和 TYUN
  * 日期：2026
  * 修改：添加完整的英文翻译，支持对战模式双语和教师面板双语
  * 修改：添加语言切换时自动刷新认证模态框功能
+ * 修改：禁用 I18n 自动语言切换，避免与外部语言系统冲突
  * =================================================================
  */
 
@@ -722,8 +723,10 @@
             return langData[key] || key;
         },
         
+        // ✅ 修改：setLang 只更新内部状态，不触发外部刷新（避免冲突）
         setLang(lang) {
             if (TRANSLATIONS[lang]) {
+                const oldLang = this.currentLang;
                 this.currentLang = lang;
                 try {
                     localStorage.setItem('candyMathGame_v4_lang', lang);
@@ -731,11 +734,13 @@
                     console.warn('无法保存语言设置');
                 }
                 
-                // ✅ 触发语言更新事件，通知其他模块刷新UI
-                this.triggerLanguageUpdate();
-                
-                // ✅ 刷新认证模态框的文字
-                this.refreshAuthModalLanguage();
+                // 只有在没有外部语言控制系统时，才触发事件和刷新
+                if (!window._externalLangControl) {
+                    this.triggerLanguageUpdate();
+                    this.refreshAuthModalLanguage();
+                } else {
+                    console.log('外部语言系统控制中，I18n.setLang 只更新内部状态:', lang);
+                }
             }
             return this.currentLang;
         },
@@ -759,14 +764,14 @@
             return message;
         },
         
-        // ✅ 新增：触发语言更新事件
+        // 触发语言更新事件
         triggerLanguageUpdate() {
             const event = new CustomEvent('languageChanged', { detail: { lang: this.currentLang } });
             window.dispatchEvent(event);
-            console.log('✅ 语言已切换为:', this.currentLang);
+            console.log('✅ I18n 语言已切换为:', this.currentLang);
         },
         
-        // ✅ 新增：刷新认证模态框的文字
+        // 刷新认证模态框的文字
         refreshAuthModalLanguage() {
             const authModal = document.getElementById('auth-modal');
             if (!authModal || authModal.style.display !== 'flex') return;
@@ -823,13 +828,7 @@
                 }
             }
             
-            // 更新错误提示区域（保持为空）
-            const authError = document.getElementById('auth-error');
-            if (authError && authError.textContent) {
-                // 如果有错误信息，不清空，让用户自己处理
-            }
-            
-            console.log('✅ 认证模态框语言已刷新');
+            console.log('✅ I18n 认证模态框语言已刷新');
         }
     };
 
