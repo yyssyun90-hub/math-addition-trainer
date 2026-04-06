@@ -1600,6 +1600,53 @@
                 transform: translateY(3px);
             }
         }
+
+        /* 防缩放样式 - 防止页面缩放导致的布局问题 */
+        @media (max-width: 480px) {
+            .game-grid {
+                gap: 6px;
+            }
+            .number-card {
+                font-size: clamp(1.2rem, 6vw, 1.8rem) !important;
+            }
+            .battle-header {
+                padding: 10px;
+            }
+            .battle-avatar {
+                width: 40px;
+                height: 40px;
+                font-size: 1.2rem;
+            }
+            .battle-score {
+                font-size: 1rem;
+            }
+            .turn-indicator {
+                padding: 10px;
+            }
+            .timer {
+                font-size: 1rem;
+                padding: 3px 10px;
+            }
+        }
+
+        /* 防止页面缩放警告 */
+        #zoom-warning {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(251, 185, 192, 0.95);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            z-index: 10001;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.5);
+            white-space: nowrap;
+            font-weight: 500;
+        }
     </style>
     
     <!-- PDF 和 Excel 库 -->
@@ -2210,506 +2257,59 @@
         })();
     </script>
 
-    <!-- 语言切换脚本 -->
+    <!-- 防缩放检测脚本 -->
     <script>
         (function() {
-            // 等待 I18n 加载完成后更新界面
-            function updateUILanguage() {
-                if (typeof I18n === 'undefined') {
-                    console.log('I18n 未加载，稍后重试...');
-                    setTimeout(updateUILanguage, 500);
-                    return;
+            let lastZoomWarningTime = 0;
+            let zoomWarningDiv = null;
+            
+            function removeZoomWarning() {
+                if (zoomWarningDiv && zoomWarningDiv.parentNode) {
+                    zoomWarningDiv.remove();
+                    zoomWarningDiv = null;
                 }
-                
-                // 更新所有带 data-i18n 属性的元素
-                document.querySelectorAll('[data-i18n]').forEach(el => {
-                    const key = el.dataset.i18n;
-                    const translation = I18n.t(key);
-                    if (translation && translation !== key) {
-                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                            if (el.placeholder !== undefined) {
-                                el.placeholder = translation;
-                            } else {
-                                el.textContent = translation;
-                            }
-                        } else {
-                            el.textContent = translation;
-                        }
-                    }
-                });
-                
-                // 更新带 data-i18n-placeholder 属性的输入框
-                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                    const key = el.dataset.i18nPlaceholder;
-                    const translation = I18n.t(key);
-                    if (translation && translation !== key) {
-                        el.placeholder = translation;
-                    }
-                });
-                
-                // 更新语言按钮文字
-                const langText = document.getElementById('lang-text');
-                const langIcon = document.getElementById('lang-icon');
-                if (langText) {
-                    langText.textContent = I18n.currentLang === 'zh' ? '中文' : 'English';
-                    langIcon.textContent = I18n.currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
-                }
-                
-                console.log('界面语言已更新:', I18n.currentLang);
             }
             
-            // 监听语言切换事件
-            document.addEventListener('click', function(e) {
-                const langBtn = e.target.closest('#lang-switch');
-                if (langBtn) {
-                    e.preventDefault();
-                    const newLang = I18n.currentLang === 'zh' ? 'en' : 'zh';
-                    I18n.setLang(newLang);
-                    updateUILanguage();
-                    
-                    // 触发游戏内组件的语言更新
-                    if (window.game?.ui?.updateLanguage) {
-                        window.game.ui.updateLanguage();
-                    }
-                    if (window.game?.battle?.updateUILanguage) {
-                        window.game.battle.updateUILanguage();
-                    }
-                    if (window.game?.tournament?.updateUILanguage) {
-                        window.game.tournament.updateUILanguage();
-                    }
+            function showZoomWarning() {
+                const now = Date.now();
+                if (now - lastZoomWarningTime < 10000) return;
+                lastZoomWarningTime = now;
+                
+                removeZoomWarning();
+                
+                zoomWarningDiv = document.createElement('div');
+                zoomWarningDiv.id = 'zoom-warning';
+                zoomWarningDiv.innerHTML = '🔍 检测到页面缩放可能影响体验，建议重置到100% 🔍';
+                document.body.appendChild(zoomWarningDiv);
+                
+                setTimeout(removeZoomWarning, 5000);
+            }
+            
+            function checkZoom() {
+                const zoom = Math.round(window.devicePixelRatio * 100);
+                if (zoom > 150 || zoom < 80) {
+                    showZoomWarning();
+                } else {
+                    removeZoomWarning();
                 }
+            }
+            
+            let zoomTimer = null;
+            window.addEventListener('resize', function() {
+                if (zoomTimer) clearTimeout(zoomTimer);
+                zoomTimer = setTimeout(checkZoom, 300);
             });
             
-            // 页面加载完成后更新语言
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', updateUILanguage);
-            } else {
-                setTimeout(updateUILanguage, 100);
-            }
+            setTimeout(checkZoom, 1000);
         })();
     </script>
 
-    <!-- Supabase 连接修复和初始化脚本 -->
-    <script>
-        (function() {
-            console.log('正在初始化 Supabase 连接...');
-            var configTag = document.getElementById('supabase-config');
-            if (!configTag) { console.error('未找到 Supabase 配置标签'); return; }
-            var supabaseConfig;
-            try { supabaseConfig = JSON.parse(configTag.textContent); } catch (e) { console.error('解析 Supabase 配置失败:', e); return; }
-            var supabaseUrl = supabaseConfig.supabaseUrl;
-            var supabaseKey = supabaseConfig.supabaseKey;
-            try {
-                if (typeof window.supabase !== 'undefined') {
-                    var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
-                        auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true, storageKey: 'candy-math-auth' }
-                    });
-                    console.log('Supabase 客户端创建成功');
-                    window.supabaseClient = supabaseClient;
-                    
-                    supabaseClient.auth.getSession().then(function(result) {
-                        if (result.error) console.error('Supabase 连接测试失败:', result.error.message);
-                        else { 
-                            console.log('Supabase 连接成功'); 
-                            if (result.data && result.data.session) { 
-                                window.currentUser = result.data.session.user; 
-                                console.log('当前登录用户:', window.currentUser.email);
-                                if (window.game && window.game.state) {
-                                    window.game.state.currentUser = window.currentUser;
-                                }
-                            } 
-                        }
-                    }).catch(function(err) { console.error('Supabase 连接异常:', err.message); });
-                } else console.error('Supabase 库未加载');
-            } catch (err) { console.error('创建 Supabase 客户端失败:', err); }
-        })();
-    </script>
-
-    <!-- 按照正确顺序加载JS模块 -->
-    <script src="js/utils.js"></script>
-    <script src="js/Storage.js"></script>
-    <script src="js/StudentRecord.js"></script>
-    <script src="js/Game.js"></script>
-    <script src="js/Auth.js"></script>
-    <script src="js/UI.js"></script>
-    <script src="js/BattleMode.js"></script>
-    <script src="js/TournamentMode.js"></script>
-    <script src="js/ReportGenerator.js"></script>
-    <script src="js/TeacherPanel.js"></script>
-
-    <!-- 实例化游戏模式 -->
-    <script>
-        (function() {
-            console.log('正在实例化游戏模式...');
-            function initModes() {
-                if (!window.game) { console.log('等待 game 对象...'); setTimeout(initModes, 100); return; }
-                console.log('game 对象已就绪，开始实例化');
-                if (window.BattleMode && !window.battleModeInstance) {
-                    try { window.battleModeInstance = new window.BattleMode(window.game); console.log('BattleMode 实例化成功'); } 
-                    catch (e) { console.error('BattleMode 实例化失败:', e); }
-                }
-                if (window.TournamentMode && !window.tournamentModeInstance) {
-                    try { window.tournamentModeInstance = new window.TournamentMode(window.game); console.log('TournamentMode 实例化成功'); } 
-                    catch (e) { console.error('TournamentMode 实例化失败:', e); }
-                }
-            }
-            setTimeout(initModes, 500);
-        })();
-    </script>
-
-    <!-- 忘记密码功能 -->
-    <script>
-        document.addEventListener('click', function(e) {
-            if (e.target.id === 'forgot-password-btn' || (e.target.closest && e.target.closest('#forgot-password-btn'))) {
-                e.preventDefault();
-                var email = document.getElementById('auth-email')?.value;
-                var errorDiv = document.getElementById('auth-error');
-                if (!email) { if (errorDiv) errorDiv.textContent = '请输入邮箱地址'; return; }
-                if (errorDiv) errorDiv.textContent = '正在发送重置邮件...';
-                if (!window.supabaseClient) { if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; return; }
-                window.supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password.html' }).then(function(result) {
-                    if (result.error) { if (errorDiv) errorDiv.textContent = result.error.message; }
-                    else { if (errorDiv) errorDiv.textContent = '重置密码邮件已发送，请查看邮箱'; setTimeout(function() { document.getElementById('auth-modal').style.display = 'none'; }, 3000); }
-                });
-            }
-        });
-    </script>
-
-    <!-- 统一按钮点击处理 -->
-    <script>
-        // 全局用户同步函数
-        function syncCurrentUser() {
-            try {
-                if (window.currentUser && window.game && window.game.state) {
-                    if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
-                        window.game.state.currentUser = window.currentUser;
-                        console.log('✅ 已同步用户到 game.state');
-                    }
-                    return true;
-                }
-                if (window.game && window.game.state && window.game.state.currentUser && !window.currentUser) {
-                    window.currentUser = window.game.state.currentUser;
-                    console.log('✅ 已同步用户到 window.currentUser');
-                    return true;
-                }
-                return false;
-            } catch (e) {
-                console.warn('同步用户失败:', e);
-                return false;
-            }
-        }
-        
-        // 立即同步一次
-        setTimeout(syncCurrentUser, 100);
-        
-        document.addEventListener('click', function(e) {
-            var btn = e.target.closest('[data-action]');
-            if (!btn) return;
-            var action = btn.dataset.action;
-            
-            syncCurrentUser();
-            
-            var isLoggedIn = !!(window.currentUser || (window.game && window.game.state && window.game.state.currentUser));
-            
-            if (!isLoggedIn) {
-                e.preventDefault(); 
-                e.stopPropagation();
-                console.log('用户未登录，显示登录框');
-                var authModal = document.getElementById('auth-modal');
-                var authTitle = document.getElementById('auth-title');
-                var authError = document.getElementById('auth-error');
-                if (authModal) authModal.style.display = 'flex';
-                if (authTitle) authTitle.textContent = I18n?.t('authTitle') || '🔐 登录';
-                if (authError) authError.textContent = I18n?.t('loginRequired') || '请先登录后再使用此功能';
-                return false;
-            }
-            
-            if (!window.currentUser && window.game && window.game.state && window.game.state.currentUser) {
-                window.currentUser = window.game.state.currentUser;
-            }
-            
-            console.log('用户已登录，执行操作:', action);
-            
-            if (action === 'quick-match') {
-                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                var battleInstance = window.battleModeInstance || window.battleMode;
-                if (battleInstance && typeof battleInstance.showModeSelect === 'function') {
-                    battleInstance.showModeSelect();
-                } else if (battleInstance && typeof battleInstance.quickMatch === 'function') {
-                    battleInstance.quickMatch();
-                } else {
-                    if (window.BattleMode && window.game) {
-                        try { 
-                            var newInstance = new window.BattleMode(window.game); 
-                            window.battleModeInstance = newInstance; 
-                            window.battleMode = newInstance; 
-                            if (typeof newInstance.showModeSelect === 'function') newInstance.showModeSelect();
-                            else console.error('showModeSelect 方法不存在');
-                        } catch (err) { 
-                            console.error('快速匹配初始化失败:', err);
-                            alert(I18n?.t('initFailed') || '快速匹配功能初始化失败，请刷新页面重试'); 
-                        }
-                    } else {
-                        alert(I18n?.t('featureUnavailable') || '快速匹配功能暂不可用，请刷新页面重试');
-                    }
-                }
-            } else if (action === 'tournament') {
-                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                var tournamentInstance = window.tournamentModeInstance;
-                if (tournamentInstance && typeof tournamentInstance.openTournamentLobby === 'function') {
-                    tournamentInstance.openTournamentLobby();
-                } else {
-                    document.getElementById('tournament-modal').style.display = 'flex';
-                }
-            } else if (action === 'join-room') {
-                document.getElementById('join-modal').style.display = 'flex';
-            }
-        });
-    </script>
-
-    <!-- 用户界面更新脚本 -->
-    <script>
-        (function() {
-            console.log('初始化用户界面...');
-            
-            var syncTimer = null;
-            var logoutHandler = null;
-            
-            function syncAndUpdateUI() {
-                try {
-                    if (window.currentUser && window.game && window.game.state) {
-                        if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
-                            window.game.state.currentUser = window.currentUser;
-                        }
-                    }
-                    if (window.game && window.game.state && window.game.state.currentUser && !window.currentUser) {
-                        window.currentUser = window.game.state.currentUser;
-                    }
-                    
-                    var userName = document.getElementById('user-name');
-                    var userStatus = document.getElementById('user-status');
-                    var userInfo = document.getElementById('user-info');
-                    var authButtons = document.getElementById('auth-buttons');
-                    
-                    if (!authButtons) return;
-                    
-                    if (window.currentUser) {
-                        if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
-                        
-                        var displayName = window.currentUser.name || window.currentUser.email || (I18n?.t('user') || '用户');
-                        var role = window.currentUser.role || 'student';
-                        
-                        if (role === 'admin') {
-                            displayName += ' 👑';
-                        } else if (role === 'teacher') {
-                            displayName += ' 👩‍🏫';
-                        } else {
-                            displayName += ' 👨‍🎓';
-                        }
-                        
-                        if (role === 'admin') {
-                            if (userStatus) userStatus.textContent = (I18n?.t('adminStatus') || '👑 管理员 · 全校数据可见');
-                        } else {
-                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? (I18n?.t('online') || '✨ 在线') : (I18n?.t('offline') || '📴 离线');
-                        }
-                        
-                        if (userName) userName.textContent = displayName;
-                        if (userInfo) userInfo.style.display = 'flex';
-                        
-                        var adminTab = document.getElementById('admin-tab-btn');
-                        var adminTabContent = document.getElementById('admin-tab');
-                        if (adminTab && adminTabContent) {
-                            if (role === 'admin') {
-                                adminTab.style.display = 'inline-block';
-                            } else {
-                                adminTab.style.display = 'none';
-                            }
-                        }
-                        
-                        if (authButtons) {
-                            if (logoutHandler) {
-                                var oldBtn = document.getElementById('logout-btn');
-                                if (oldBtn) oldBtn.removeEventListener('click', logoutHandler);
-                            }
-                            
-                            authButtons.innerHTML = '<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text" data-i18n="logout">退出</span></button>';
-                            var logoutBtn = document.getElementById('logout-btn');
-                            if (logoutBtn) {
-                                logoutHandler = function() {
-                                    if (window.supabaseClient) { 
-                                        window.supabaseClient.auth.signOut().then(function() { 
-                                            window.currentUser = null; 
-                                            if (window.game && window.game.state) window.game.state.currentUser = null; 
-                                            location.reload(); 
-                                        }).catch(function() { location.reload(); });
-                                    } else { 
-                                        window.currentUser = null; 
-                                        if (window.game && window.game.state) window.game.state.currentUser = null; 
-                                        location.reload(); 
-                                    }
-                                };
-                                logoutBtn.addEventListener('click', logoutHandler);
-                            }
-                        }
-                    } else {
-                        if (userInfo) userInfo.style.display = 'none';
-                        if (authButtons) {
-                            authButtons.innerHTML = '<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text" data-i18n="login">登录</span></button><button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text" data-i18n="register">注册</span></button>';
-                            
-                            var loginBtn = document.getElementById('show-login-btn');
-                            var registerBtn = document.getElementById('show-register-btn');
-                            
-                            if (loginBtn) {
-                                loginBtn.onclick = function() { 
-                                    document.getElementById('auth-modal').style.display = 'flex'; 
-                                    document.getElementById('auth-title').textContent = I18n?.t('authTitle') || '🔐 登录'; 
-                                    document.getElementById('auth-submit').textContent = I18n?.t('submit') || '登录'; 
-                                    var errorDiv = document.getElementById('auth-error');
-                                    if (errorDiv) errorDiv.textContent = '';
-                                };
-                            }
-                            if (registerBtn) {
-                                registerBtn.onclick = function() { 
-                                    document.getElementById('register-choice-modal').style.display = 'flex'; 
-                                };
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('UI同步失败:', e);
-                }
-            }
-            
-            function checkUserStatus() {
-                if (window.supabaseClient) {
-                    window.supabaseClient.auth.getSession().then(function(result) {
-                        if (result.data && result.data.session) { 
-                            window.currentUser = result.data.session.user; 
-                            if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
-                                window.game.auth.getUserProfile(result.data.session.user.id).then(function(profile) {
-                                    if (profile) {
-                                        window.currentUser.role = profile.role;
-                                        window.currentUser.school = profile.school;
-                                        window.currentUser.state = profile.state;
-                                        window.currentUser.class = profile.class;
-                                    }
-                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                                    syncAndUpdateUI();
-                                }).catch(function() {
-                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                                    syncAndUpdateUI();
-                                });
-                            } else {
-                                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                                syncAndUpdateUI();
-                            }
-                        } else {
-                            syncAndUpdateUI();
-                        }
-                    }).catch(function() { syncAndUpdateUI(); });
-                } else {
-                    syncAndUpdateUI();
-                }
-            }
-            
-            syncAndUpdateUI();
-            setTimeout(checkUserStatus, 1000);
-            setTimeout(checkUserStatus, 2000);
-            setTimeout(checkUserStatus, 3000);
-            
-            if (syncTimer) clearInterval(syncTimer);
-            syncTimer = setInterval(syncAndUpdateUI, 10000);
-        })();
-    </script>
-
-    <!-- 登录/注册处理脚本 -->
-    <script>
-        document.addEventListener('click', function(e) {
-            if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
-                e.preventDefault();
-                var email = document.getElementById('auth-email')?.value;
-                var password = document.getElementById('auth-password')?.value;
-                var title = document.getElementById('auth-title')?.textContent;
-                var errorDiv = document.getElementById('auth-error');
-                
-                if (!email || !password) { 
-                    if (errorDiv) errorDiv.textContent = I18n?.t('emailAndPasswordRequired') || '请填写邮箱和密码'; 
-                    return; 
-                }
-                if (errorDiv) errorDiv.textContent = I18n?.t('processing') || '正在处理...';
-                if (!window.supabaseClient) { 
-                    if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; 
-                    return; 
-                }
-                
-                if (title && (title.indexOf('登录') !== -1 || title.indexOf('Login') !== -1)) {
-                    window.supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(result) {
-                        if (result.error) { 
-                            if (errorDiv) errorDiv.textContent = result.error.message; 
-                        } else { 
-                            if (errorDiv) errorDiv.textContent = I18n?.t('loginSuccess') || '登录成功！'; 
-                            window.currentUser = result.data.user; 
-                            
-                            if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
-                                window.game.auth.getUserProfile(result.data.user.id).then(function(profile) {
-                                    if (profile) {
-                                        window.currentUser.role = profile.role;
-                                        window.currentUser.school = profile.school;
-                                        window.currentUser.state = profile.state;
-                                        window.currentUser.class = profile.class;
-                                    }
-                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                                    setTimeout(function() { 
-                                        document.getElementById('auth-modal').style.display = 'none'; 
-                                        location.reload(); 
-                                    }, 1000);
-                                }).catch(function() {
-                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                                    setTimeout(function() { 
-                                        document.getElementById('auth-modal').style.display = 'none'; 
-                                        location.reload(); 
-                                    }, 1000);
-                                });
-                            } else {
-                                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
-                                setTimeout(function() { 
-                                    document.getElementById('auth-modal').style.display = 'none'; 
-                                    location.reload(); 
-                                }, 1000);
-                            }
-                        }
-                    });
-                } else { 
-                    document.getElementById('auth-modal').style.display = 'none'; 
-                    document.getElementById('register-choice-modal').style.display = 'flex'; 
-                }
-            }
-            
-            if (e.target.classList.contains('close-btn') || e.target.id === 'close-auth' || (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) {
-                document.getElementById('auth-modal').style.display = 'none';
-            }
-            
-            if (e.target.id === 'switch-to-register' || (e.target.closest && e.target.closest('#switch-to-register'))) { 
-                e.preventDefault(); 
-                document.getElementById('auth-modal').style.display = 'none'; 
-                document.getElementById('register-choice-modal').style.display = 'flex'; 
-            }
-            
-            if (e.target.id === 'back-to-login-from-choice' || (e.target.closest && e.target.closest('#back-to-login-from-choice'))) { 
-                e.preventDefault(); 
-                document.getElementById('register-choice-modal').style.display = 'none'; 
-                document.getElementById('auth-modal').style.display = 'flex'; 
-            }
-        });
-    </script>
-
-        <!-- 完整的中英文翻译脚本 -->
+    <!-- 统一的语言切换和界面更新脚本（唯一语言系统） -->
     <script>
         (function() {
             // 中英文翻译字典
             const TRANSLATIONS = {
                 'zh': {
-                    // 主界面
                     'gameTitle': '🍬 糖果数学消消乐',
                     'quickMatch': '快速匹配',
                     'tournament': '锦标赛',
@@ -2721,25 +2321,17 @@
                     'endGame': '结束游戏',
                     'home': '首页',
                     'teacherPanel': '教师面板',
-                    
-                    // 模式
                     'challengeMode': '挑战模式',
                     'standardMode': '标准模式',
                     'practiceMode': '练习模式',
-                    
-                    // 难度
                     'difficultyEasy': '简单',
                     'difficultyMedium': '中等',
                     'difficultyHard': '困难',
-                    
-                    // 统计
                     'statScore': '得分',
                     'statCompleted': '完成',
                     'timeLabel': '剩余时间',
                     'statAccuracy': '正确率',
                     'targetLabel': '目标和',
-                    
-                    // 教师面板
                     'studentList': '学生列表',
                     'generateReport': '生成报告',
                     'classStats': '班级统计',
@@ -2751,23 +2343,17 @@
                     'exportExcel': '导出Excel',
                     'classReport': '全班报告',
                     'selectStudent': '选择学生',
-                    
-                    // 锦标赛
                     'lobby': '大厅',
                     'bracket': '赛程表',
                     'history': '历史',
                     'ranking': '排名',
                     'createTournament': '创建锦标赛',
-                    
-                    // 游戏结束
                     'gameoverTitle': '🎉 游戏结束',
                     'playAgain': '再玩一次',
                     'exportData': '导出数据',
                     'finalScore': '最终得分',
                     'finalCompleted': '完成题数',
                     'finalAccuracy': '正确率',
-                    
-                    // 登录/注册
                     'login': '登录',
                     'register': '注册',
                     'logout': '退出',
@@ -2788,15 +2374,11 @@
                     'loginRequired': '请先登录',
                     'teacherOnly': '只有教师或管理员可以访问此面板',
                     'adminOnly': '只有超级管理员可以创建锦标赛',
-                    
-                    // 新手引导
                     'tutorial1': '⭐ 选两张卡片，加起来等于 🎯',
                     'tutorial2': '⭐ 正确！卡片会消失 ✨',
                     'tutorial3': '⭐ 没得配？点刷新换一批',
                     'noMatch': '没有数字能组成',
                     'dontShow': '不再显示',
-                    
-                    // 对战模式
                     'waitingForOpponent': '正在寻找对手...',
                     'roomCodeLabel': '房间码',
                     'youLabel': '你',
@@ -2827,8 +2409,6 @@
                     'joinRoomBtn': '加入房间',
                     'confirm': '确认',
                     'back': '返回',
-                    
-                    // 锦标赛创建
                     'tournamentName': '锦标赛名称',
                     'enterTournamentName': '例如：班级杯 2024',
                     'playerCount': '参赛人数',
@@ -2838,14 +2418,10 @@
                     'prizePool': '🏆 奖池分配',
                     'confirmCreate': '创建',
                     'cancelCreate': '取消',
-                    
-                    // 比赛结果
                     'wonBet': '赢得赌注',
                     'newRank': '新排名',
                     'win': '胜利！',
                     'lose': '惜败',
-                    
-                    // 通用
                     'loading': '加载中...',
                     'online': '在线',
                     'offline': '离线',
@@ -3322,6 +2898,13 @@
                 return TRANSLATIONS[currentLang][key] || TRANSLATIONS['zh'][key] || key;
             }
             
+            // 同步到 I18n 系统（utils.js）
+            function syncToI18n() {
+                if (typeof I18n !== 'undefined' && I18n.currentLang !== currentLang) {
+                    I18n.setLang(currentLang);
+                }
+            }
+            
             // 更新所有界面文字
             function updateAllText() {
                 // 更新所有带 data-i18n 属性的元素
@@ -3381,6 +2964,18 @@
                 const targetLabel = document.querySelector('.target-label');
                 if (targetLabel) targetLabel.textContent = t('targetLabel');
                 
+                // 同步到 I18n
+                syncToI18n();
+                
+                // 刷新认证模态框（如果打开）
+                if (typeof I18n !== 'undefined' && I18n.refreshAuthModalLanguage) {
+                    I18n.refreshAuthModalLanguage();
+                }
+                
+                // 触发自定义事件，通知其他组件语言已更新
+                const event = new CustomEvent('languageChanged', { detail: { lang: currentLang } });
+                window.dispatchEvent(event);
+                
                 console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
             }
             
@@ -3395,20 +2990,429 @@
                     currentLang = currentLang === 'zh' ? 'en' : 'zh';
                     try {
                         localStorage.setItem('candyMathGame_v4_lang', currentLang);
-                        if (typeof I18n !== 'undefined') {
-                            I18n.setLang(currentLang);
-                        }
                     } catch(e) {}
                     updateAllText();
                 };
             }
             
             // 初始更新
-            updateAllText();
+            setTimeout(updateAllText, 100);
             console.log('语言切换功能已初始化，当前语言:', currentLang === 'zh' ? '中文' : 'English');
         })();
     </script>
-</body>
-</html>
+
+    <!-- Supabase 连接修复和初始化脚本 -->
+    <script>
+        (function() {
+            console.log('正在初始化 Supabase 连接...');
+            var configTag = document.getElementById('supabase-config');
+            if (!configTag) { console.error('未找到 Supabase 配置标签'); return; }
+            var supabaseConfig;
+            try { supabaseConfig = JSON.parse(configTag.textContent); } catch (e) { console.error('解析 Supabase 配置失败:', e); return; }
+            var supabaseUrl = supabaseConfig.supabaseUrl;
+            var supabaseKey = supabaseConfig.supabaseKey;
+            try {
+                if (typeof window.supabase !== 'undefined') {
+                    var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey, {
+                        auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true, storageKey: 'candy-math-auth' }
+                    });
+                    console.log('Supabase 客户端创建成功');
+                    window.supabaseClient = supabaseClient;
+                    
+                    supabaseClient.auth.getSession().then(function(result) {
+                        if (result.error) console.error('Supabase 连接测试失败:', result.error.message);
+                        else { 
+                            console.log('Supabase 连接成功'); 
+                            if (result.data && result.data.session) { 
+                                window.currentUser = result.data.session.user; 
+                                console.log('当前登录用户:', window.currentUser.email);
+                                if (window.game && window.game.state) {
+                                    window.game.state.currentUser = window.currentUser;
+                                }
+                            } 
+                        }
+                    }).catch(function(err) { console.error('Supabase 连接异常:', err.message); });
+                } else console.error('Supabase 库未加载');
+            } catch (err) { console.error('创建 Supabase 客户端失败:', err); }
+        })();
+    </script>
+
+    <!-- 按照正确顺序加载JS模块 -->
+    <script src="js/utils.js"></script>
+    <script src="js/Storage.js"></script>
+    <script src="js/StudentRecord.js"></script>
+    <script src="js/Game.js"></script>
+    <script src="js/Auth.js"></script>
+    <script src="js/UI.js"></script>
+    <script src="js/BattleMode.js"></script>
+    <script src="js/TournamentMode.js"></script>
+    <script src="js/ReportGenerator.js"></script>
+    <script src="js/TeacherPanel.js"></script>
+
+    <!-- 实例化游戏模式 -->
+    <script>
+        (function() {
+            console.log('正在实例化游戏模式...');
+            function initModes() {
+                if (!window.game) { console.log('等待 game 对象...'); setTimeout(initModes, 100); return; }
+                console.log('game 对象已就绪，开始实例化');
+                if (window.BattleMode && !window.battleModeInstance) {
+                    try { window.battleModeInstance = new window.BattleMode(window.game); console.log('BattleMode 实例化成功'); } 
+                    catch (e) { console.error('BattleMode 实例化失败:', e); }
+                }
+                if (window.TournamentMode && !window.tournamentModeInstance) {
+                    try { window.tournamentModeInstance = new window.TournamentMode(window.game); console.log('TournamentMode 实例化成功'); } 
+                    catch (e) { console.error('TournamentMode 实例化失败:', e); }
+                }
+            }
+            setTimeout(initModes, 500);
+        })();
+    </script>
+
+    <!-- 忘记密码功能 -->
+    <script>
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'forgot-password-btn' || (e.target.closest && e.target.closest('#forgot-password-btn'))) {
+                e.preventDefault();
+                var email = document.getElementById('auth-email')?.value;
+                var errorDiv = document.getElementById('auth-error');
+                if (!email) { if (errorDiv) errorDiv.textContent = '请输入邮箱地址'; return; }
+                if (errorDiv) errorDiv.textContent = '正在发送重置邮件...';
+                if (!window.supabaseClient) { if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; return; }
+                window.supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password.html' }).then(function(result) {
+                    if (result.error) { if (errorDiv) errorDiv.textContent = result.error.message; }
+                    else { if (errorDiv) errorDiv.textContent = '重置密码邮件已发送，请查看邮箱'; setTimeout(function() { document.getElementById('auth-modal').style.display = 'none'; }, 3000); }
+                });
+            }
+        });
+    </script>
+
+    <!-- 统一按钮点击处理 -->
+    <script>
+        // 全局用户同步函数
+        function syncCurrentUser() {
+            try {
+                if (window.currentUser && window.game && window.game.state) {
+                    if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
+                        window.game.state.currentUser = window.currentUser;
+                        console.log('✅ 已同步用户到 game.state');
+                    }
+                    return true;
+                }
+                if (window.game && window.game.state && window.game.state.currentUser && !window.currentUser) {
+                    window.currentUser = window.game.state.currentUser;
+                    console.log('✅ 已同步用户到 window.currentUser');
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.warn('同步用户失败:', e);
+                return false;
+            }
+        }
+        
+        // 立即同步一次
+        setTimeout(syncCurrentUser, 100);
+        
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            var action = btn.dataset.action;
+            
+            syncCurrentUser();
+            
+            var isLoggedIn = !!(window.currentUser || (window.game && window.game.state && window.game.state.currentUser));
+            
+            if (!isLoggedIn) {
+                e.preventDefault(); 
+                e.stopPropagation();
+                console.log('用户未登录，显示登录框');
+                var authModal = document.getElementById('auth-modal');
+                var authTitle = document.getElementById('auth-title');
+                var authError = document.getElementById('auth-error');
+                if (authModal) authModal.style.display = 'flex';
+                if (authTitle) authTitle.textContent = I18n?.t('authTitle') || '🔐 登录';
+                if (authError) authError.textContent = I18n?.t('loginRequired') || '请先登录后再使用此功能';
+                return false;
+            }
+            
+            if (!window.currentUser && window.game && window.game.state && window.game.state.currentUser) {
+                window.currentUser = window.game.state.currentUser;
+            }
+            
+            console.log('用户已登录，执行操作:', action);
+            
+            if (action === 'quick-match') {
+                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                var battleInstance = window.battleModeInstance || window.battleMode;
+                if (battleInstance && typeof battleInstance.showModeSelect === 'function') {
+                    battleInstance.showModeSelect();
+                } else if (battleInstance && typeof battleInstance.quickMatch === 'function') {
+                    battleInstance.quickMatch();
+                } else {
+                    if (window.BattleMode && window.game) {
+                        try { 
+                            var newInstance = new window.BattleMode(window.game); 
+                            window.battleModeInstance = newInstance; 
+                            window.battleMode = newInstance; 
+                            if (typeof newInstance.showModeSelect === 'function') newInstance.showModeSelect();
+                            else console.error('showModeSelect 方法不存在');
+                        } catch (err) { 
+                            console.error('快速匹配初始化失败:', err);
+                            alert(I18n?.t('initFailed') || '快速匹配功能初始化失败，请刷新页面重试'); 
+                        }
+                    } else {
+                        alert(I18n?.t('featureUnavailable') || '快速匹配功能暂不可用，请刷新页面重试');
+                    }
+                }
+            } else if (action === 'tournament') {
+                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                var tournamentInstance = window.tournamentModeInstance;
+                if (tournamentInstance && typeof tournamentInstance.openTournamentLobby === 'function') {
+                    tournamentInstance.openTournamentLobby();
+                } else {
+                    document.getElementById('tournament-modal').style.display = 'flex';
+                }
+            } else if (action === 'join-room') {
+                document.getElementById('join-modal').style.display = 'flex';
+            }
+        });
+    </script>
+
+    <!-- 用户界面更新脚本 -->
+    <script>
+        (function() {
+            console.log('初始化用户界面...');
+            
+            var syncTimer = null;
+            var logoutHandler = null;
+            
+            function syncAndUpdateUI() {
+                try {
+                    if (window.currentUser && window.game && window.game.state) {
+                        if (!window.game.state.currentUser || window.game.state.currentUser.id !== window.currentUser.id) {
+                            window.game.state.currentUser = window.currentUser;
+                        }
+                    }
+                    if (window.game && window.game.state && window.game.state.currentUser && !window.currentUser) {
+                        window.currentUser = window.game.state.currentUser;
+                    }
+                    
+                    var userName = document.getElementById('user-name');
+                    var userStatus = document.getElementById('user-status');
+                    var userInfo = document.getElementById('user-info');
+                    var authButtons = document.getElementById('auth-buttons');
+                    
+                    if (!authButtons) return;
+                    
+                    if (window.currentUser) {
+                        if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
+                        
+                        var displayName = window.currentUser.name || window.currentUser.email || (I18n?.t('user') || '用户');
+                        var role = window.currentUser.role || 'student';
+                        
+                        if (role === 'admin') {
+                            displayName += ' 👑';
+                        } else if (role === 'teacher') {
+                            displayName += ' 👩‍🏫';
+                        } else {
+                            displayName += ' 👨‍🎓';
+                        }
+                        
+                        if (role === 'admin') {
+                            if (userStatus) userStatus.textContent = (I18n?.t('adminStatus') || '👑 管理员 · 全校数据可见');
+                        } else {
+                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? (I18n?.t('online') || '✨ 在线') : (I18n?.t('offline') || '📴 离线');
+                        }
+                        
+                        if (userName) userName.textContent = displayName;
+                        if (userInfo) userInfo.style.display = 'flex';
+                        
+                        var adminTab = document.getElementById('admin-tab-btn');
+                        var adminTabContent = document.getElementById('admin-tab');
+                        if (adminTab && adminTabContent) {
+                            if (role === 'admin') {
+                                adminTab.style.display = 'inline-block';
+                            } else {
+                                adminTab.style.display = 'none';
+                            }
+                        }
+                        
+                        if (authButtons) {
+                            if (logoutHandler) {
+                                var oldBtn = document.getElementById('logout-btn');
+                                if (oldBtn) oldBtn.removeEventListener('click', logoutHandler);
+                            }
+                            
+                            authButtons.innerHTML = '<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text" data-i18n="logout">退出</span></button>';
+                            var logoutBtn = document.getElementById('logout-btn');
+                            if (logoutBtn) {
+                                logoutHandler = function() {
+                                    if (window.supabaseClient) { 
+                                        window.supabaseClient.auth.signOut().then(function() { 
+                                            window.currentUser = null; 
+                                            if (window.game && window.game.state) window.game.state.currentUser = null; 
+                                            location.reload(); 
+                                        }).catch(function() { location.reload(); });
+                                    } else { 
+                                        window.currentUser = null; 
+                                        if (window.game && window.game.state) window.game.state.currentUser = null; 
+                                        location.reload(); 
+                                    }
+                                };
+                                logoutBtn.addEventListener('click', logoutHandler);
+                            }
+                        }
+                    } else {
+                        if (userInfo) userInfo.style.display = 'none';
+                        if (authButtons) {
+                            authButtons.innerHTML = '<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text" data-i18n="login">登录</span></button><button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text" data-i18n="register">注册</span></button>';
+                            
+                            var loginBtn = document.getElementById('show-login-btn');
+                            var registerBtn = document.getElementById('show-register-btn');
+                            
+                            if (loginBtn) {
+                                loginBtn.onclick = function() { 
+                                    document.getElementById('auth-modal').style.display = 'flex'; 
+                                    document.getElementById('auth-title').textContent = I18n?.t('authTitle') || '🔐 登录'; 
+                                    document.getElementById('auth-submit').textContent = I18n?.t('submit') || '登录'; 
+                                    var errorDiv = document.getElementById('auth-error');
+                                    if (errorDiv) errorDiv.textContent = '';
+                                };
+                            }
+                            if (registerBtn) {
+                                registerBtn.onclick = function() { 
+                                    document.getElementById('register-choice-modal').style.display = 'flex'; 
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('UI同步失败:', e);
+                }
+            }
+            
+            function checkUserStatus() {
+                if (window.supabaseClient) {
+                    window.supabaseClient.auth.getSession().then(function(result) {
+                        if (result.data && result.data.session) { 
+                            window.currentUser = result.data.session.user; 
+                            if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
+                                window.game.auth.getUserProfile(result.data.session.user.id).then(function(profile) {
+                                    if (profile) {
+                                        window.currentUser.role = profile.role;
+                                        window.currentUser.school = profile.school;
+                                        window.currentUser.state = profile.state;
+                                        window.currentUser.class = profile.class;
+                                    }
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    syncAndUpdateUI();
+                                }).catch(function() {
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    syncAndUpdateUI();
+                                });
+                            } else {
+                                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                syncAndUpdateUI();
+                            }
+                        } else {
+                            syncAndUpdateUI();
+                        }
+                    }).catch(function() { syncAndUpdateUI(); });
+                } else {
+                    syncAndUpdateUI();
+                }
+            }
+            
+            syncAndUpdateUI();
+            setTimeout(checkUserStatus, 1000);
+            setTimeout(checkUserStatus, 2000);
+            setTimeout(checkUserStatus, 3000);
+            
+            if (syncTimer) clearInterval(syncTimer);
+            syncTimer = setInterval(syncAndUpdateUI, 10000);
+        })();
+    </script>
+
+    <!-- 登录/注册处理脚本 -->
+    <script>
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'auth-submit' || (e.target.closest && e.target.closest('#auth-submit'))) {
+                e.preventDefault();
+                var email = document.getElementById('auth-email')?.value;
+                var password = document.getElementById('auth-password')?.value;
+                var title = document.getElementById('auth-title')?.textContent;
+                var errorDiv = document.getElementById('auth-error');
+                
+                if (!email || !password) { 
+                    if (errorDiv) errorDiv.textContent = I18n?.t('emailAndPasswordRequired') || '请填写邮箱和密码'; 
+                    return; 
+                }
+                if (errorDiv) errorDiv.textContent = I18n?.t('processing') || '正在处理...';
+                if (!window.supabaseClient) { 
+                    if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; 
+                    return; 
+                }
+                
+                if (title && (title.indexOf('登录') !== -1 || title.indexOf('Login') !== -1)) {
+                    window.supabaseClient.auth.signInWithPassword({ email: email, password: password }).then(function(result) {
+                        if (result.error) { 
+                            if (errorDiv) errorDiv.textContent = result.error.message; 
+                        } else { 
+                            if (errorDiv) errorDiv.textContent = I18n?.t('loginSuccess') || '登录成功！'; 
+                            window.currentUser = result.data.user; 
+                            
+                            if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
+                                window.game.auth.getUserProfile(result.data.user.id).then(function(profile) {
+                                    if (profile) {
+                                        window.currentUser.role = profile.role;
+                                        window.currentUser.school = profile.school;
+                                        window.currentUser.state = profile.state;
+                                        window.currentUser.class = profile.class;
+                                    }
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    setTimeout(function() { 
+                                        document.getElementById('auth-modal').style.display = 'none'; 
+                                        location.reload(); 
+                                    }, 1000);
+                                }).catch(function() {
+                                    if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                    setTimeout(function() { 
+                                        document.getElementById('auth-modal').style.display = 'none'; 
+                                        location.reload(); 
+                                    }, 1000);
+                                });
+                            } else {
+                                if (window.game && window.game.state) window.game.state.currentUser = window.currentUser;
+                                setTimeout(function() { 
+                                    document.getElementById('auth-modal').style.display = 'none'; 
+                                    location.reload(); 
+                                }, 1000);
+                            }
+                        }
+                    });
+                } else { 
+                    document.getElementById('auth-modal').style.display = 'none'; 
+                    document.getElementById('register-choice-modal').style.display = 'flex'; 
+                }
+            }
+            
+            if (e.target.classList.contains('close-btn') || e.target.id === 'close-auth' || (e.target.classList.contains('auth-modal') && e.target === e.currentTarget)) {
+                document.getElementById('auth-modal').style.display = 'none';
+            }
+            
+            if (e.target.id === 'switch-to-register' || (e.target.closest && e.target.closest('#switch-to-register'))) { 
+                e.preventDefault(); 
+                document.getElementById('auth-modal').style.display = 'none'; 
+                document.getElementById('register-choice-modal').style.display = 'flex'; 
+            }
+            
+            if (e.target.id === 'back-to-login-from-choice' || (e.target.closest && e.target.closest('#back-to-login-from-choice'))) { 
+                e.preventDefault(); 
+                document.getElementById('register-choice-modal').style.display = 'none'; 
+                document.getElementById('auth-modal').style.display = 'flex'; 
+            }
+        });
+    </script>
 </body>
 </html>
