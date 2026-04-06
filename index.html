@@ -2964,13 +2964,66 @@
                 const targetLabel = document.querySelector('.target-label');
                 if (targetLabel) targetLabel.textContent = t('targetLabel');
                 
+                // ========== 修复：更新认证模态框按钮 ==========
+                const authModal = document.getElementById('auth-modal');
+                if (authModal && authModal.style.display === 'flex') {
+                    const authTitle = document.getElementById('auth-title');
+                    const authSubmit = document.getElementById('auth-submit');
+                    const authSwitch = document.getElementById('auth-switch');
+                    const forgotBtn = document.getElementById('forgot-password-btn');
+                    
+                    // 判断当前模式（登录还是注册）
+                    const isLoginMode = authTitle && (authTitle.textContent.includes('登录') || authTitle.textContent.includes('Login'));
+                    
+                    if (authTitle) authTitle.innerHTML = (isLoginMode ? '🔐 ' : '📝 ') + t(isLoginMode ? 'login' : 'register');
+                    if (authSubmit) authSubmit.textContent = t(isLoginMode ? 'login' : 'register');
+                    
+                    if (authSwitch) {
+                        if (isLoginMode) {
+                            authSwitch.innerHTML = '<span id="switch-to-register" data-i18n="registerNow">' + t('registerNow') + '</span>';
+                        } else {
+                            authSwitch.innerHTML = '<span id="switch-to-login" data-i18n="loginNow">' + t('loginNow') + '</span>';
+                        }
+                    }
+                    
+                    if (forgotBtn && isLoginMode) forgotBtn.textContent = t('forgotPassword') + '？';
+                }
+                
+                // ========== 修复：更新教师面板内容 ==========
+                const teacherModal = document.getElementById('teacher-modal');
+                if (teacherModal && teacherModal.style.display === 'flex') {
+                    const teacherTitle = teacherModal.querySelector('h2');
+                    if (teacherTitle) teacherTitle.textContent = t('teacherPanel');
+                    
+                    const tabBtns = teacherModal.querySelectorAll('.teacher-tabs .tab-btn');
+                    if (tabBtns[0]) tabBtns[0].innerHTML = '📋 ' + t('studentList');
+                    if (tabBtns[1]) tabBtns[1].innerHTML = '📊 ' + t('generateReport');
+                    if (tabBtns[2]) tabBtns[2].innerHTML = '📈 ' + t('classStats');
+                    if (tabBtns[3]) tabBtns[3].innerHTML = '👑 ' + t('allSchoolData');
+                    
+                    const importBtn = document.getElementById('import-students');
+                    if (importBtn) importBtn.innerHTML = '📥 ' + t('importStudents');
+                    
+                    const syncBtn = document.getElementById('sync-data-btn');
+                    if (syncBtn) syncBtn.innerHTML = '🔄 ' + t('syncData');
+                    
+                    const clearBtn = document.getElementById('clear-all-records');
+                    if (clearBtn) clearBtn.innerHTML = '🗑️ ' + t('clearRecords');
+                    
+                    const generatePdfBtn = document.getElementById('generate-pdf');
+                    if (generatePdfBtn) generatePdfBtn.innerHTML = '📄 ' + t('generatePDF');
+                    
+                    const exportExcelBtn = document.getElementById('export-excel');
+                    if (exportExcelBtn) exportExcelBtn.innerHTML = '📊 ' + t('exportExcel');
+                    
+                    const reportSelect = document.getElementById('report-student-select');
+                    if (reportSelect && reportSelect.options[0]) {
+                        reportSelect.options[0].text = t('classReport');
+                    }
+                }
+                
                 // 同步到 I18n
                 syncToI18n();
-                
-                // 刷新认证模态框（如果打开）
-                if (typeof I18n !== 'undefined' && I18n.refreshAuthModalLanguage) {
-                    I18n.refreshAuthModalLanguage();
-                }
                 
                 // 触发自定义事件，通知其他组件语言已更新
                 const event = new CustomEvent('languageChanged', { detail: { lang: currentLang } });
