@@ -2626,11 +2626,15 @@
         });
     </script>
 
-      <!-- 完整的中英文翻译脚本（统一语言控制系统） -->
+    <!-- 完整的中英文翻译脚本（统一语言控制系统） - 修复版 -->
     <script>
         (function() {
             // ✅ 设置外部语言控制标志，禁用 utils.js 中的自动刷新
             window._externalLangControl = true;
+            
+            // 防循环标志
+            let _isSettingLang = false;
+            let _isUpdatingUI = false;
             
             // 中英文翻译字典
             const TRANSLATIONS = {
@@ -2919,7 +2923,8 @@
                     'asEntryFee': '作为报名费',
                     'totalPrize': '总奖池',
                     'confirmContinue': '确定继续吗？',
-                    'adminStatus': '👑 管理员 · 全校数据可见'
+                    'adminStatus': '👑 管理员 · 全校数据可见',
+                    'noAccount': '没有账号'
                 },
                 'en': {
                     'gameTitle': '🍬 Candy Math Match',
@@ -3206,7 +3211,8 @@
                     'asEntryFee': 'as entry fee',
                     'totalPrize': 'Total Prize Pool',
                     'confirmContinue': 'Continue?',
-                    'adminStatus': '👑 Admin · Full Access'
+                    'adminStatus': '👑 Admin · Full Access',
+                    'noAccount': "Don't have an account"
                 }
             };
             
@@ -3223,14 +3229,18 @@
                 return TRANSLATIONS[currentLang][key] || TRANSLATIONS['zh'][key] || key;
             }
             
-            // 设置语言（不再调用 syncToInternalI18n，避免循环）
+            // 设置语言（添加防循环）
             function setLang(lang) {
+                if (_isSettingLang) return;
                 if (lang === 'zh' || lang === 'en') {
-                    currentLang = lang;
+                    _isSettingLang = true;
                     try {
+                        currentLang = lang;
                         localStorage.setItem('candyMathGame_v4_lang', lang);
-                    } catch(e) {}
-                    updateAllText();
+                        updateAllText();
+                    } finally {
+                        setTimeout(() => { _isSettingLang = false; }, 100);
+                    }
                 }
             }
             
@@ -3239,76 +3249,68 @@
                 return currentLang;
             }
             
-            // 更新所有界面文字
+            // 更新所有界面文字（添加防循环）
             function updateAllText() {
-                // 更新所有带 data-i18n 属性的元素
-                document.querySelectorAll('[data-i18n]').forEach(el => {
-                    const key = el.dataset.i18n;
-                    const translation = t(key);
-                    if (translation && translation !== key) {
-                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                            if (el.placeholder !== undefined) {
-                                el.placeholder = translation;
-                            } else {
-                                el.value = translation;
-                            }
-                        } else {
-                            const originalText = el.innerHTML;
-                            const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕🗑️👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g;
-                            const emojiMatch = originalText.match(hasEmoji);
-                            if (emojiMatch && emojiMatch.length > 0) {
-                                const emoji = emojiMatch.join('');
-                                if (!translation.startsWith(emoji)) {
-                                    el.innerHTML = emoji + ' ' + translation;
+                if (_isUpdatingUI) return;
+                _isUpdatingUI = true;
+                
+                try {
+                    // 更新所有带 data-i18n 属性的元素
+                    document.querySelectorAll('[data-i18n]').forEach(el => {
+                        const key = el.dataset.i18n;
+                        const translation = t(key);
+                        if (translation && translation !== key) {
+                            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                                if (el.placeholder !== undefined) {
+                                    el.placeholder = translation;
                                 } else {
-                                    el.innerHTML = translation;
+                                    el.value = translation;
                                 }
                             } else {
-                                el.textContent = translation;
+                                const originalText = el.innerHTML;
+                                const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕🗑️👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g;
+                                const emojiMatch = originalText.match(hasEmoji);
+                                if (emojiMatch && emojiMatch.length > 0) {
+                                    const emoji = emojiMatch.join('');
+                                    if (!translation.startsWith(emoji)) {
+                                        el.innerHTML = emoji + ' ' + translation;
+                                    } else {
+                                        el.innerHTML = translation;
+                                    }
+                                } else {
+                                    el.textContent = translation;
+                                }
                             }
                         }
-                    }
-                });
-                
-                // 更新 placeholder
-                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                    const key = el.dataset.i18nPlaceholder;
-                    const translation = t(key);
-                    if (translation && translation !== key) {
-                        el.placeholder = translation;
-                    }
-                });
-                
-                // 更新游戏标题
-                const gameTitle = document.getElementById('game-title');
-                if (gameTitle) gameTitle.textContent = t('gameTitle');
-                
-                // 更新语言按钮
-                const langText = document.getElementById('lang-text');
-                const langIcon = document.getElementById('lang-icon');
-                if (langText) langText.textContent = currentLang === 'zh' ? '中文' : 'English';
-                if (langIcon) langIcon.textContent = currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
-                
-                // 更新教师面板按钮文字
-                const teacherPanelBtn = document.querySelector('#teacher-panel-btn .btn-text');
-                if (teacherPanelBtn) teacherPanelBtn.textContent = t('teacherPanel');
-                
-                // 更新统计标签
-                const statLabels = document.querySelectorAll('.stat-label');
-                if (statLabels[0]) statLabels[0].textContent = t('statScore');
-                if (statLabels[1]) statLabels[1].textContent = t('statCompleted');
-                if (statLabels[2]) statLabels[2].textContent = t('timeLabel');
-                if (statLabels[3]) statLabels[3].textContent = t('statAccuracy');
-                
-                // 更新目标标签
-                const targetLabel = document.querySelector('.target-label');
-                if (targetLabel) targetLabel.textContent = t('targetLabel');
-                
-                // 触发自定义事件，通知其他组件语言已更新
-                const event = new CustomEvent('languageChanged', { detail: { lang: currentLang } });
-                document.dispatchEvent(event);
-                
-                console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
+                    });
+                    
+                    // 更新 placeholder
+                    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                        const key = el.dataset.i18nPlaceholder;
+                        const translation = t(key);
+                        if (translation && translation !== key) {
+                            el.placeholder = translation;
+                        }
+                    });
+                    
+                    // 更新游戏标题
+                    const gameTitle = document.getElementById('game-title');
+                    if (gameTitle) gameTitle.textContent = t('gameTitle');
+                    
+                    // 更新语言按钮
+                    const langText = document.getElementById('lang-text');
+                    const langIcon = document.getElementById('lang-icon');
+                    if (langText) langText.textContent = currentLang === 'zh' ? '中文' : 'English';
+                    if (langIcon) langIcon.textContent = currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
+                    
+                    // 触发自定义事件，通知其他组件语言已更新
+                    const event = new CustomEvent('languageChanged', { detail: { lang: currentLang } });
+                    document.dispatchEvent(event);
+                    
+                    console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
+                } finally {
+                    setTimeout(() => { _isUpdatingUI = false; }, 100);
+                }
             }
             
             // 创建全局 I18n 对象
@@ -3344,253 +3346,264 @@
             console.log('语言切换功能已初始化（统一控制系统），当前语言:', currentLang === 'zh' ? '中文' : 'English');
         })();
     </script>
-    <!-- 修复语言切换问题 - 在语言控制系统脚本中添加更强的控制 -->
-<script>
-(function() {
-    // ✅ 设置外部语言控制标志
-    window._externalLangControl = true;
     
-    // 强制覆盖所有可能改变语言的函数
-    window._forceLanguage = function(lang) {
-        console.log('强制语言更新:', lang);
-        // 更新所有带 data-i18n 的元素
-        document.querySelectorAll('[data-i18n]').forEach(el => {
-            const key = el.dataset.i18n;
-            const translation = window.I18n ? window.I18n.t(key) : null;
-            if (translation && translation !== key) {
-                if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                    if (el.placeholder !== undefined) el.placeholder = translation;
-                } else {
-                    const originalText = el.innerHTML;
-                    const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕🗑️👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g;
-                    const emojiMatch = originalText.match(hasEmoji);
-                    if (emojiMatch && emojiMatch.length > 0) {
-                        const emoji = emojiMatch.join('');
-                        if (!translation.startsWith(emoji)) {
-                            el.innerHTML = emoji + ' ' + translation;
-                        } else {
-                            el.innerHTML = translation;
-                        }
+    <!-- 修复语言切换问题 - 添加防循环的 localStorage 拦截 -->
+    <script>
+    (function() {
+        // ✅ 设置外部语言控制标志
+        window._externalLangControl = true;
+        
+        let _isSettingLanguage = false;  // 防循环标志
+        
+        // 强制覆盖所有可能改变语言的函数
+        window._forceLanguage = function(lang) {
+            console.log('强制语言更新:', lang);
+            // 更新所有带 data-i18n 的元素
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                const translation = window.I18n ? window.I18n.t(key) : null;
+                if (translation && translation !== key) {
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                        if (el.placeholder !== undefined) el.placeholder = translation;
                     } else {
                         el.textContent = translation;
                     }
                 }
+            });
+            
+            // 更新登录/注册按钮
+            const authButtons = document.getElementById('auth-buttons');
+            if (authButtons && !window.currentUser) {
+                const loginText = window.I18n ? window.I18n.t('login') : '登录';
+                const registerText = window.I18n ? window.I18n.t('register') : '注册';
+                authButtons.innerHTML = `<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">${loginText}</span></button>
+                                        <button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">${registerText}</span></button>`;
+                // 重新绑定事件
+                const newLoginBtn = document.getElementById('show-login-btn');
+                const newRegisterBtn = document.getElementById('show-register-btn');
+                if (newLoginBtn) {
+                    newLoginBtn.onclick = function() { 
+                        document.getElementById('auth-modal').style.display = 'flex'; 
+                        const titleEl = document.getElementById('auth-title');
+                        if (titleEl) titleEl.textContent = window.I18n ? window.I18n.t('authTitle') : '🔐 登录';
+                        const submitEl = document.getElementById('auth-submit');
+                        if (submitEl) submitEl.textContent = window.I18n ? window.I18n.t('submit') : '登录';
+                        const errorDiv = document.getElementById('auth-error');
+                        if (errorDiv) errorDiv.textContent = '';
+                    };
+                }
+                if (newRegisterBtn) {
+                    newRegisterBtn.onclick = function() { 
+                        document.getElementById('register-choice-modal').style.display = 'flex'; 
+                    };
+                }
             }
-        });
-        
-        // 更新登录/注册按钮
-        const authButtons = document.getElementById('auth-buttons');
-        if (authButtons && !window.currentUser) {
-            const loginText = window.I18n ? window.I18n.t('login') : '登录';
-            const registerText = window.I18n ? window.I18n.t('register') : '注册';
-            authButtons.innerHTML = `<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">${loginText}</span></button>
-                                    <button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">${registerText}</span></button>`;
-            // 重新绑定事件
-            const newLoginBtn = document.getElementById('show-login-btn');
-            const newRegisterBtn = document.getElementById('show-register-btn');
-            if (newLoginBtn) {
-                newLoginBtn.onclick = function() { 
-                    document.getElementById('auth-modal').style.display = 'flex'; 
-                    const titleEl = document.getElementById('auth-title');
-                    if (titleEl) titleEl.textContent = window.I18n ? window.I18n.t('authTitle') : '🔐 登录';
-                    const submitEl = document.getElementById('auth-submit');
-                    if (submitEl) submitEl.textContent = window.I18n ? window.I18n.t('submit') : '登录';
-                    const errorDiv = document.getElementById('auth-error');
-                    if (errorDiv) errorDiv.textContent = '';
-                };
-            }
-            if (newRegisterBtn) {
-                newRegisterBtn.onclick = function() { 
-                    document.getElementById('register-choice-modal').style.display = 'flex'; 
-                };
-            }
-        }
-        
-        // 更新退出按钮
-        if (window.currentUser && authButtons) {
-            const logoutText = window.I18n ? window.I18n.t('logout') : '退出';
-            authButtons.innerHTML = `<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">${logoutText}</span></button>`;
-            const logoutBtn = document.getElementById('logout-btn');
-            if (logoutBtn) {
-                logoutBtn.onclick = function() {
-                    if (window.supabaseClient) { 
-                        window.supabaseClient.auth.signOut().then(function() { 
+            
+            // 更新退出按钮
+            if (window.currentUser && authButtons) {
+                const logoutText = window.I18n ? window.I18n.t('logout') : '退出';
+                authButtons.innerHTML = `<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">${logoutText}</span></button>`;
+                const logoutBtn = document.getElementById('logout-btn');
+                if (logoutBtn) {
+                    logoutBtn.onclick = function() {
+                        if (window.supabaseClient) { 
+                            window.supabaseClient.auth.signOut().then(function() { 
+                                window.currentUser = null; 
+                                if (window.game && window.game.state) window.game.state.currentUser = null; 
+                                location.reload(); 
+                            }).catch(function() { location.reload(); });
+                        } else { 
                             window.currentUser = null; 
                             if (window.game && window.game.state) window.game.state.currentUser = null; 
                             location.reload(); 
-                        }).catch(function() { location.reload(); });
-                    } else { 
-                        window.currentUser = null; 
-                        if (window.game && window.game.state) window.game.state.currentUser = null; 
-                        location.reload(); 
-                    }
-                };
+                        }
+                    };
+                }
             }
-        }
-    };
-    
-    // 覆盖 UI.js 中的语言更新方法
-    if (window.UI && window.UI.updateLanguage) {
-        const originalUpdateLanguage = window.UI.updateLanguage;
-        window.UI.updateLanguage = function() {
-            console.log('UI.updateLanguage 被拦截，使用统一语言控制');
-            if (window.I18n) window.I18n.updateAllText();
         };
-    }
-    
-    // 监听 Auth.js 可能触发的语言重置
-    const originalSetItem = localStorage.setItem;
-    localStorage.setItem = function(key, value) {
-        originalSetItem.apply(this, arguments);
-        if (key === 'candyMathGame_v4_lang') {
-            console.log('检测到 localStorage 语言变化:', value);
-            setTimeout(() => {
-                if (window.I18n && window.I18n.currentLang !== value) {
-                    window.I18n.setLang(value);
-                }
-            }, 10);
-        }
-    };
-    
-    // 定期检查并修复语言（每500ms检查一次，持续3秒）
-    let checkCount = 0;
-    const fixInterval = setInterval(function() {
-        checkCount++;
-        const currentBtnText = document.querySelector('#auth-buttons .btn-text')?.textContent;
-        const expectedText = window.I18n && window.I18n.currentLang === 'en' ? 'Login' : '登录';
         
-        if (currentBtnText && currentBtnText !== expectedText && currentBtnText !== 'Login' && currentBtnText !== '登录') {
-            console.log('检测到语言不一致，强制修复:', currentBtnText, '->', expectedText);
-            if (window.I18n) window.I18n.updateAllText();
-            window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
+        // 覆盖 UI.js 中的语言更新方法
+        if (window.UI && window.UI.updateLanguage) {
+            const originalUpdateLanguage = window.UI.updateLanguage;
+            window.UI.updateLanguage = function() {
+                console.log('UI.updateLanguage 被拦截，使用统一语言控制');
+                if (window.I18n) window.I18n.updateAllText();
+            };
         }
         
-        if (checkCount > 20) clearInterval(fixInterval);
-    }, 500);
-    
-    // 监听模态框打开，重新应用语言
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                const target = mutation.target;
-                if (target.classList && (target.classList.contains('auth-modal') || 
-                    target.id === 'auth-modal' ||
-                    target.classList.contains('register-choice-modal'))) {
-                    if (target.style.display === 'flex') {
-                        setTimeout(() => {
-                            if (window.I18n) window.I18n.updateAllText();
-                            window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
-                        }, 50);
+        // ✅ 修复：添加防循环标志的 localStorage 拦截
+        const originalSetItem = localStorage.setItem;
+        localStorage.setItem = function(key, value) {
+            originalSetItem.apply(this, arguments);
+            if (key === 'candyMathGame_v4_lang' && !_isSettingLanguage) {
+                console.log('检测到 localStorage 语言变化:', value);
+                _isSettingLanguage = true;
+                setTimeout(() => {
+                    if (window.I18n && window.I18n.currentLang !== value) {
+                        window.I18n.setLang(value);
+                    }
+                    setTimeout(() => { _isSettingLanguage = false; }, 200);
+                }, 10);
+            }
+        };
+        
+        // 定期检查并修复语言（每500ms检查一次，持续3秒）
+        let checkCount = 0;
+        const fixInterval = setInterval(function() {
+            checkCount++;
+            const currentBtnText = document.querySelector('#auth-buttons .btn-text')?.textContent;
+            const expectedText = window.I18n && window.I18n.currentLang === 'en' ? 'Login' : '登录';
+            
+            if (currentBtnText && currentBtnText !== expectedText && currentBtnText !== 'Login' && currentBtnText !== '登录') {
+                console.log('检测到语言不一致，强制修复:', currentBtnText, '->', expectedText);
+                if (window.I18n) window.I18n.updateAllText();
+                window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
+            }
+            
+            if (checkCount > 20) clearInterval(fixInterval);
+        }, 500);
+        
+        // 监听模态框打开，重新应用语言
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    const target = mutation.target;
+                    if (target.classList && (target.classList.contains('auth-modal') || 
+                        target.id === 'auth-modal' ||
+                        target.classList.contains('register-choice-modal'))) {
+                        if (target.style.display === 'flex') {
+                            setTimeout(() => {
+                                if (window.I18n) window.I18n.updateAllText();
+                                window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
+                            }, 50);
+                        }
                     }
                 }
-            }
+            });
         });
-    });
-    
-    observer.observe(document.body, { 
-        attributes: true, 
-        attributeFilter: ['style'],
-        subtree: true 
-    });
-    
-    console.log('语言修复脚本已启动 - 将阻止按钮文字被覆盖');
-})();
-</script>
-    <!-- 在页面底部，所有脚本加载完成后添加 -->
-<script>
-// ==================== 覆盖 Auth.js 方法以修复语言问题 ====================
-(function overrideAuthMethods() {
-    // 等待 AuthManager 加载完成
-    const checkInterval = setInterval(function() {
-        // 获取 Auth 实例
-        let authInstance = null;
         
-        if (window.game && window.game.auth) {
-            authInstance = window.game.auth;
-        } else if (window.authManager) {
-            authInstance = window.authManager;
-        } else if (window.AuthManager && window._authInstance) {
-            authInstance = window._authInstance;
-        }
+        observer.observe(document.body, { 
+            attributes: true, 
+            attributeFilter: ['style'],
+            subtree: true 
+        });
         
-        if (authInstance && typeof authInstance.getI18n === 'function') {
-            clearInterval(checkInterval);
-            console.log('找到 Auth 实例，开始覆盖方法...');
+        console.log('语言修复脚本已启动 - 将阻止按钮文字被覆盖');
+    })();
+    </script>
+    
+    <!-- 覆盖 Auth.js 方法以修复语言问题 -->
+    <script>
+    (function overrideAuthMethods() {
+        // 等待 AuthManager 加载完成
+        const checkInterval = setInterval(function() {
+            // 获取 Auth 实例
+            let authInstance = null;
             
-            // 覆盖 getI18n 方法
-            const originalGetI18n = authInstance.getI18n;
-            authInstance.getI18n = function() {
-                if (window.I18n && window.I18n.t) {
-                    return window.I18n;
-                }
-                return originalGetI18n ? originalGetI18n.call(this) : { t: (key) => key };
-            };
+            if (window.game && window.game.auth) {
+                authInstance = window.game.auth;
+            } else if (window.authManager) {
+                authInstance = window.authManager;
+            } else if (window.AuthManager && window._authInstance) {
+                authInstance = window._authInstance;
+            }
             
-            // 覆盖 updateAuthModalUI 方法
-            authInstance.updateAuthModalUI = function(mode, elements) {
-                const i18n = this.getI18n();
-                const { title, submitBtn, switchDiv, forgotPasswordDiv, passwordInput, passwordLabel } = elements;
+            if (authInstance && typeof authInstance.getI18n === 'function') {
+                clearInterval(checkInterval);
+                console.log('找到 Auth 实例，开始覆盖方法...');
                 
-                const getText = (key, defaultText) => {
-                    const translation = i18n.t(key);
-                    return (translation && translation !== key) ? translation : defaultText;
+                // 覆盖 getI18n 方法
+                const originalGetI18n = authInstance.getI18n;
+                authInstance.getI18n = function() {
+                    if (window.I18n && window.I18n.t) {
+                        return window.I18n;
+                    }
+                    return originalGetI18n ? originalGetI18n.call(this) : { t: (key) => key };
                 };
                 
-                switchDiv.innerHTML = '';
+                // 覆盖 updateAuthModalUI 方法
+                authInstance.updateAuthModalUI = function(mode, elements) {
+                    const i18n = this.getI18n();
+                    const { title, submitBtn, switchDiv, forgotPasswordDiv, passwordInput, passwordLabel } = elements;
+                    
+                    const getText = (key, defaultText) => {
+                        const translation = i18n.t(key);
+                        return (translation && translation !== key) ? translation : defaultText;
+                    };
+                    
+                    switchDiv.innerHTML = '';
+                    
+                    if (mode === 'login') {
+                        if (title) title.innerHTML = '🔐 ' + getText('login', '登录');
+                        if (submitBtn) submitBtn.innerHTML = getText('login', '登录');
+                        
+                        const registerSpan = document.createElement('span');
+                        registerSpan.id = 'switch-to-register';
+                        registerSpan.style.cssText = 'cursor:pointer;color:#667eea;';
+                        registerSpan.textContent = getText('registerNow', '立即注册');
+                        switchDiv.appendChild(document.createTextNode((getText('noAccount', '没有账号') || '没有账号') + ' '));
+                        switchDiv.appendChild(registerSpan);
+                        
+                        const registerHandler = () => this.showRegisterChoice();
+                        registerSpan.addEventListener('click', registerHandler);
+                        
+                        if (forgotPasswordDiv) {
+                            forgotPasswordDiv.style.display = 'block';
+                            forgotPasswordDiv.innerHTML = '';
+                            const forgotSpan = document.createElement('span');
+                            forgotSpan.id = 'forgot-password';
+                            forgotSpan.style.cssText = 'cursor:pointer;color:#666;font-size:0.9em;text-decoration:underline;';
+                            forgotSpan.textContent = (getText('forgotPassword', '忘记密码') || '忘记密码') + '?';
+                            forgotSpan.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                this.showForgotPasswordModal();
+                            });
+                            forgotPasswordDiv.appendChild(forgotSpan);
+                        }
+                    } 
+                    else if (mode === 'register') {
+                        if (title) title.innerHTML = '📝 ' + getText('register', '注册');
+                        if (submitBtn) submitBtn.innerHTML = getText('register', '注册');
+                        
+                        const loginSpan = document.createElement('span');
+                        loginSpan.id = 'switch-to-login';
+                        loginSpan.style.cssText = 'cursor:pointer;color:#667eea;';
+                        loginSpan.textContent = getText('loginNow', '立即登录');
+                        switchDiv.appendChild(document.createTextNode((getText('hasAccount', '已有账号') || '已有账号') + ' '));
+                        switchDiv.appendChild(loginSpan);
+                        
+                        const loginHandler = () => this.showAuthModal('login');
+                        loginSpan.addEventListener('click', loginHandler);
+                        
+                        if (forgotPasswordDiv) {
+                            forgotPasswordDiv.style.display = 'none';
+                            forgotPasswordDiv.innerHTML = '';
+                        }
+                    }
+                };
                 
-                if (mode === 'login') {
-                    if (title) title.innerHTML = '🔐 ' + getText('login', '登录');
-                    if (submitBtn) submitBtn.innerHTML = getText('login', '登录');
-                    
-                    const registerSpan = document.createElement('span');
-                    registerSpan.id = 'switch-to-register';
-                    registerSpan.style.cssText = 'cursor:pointer;color:#667eea;';
-                    registerSpan.textContent = getText('registerNow', '立即注册');
-                    switchDiv.appendChild(document.createTextNode((getText('noAccount', '没有账号') || '没有账号') + ' '));
-                    switchDiv.appendChild(registerSpan);
-                    
-                    const registerHandler = () => this.showRegisterChoice();
-                    registerSpan.addEventListener('click', registerHandler);
-                    
-                    if (forgotPasswordDiv) {
-                        forgotPasswordDiv.style.display = 'block';
-                        forgotPasswordDiv.innerHTML = '';
-                        const forgotSpan = document.createElement('span');
-                        forgotSpan.id = 'forgot-password';
-                        forgotSpan.style.cssText = 'cursor:pointer;color:#666;font-size:0.9em;text-decoration:underline;';
-                        forgotSpan.textContent = (getText('forgotPassword', '忘记密码') || '忘记密码') + '?';
-                        forgotSpan.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            this.showForgotPasswordModal();
-                        });
-                        forgotPasswordDiv.appendChild(forgotSpan);
+                // 覆盖 showAuthModal 方法
+                const originalShowAuthModal = authInstance.showAuthModal;
+                authInstance.showAuthModal = function(mode, prefillEmail) {
+                    if (window.I18n && window.I18n.updateAllText) {
+                        window.I18n.updateAllText();
                     }
-                } 
-                else if (mode === 'register') {
-                    if (title) title.innerHTML = '📝 ' + getText('register', '注册');
-                    if (submitBtn) submitBtn.innerHTML = getText('register', '注册');
-                    
-                    const loginSpan = document.createElement('span');
-                    loginSpan.id = 'switch-to-login';
-                    loginSpan.style.cssText = 'cursor:pointer;color:#667eea;';
-                    loginSpan.textContent = getText('loginNow', '立即登录');
-                    switchDiv.appendChild(document.createTextNode((getText('hasAccount', '已有账号') || '已有账号') + ' '));
-                    switchDiv.appendChild(loginSpan);
-                    
-                    const loginHandler = () => this.showAuthModal('login');
-                    loginSpan.addEventListener('click', loginHandler);
-                    
-                    if (forgotPasswordDiv) {
-                        forgotPasswordDiv.style.display = 'none';
-                        forgotPasswordDiv.innerHTML = '';
-                    }
-                }
-            };
-            
-            console.log('Auth 方法覆盖完成');
-        }
-    }, 500);
-})();
-</script>
+                    originalShowAuthModal.call(this, mode, prefillEmail);
+                };
+                
+                // 覆盖 showRegisterChoice 方法
+                const originalShowRegisterChoice = authInstance.showRegisterChoice;
+                authInstance.showRegisterChoice = function() {
+                    originalShowRegisterChoice.call(this);
+                    setTimeout(() => {
+                        if (window.I18n) window.I18n.updateAllText();
+                    }, 50);
+                };
+                
+                console.log('Auth 方法覆盖完成');
+            }
+        }, 500);
+    })();
+    </script>
 </body>
 </html>
