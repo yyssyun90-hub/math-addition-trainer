@@ -3430,23 +3430,7 @@
                 if (window.I18n) window.I18n.updateAllText();
             };
         }
-        
-        // ✅ 修复：添加防循环标志的 localStorage 拦截
-        const originalSetItem = localStorage.setItem;
-        localStorage.setItem = function(key, value) {
-            originalSetItem.apply(this, arguments);
-            if (key === 'candyMathGame_v4_lang' && !_isSettingLanguage) {
-                console.log('检测到 localStorage 语言变化:', value);
-                _isSettingLanguage = true;
-                setTimeout(() => {
-                    if (window.I18n && window.I18n.currentLang !== value) {
-                        window.I18n.setLang(value);
-                    }
-                    setTimeout(() => { _isSettingLanguage = false; }, 200);
-                }, 10);
-            }
-        };
-        
+                
         // 定期检查并修复语言（每500ms检查一次，持续3秒）
         let checkCount = 0;
         const fixInterval = setInterval(function() {
@@ -3605,5 +3589,90 @@
         }, 500);
     })();
     </script>
+    <!-- 语言切换修复补丁 - 解决按钮被覆盖问题 -->
+<script>
+(function() {
+    // 保存原始 setLang 方法
+    let _fixing = false;
+    
+    // 强制刷新登录模态框的文字
+    function refreshAuthModalText() {
+        if (!window.I18n) return;
+        
+        const modal = document.getElementById('auth-modal');
+        const isEn = window.I18n.currentLang === 'en';
+        
+        // 如果登录框是打开的，刷新里面的文字
+        if (modal && modal.style.display === 'flex') {
+            const title = document.getElementById('auth-title');
+            const submitBtn = document.getElementById('auth-submit');
+            const switchDiv = document.getElementById('auth-switch');
+            
+            if (title) title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
+            if (submitBtn) submitBtn.innerHTML = isEn ? 'Login' : '登录';
+            if (switchDiv) {
+                switchDiv.innerHTML = (isEn ? "Don't have an account? " : "没有账号？") + 
+                    '<span id="switch-to-register" style="cursor:pointer;color:#667eea;">' + 
+                    (isEn ? "Register" : "立即注册") + '</span>';
+                
+                // 重新绑定事件
+                const registerSpan = document.getElementById('switch-to-register');
+                if (registerSpan && window.game && window.game.auth) {
+                    registerSpan.onclick = function() {
+                        document.getElementById('auth-modal').style.display = 'none';
+                        document.getElementById('register-choice-modal').style.display = 'flex';
+                    };
+                }
+            }
+        }
+        
+        // 刷新注册选择框
+        const choiceModal = document.getElementById('register-choice-modal');
+        if (choiceModal && choiceModal.style.display === 'flex') {
+            const title = choiceModal.querySelector('h2');
+            if (title) title.innerHTML = isEn ? 'Choose Role' : '选择注册身份';
+            
+            const studentBtn = document.getElementById('choose-student');
+            if (studentBtn) studentBtn.innerHTML = '👨‍🎓 ' + (isEn ? 'Register as Student' : '注册为学生');
+            
+            const teacherBtn = document.getElementById('choose-teacher');
+            if (teacherBtn) teacherBtn.innerHTML = '👩‍🏫 ' + (isEn ? 'Register as Teacher' : '注册为教师');
+        }
+    }
+    
+    // 拦截 I18n.setLang，刷新后强制修复模态框
+    if (window.I18n && window.I18n.setLang) {
+        const originalSetLang = window.I18n.setLang;
+        window.I18n.setLang = function(lang) {
+            if (_fixing) return;
+            _fixing = true;
+            originalSetLang.call(this, lang);
+            setTimeout(refreshAuthModalText, 50);
+            setTimeout(() => { _fixing = false; }, 200);
+        };
+    }
+    
+    // 监听模态框打开事件
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const target = mutation.target;
+                if (target.id === 'auth-modal' || target.id === 'register-choice-modal') {
+                    if (target.style.display === 'flex') {
+                        setTimeout(refreshAuthModalText, 30);
+                    }
+                }
+            }
+        });
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
+    
+    // 页面加载完成后执行一次
+    setTimeout(refreshAuthModalText, 500);
+    setTimeout(refreshAuthModalText, 1000);
+    
+    console.log('语言修复补丁已加载');
+})();
+</script>
 </body>
 </html>
