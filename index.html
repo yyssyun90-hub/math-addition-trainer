@@ -3344,5 +3344,157 @@
             console.log('语言切换功能已初始化（统一控制系统），当前语言:', currentLang === 'zh' ? '中文' : 'English');
         })();
     </script>
+    <!-- 修复语言切换问题 - 在语言控制系统脚本中添加更强的控制 -->
+<script>
+(function() {
+    // ✅ 设置外部语言控制标志
+    window._externalLangControl = true;
+    
+    // 强制覆盖所有可能改变语言的函数
+    window._forceLanguage = function(lang) {
+        console.log('强制语言更新:', lang);
+        // 更新所有带 data-i18n 的元素
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.dataset.i18n;
+            const translation = window.I18n ? window.I18n.t(key) : null;
+            if (translation && translation !== key) {
+                if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                    if (el.placeholder !== undefined) el.placeholder = translation;
+                } else {
+                    const originalText = el.innerHTML;
+                    const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕🗑️👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g;
+                    const emojiMatch = originalText.match(hasEmoji);
+                    if (emojiMatch && emojiMatch.length > 0) {
+                        const emoji = emojiMatch.join('');
+                        if (!translation.startsWith(emoji)) {
+                            el.innerHTML = emoji + ' ' + translation;
+                        } else {
+                            el.innerHTML = translation;
+                        }
+                    } else {
+                        el.textContent = translation;
+                    }
+                }
+            }
+        });
+        
+        // 更新登录/注册按钮
+        const authButtons = document.getElementById('auth-buttons');
+        if (authButtons && !window.currentUser) {
+            const loginText = window.I18n ? window.I18n.t('login') : '登录';
+            const registerText = window.I18n ? window.I18n.t('register') : '注册';
+            authButtons.innerHTML = `<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">${loginText}</span></button>
+                                    <button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">${registerText}</span></button>`;
+            // 重新绑定事件
+            const newLoginBtn = document.getElementById('show-login-btn');
+            const newRegisterBtn = document.getElementById('show-register-btn');
+            if (newLoginBtn) {
+                newLoginBtn.onclick = function() { 
+                    document.getElementById('auth-modal').style.display = 'flex'; 
+                    const titleEl = document.getElementById('auth-title');
+                    if (titleEl) titleEl.textContent = window.I18n ? window.I18n.t('authTitle') : '🔐 登录';
+                    const submitEl = document.getElementById('auth-submit');
+                    if (submitEl) submitEl.textContent = window.I18n ? window.I18n.t('submit') : '登录';
+                    const errorDiv = document.getElementById('auth-error');
+                    if (errorDiv) errorDiv.textContent = '';
+                };
+            }
+            if (newRegisterBtn) {
+                newRegisterBtn.onclick = function() { 
+                    document.getElementById('register-choice-modal').style.display = 'flex'; 
+                };
+            }
+        }
+        
+        // 更新退出按钮
+        if (window.currentUser && authButtons) {
+            const logoutText = window.I18n ? window.I18n.t('logout') : '退出';
+            authButtons.innerHTML = `<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">${logoutText}</span></button>`;
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.onclick = function() {
+                    if (window.supabaseClient) { 
+                        window.supabaseClient.auth.signOut().then(function() { 
+                            window.currentUser = null; 
+                            if (window.game && window.game.state) window.game.state.currentUser = null; 
+                            location.reload(); 
+                        }).catch(function() { location.reload(); });
+                    } else { 
+                        window.currentUser = null; 
+                        if (window.game && window.game.state) window.game.state.currentUser = null; 
+                        location.reload(); 
+                    }
+                };
+            }
+        }
+    };
+    
+    // 覆盖 UI.js 中的语言更新方法
+    if (window.UI && window.UI.updateLanguage) {
+        const originalUpdateLanguage = window.UI.updateLanguage;
+        window.UI.updateLanguage = function() {
+            console.log('UI.updateLanguage 被拦截，使用统一语言控制');
+            if (window.I18n) window.I18n.updateAllText();
+        };
+    }
+    
+    // 监听 Auth.js 可能触发的语言重置
+    const originalSetItem = localStorage.setItem;
+    localStorage.setItem = function(key, value) {
+        originalSetItem.apply(this, arguments);
+        if (key === 'candyMathGame_v4_lang') {
+            console.log('检测到 localStorage 语言变化:', value);
+            setTimeout(() => {
+                if (window.I18n && window.I18n.currentLang !== value) {
+                    window.I18n.setLang(value);
+                }
+            }, 10);
+        }
+    };
+    
+    // 定期检查并修复语言（每500ms检查一次，持续3秒）
+    let checkCount = 0;
+    const fixInterval = setInterval(function() {
+        checkCount++;
+        const currentBtnText = document.querySelector('#auth-buttons .btn-text')?.textContent;
+        const expectedText = window.I18n && window.I18n.currentLang === 'en' ? 'Login' : '登录';
+        
+        if (currentBtnText && currentBtnText !== expectedText && currentBtnText !== 'Login' && currentBtnText !== '登录') {
+            console.log('检测到语言不一致，强制修复:', currentBtnText, '->', expectedText);
+            if (window.I18n) window.I18n.updateAllText();
+            window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
+        }
+        
+        if (checkCount > 20) clearInterval(fixInterval);
+    }, 500);
+    
+    // 监听模态框打开，重新应用语言
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const target = mutation.target;
+                if (target.classList && (target.classList.contains('auth-modal') || 
+                    target.id === 'auth-modal' ||
+                    target.classList.contains('register-choice-modal'))) {
+                    if (target.style.display === 'flex') {
+                        setTimeout(() => {
+                            if (window.I18n) window.I18n.updateAllText();
+                            window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
+                        }, 50);
+                    }
+                }
+            }
+        });
+    });
+    
+    observer.observe(document.body, { 
+        attributes: true, 
+        attributeFilter: ['style'],
+        subtree: true 
+    });
+    
+    console.log('语言修复脚本已启动 - 将阻止按钮文字被覆盖');
+})();
+</script>
 </body>
 </html>
