@@ -2626,7 +2626,7 @@
         });
     </script>
 
-    <!-- 完整的中英文翻译脚本（统一语言控制系统） -->
+      <!-- 完整的中英文翻译脚本（统一语言控制系统） -->
     <script>
         (function() {
             // ✅ 设置外部语言控制标志，禁用 utils.js 中的自动刷新
@@ -3218,29 +3218,18 @@
                 if (saved === 'en') currentLang = 'en';
             } catch(e) {}
             
-            // 同步到 utils.js 的 I18n
-            function syncToInternalI18n() {
-                if (window.I18n && typeof window.I18n.setLang === 'function') {
-                    const originalFlag = window._externalLangControl;
-                    window._externalLangControl = true;
-                    window.I18n.setLang(currentLang);
-                    window._externalLangControl = originalFlag;
-                }
-            }
-            
             // 获取翻译
             function t(key) {
                 return TRANSLATIONS[currentLang][key] || TRANSLATIONS['zh'][key] || key;
             }
             
-            // 设置语言
+            // 设置语言（不再调用 syncToInternalI18n，避免循环）
             function setLang(lang) {
                 if (lang === 'zh' || lang === 'en') {
                     currentLang = lang;
                     try {
                         localStorage.setItem('candyMathGame_v4_lang', lang);
                     } catch(e) {}
-                    syncToInternalI18n();
                     updateAllText();
                 }
             }
@@ -3322,7 +3311,7 @@
                 console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
             }
             
-            // 创建全局 I18n 对象（覆盖 utils.js 的，确保统一）
+            // 创建全局 I18n 对象
             window.I18n = {
                 t: t,
                 setLang: setLang,
@@ -3336,9 +3325,6 @@
                     updateAllText();
                 }
             };
-            
-            // 同步初始语言到内部 I18n
-            syncToInternalI18n();
             
             // 绑定语言切换按钮
             const langBtn = document.getElementById('lang-switch');
