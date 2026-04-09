@@ -2623,11 +2623,16 @@
         });
     </script>
 
-    <!-- ==================== 核心修复：完整的中英文翻译脚本（修复版） ==================== -->
+    <!-- ==================== 核心修复：完整的中英文翻译脚本（防死循环版） ==================== -->
     <script>
         (function() {
             // 设置外部语言控制标志
             window._externalLangControl = true;
+            
+            // ===== 防死循环关键变量 =====
+            let isTranslating = false;      // 是否正在翻译中
+            let pendingUpdate = false;      // 是否有待执行的更新
+            let lastUpdateTime = 0;         // 上次更新时间戳
             
             // 中英文翻译字典
             const TRANSLATIONS = {
@@ -2716,47 +2721,106 @@
                 return TRANSLATIONS[currentLang][key] || TRANSLATIONS['zh'][key] || key;
             }
             
+            // ===== 防死循环的翻译函数 =====
             function updateAllText() {
-                document.querySelectorAll('[data-i18n]').forEach(el => {
-                    const key = el.dataset.i18n;
-                    const translation = t(key);
-                    if (translation && translation !== key) {
-                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                            if (el.placeholder !== undefined) el.placeholder = translation;
-                            else el.value = translation;
-                        } else {
-                            const originalText = el.innerHTML;
-                            const emojiMatch = originalText.match(/[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g);
-                            if (emojiMatch && emojiMatch.length > 0) {
-                                const emoji = emojiMatch.join('');
-                                if (!translation.startsWith(emoji)) el.innerHTML = emoji + ' ' + translation;
-                                else el.innerHTML = translation;
+                // 防止重入
+                if (isTranslating) {
+                    pendingUpdate = true;
+                    return;
+                }
+                
+                // 防止过于频繁（100ms内最多执行一次）
+                const now = Date.now();
+                if (now - lastUpdateTime < 100) {
+                    pendingUpdate = true;
+                    return;
+                }
+                
+                isTranslating = true;
+                lastUpdateTime = now;
+                pendingUpdate = false;
+                
+                try {
+                    // 只翻译有 data-i18n 属性的元素，不遍历全部DOM
+                    const elements = document.querySelectorAll('[data-i18n]');
+                    for (let i = 0; i < elements.length; i++) {
+                        const el = elements[i];
+                        const key = el.dataset.i18n;
+                        const translation = t(key);
+                        if (translation && translation !== key) {
+                            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                                if (el.placeholder !== undefined && el.placeholder !== translation) {
+                                    el.placeholder = translation;
+                                }
                             } else {
-                                el.textContent = translation;
+                                // 只更新文本内容，避免破坏内部HTML结构
+                                if (el.textContent !== translation && !el.textContent.includes(translation)) {
+                                    // 保留emoji
+                                    const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS]/;
+                                    if (hasEmoji.test(el.textContent)) {
+                                        const emoji = el.textContent.match(/[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS]/g);
+                                        if (emoji && emoji.length > 0) {
+                                            const emojiStr = emoji.join('');
+                                            if (!translation.startsWith(emojiStr)) {
+                                                el.textContent = emojiStr + ' ' + translation;
+                                            } else {
+                                                el.textContent = translation;
+                                            }
+                                        } else {
+                                            el.textContent = translation;
+                                        }
+                                    } else {
+                                        el.textContent = translation;
+                                    }
+                                }
                             }
                         }
                     }
-                });
-                
-                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                    const key = el.dataset.i18nPlaceholder;
-                    const translation = t(key);
-                    if (translation && translation !== key) el.placeholder = translation;
-                });
-                
-                const gameTitle = document.getElementById('game-title');
-                if (gameTitle) gameTitle.textContent = t('gameTitle');
-                
-                const langText = document.getElementById('lang-text');
-                const langIcon = document.getElementById('lang-icon');
-                if (langText) langText.textContent = currentLang === 'zh' ? '中文' : 'English';
-                if (langIcon) langIcon.textContent = currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
-                
-                const authTitle = document.getElementById('auth-title');
-                if (authTitle) authTitle.innerHTML = t('authTitle');
-                
-                document.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang: currentLang } }));
-                console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
+                    
+                    // 更新placeholder
+                    const placeholders = document.querySelectorAll('[data-i18n-placeholder]');
+                    for (let i = 0; i < placeholders.length; i++) {
+                        const el = placeholders[i];
+                        const key = el.dataset.i18nPlaceholder;
+                        const translation = t(key);
+                        if (translation && translation !== key && el.placeholder !== translation) {
+                            el.placeholder = translation;
+                        }
+                    }
+                    
+                    // 更新特殊元素
+                    const gameTitle = document.getElementById('game-title');
+                    if (gameTitle && gameTitle.textContent !== t('gameTitle')) {
+                        gameTitle.textContent = t('gameTitle');
+                    }
+                    
+                    const langText = document.getElementById('lang-text');
+                    if (langText) {
+                        const newText = currentLang === 'zh' ? '中文' : 'English';
+                        if (langText.textContent !== newText) langText.textContent = newText;
+                    }
+                    const langIcon = document.getElementById('lang-icon');
+                    if (langIcon) {
+                        const newIcon = currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
+                        if (langIcon.textContent !== newIcon) langIcon.textContent = newIcon;
+                    }
+                    
+                    const authTitle = document.getElementById('auth-title');
+                    if (authTitle && authTitle.textContent !== t('authTitle')) {
+                        authTitle.innerHTML = t('authTitle');
+                    }
+                    
+                } catch(e) {
+                    console.warn('翻译更新出错:', e);
+                } finally {
+                    isTranslating = false;
+                    
+                    // 如果有待处理的更新，延迟执行
+                    if (pendingUpdate) {
+                        pendingUpdate = false;
+                        setTimeout(updateAllText, 150);
+                    }
+                }
             }
             
             function setLang(lang) {
@@ -2768,73 +2832,108 @@
                 }
             }
             
-            window.I18n = { t: t, setLang: setLang, getLang: () => currentLang, updateAllText: updateAllText, currentLang: currentLang };
+            window.I18n = { 
+                t: t, 
+                setLang: setLang, 
+                getLang: () => currentLang, 
+                updateAllText: updateAllText, 
+                currentLang: currentLang 
+            };
             
+            // 绑定语言切换按钮
             const langBtn = document.getElementById('lang-switch');
             if (langBtn) {
                 const newBtn = langBtn.cloneNode(true);
                 langBtn.parentNode.replaceChild(newBtn, langBtn);
-                newBtn.onclick = (e) => { e.preventDefault(); setLang(currentLang === 'zh' ? 'en' : 'zh'); };
+                newBtn.onclick = (e) => { 
+                    e.preventDefault(); 
+                    setLang(currentLang === 'zh' ? 'en' : 'zh'); 
+                };
             }
             
-            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updateAllText);
-            else updateAllText();
+            // 页面加载完成后执行一次翻译
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateAllText);
+            } else {
+                updateAllText();
+            }
             
-            const observer = new MutationObserver(() => { setTimeout(updateAllText, 50); });
+            // 使用防抖的MutationObserver，避免频繁触发
+            let observerTimeout = null;
+            const observer = new MutationObserver(() => {
+                if (observerTimeout) clearTimeout(observerTimeout);
+                observerTimeout = setTimeout(() => {
+                    if (!isTranslating) {
+                        updateAllText();
+                    }
+                    observerTimeout = null;
+                }, 200);
+            });
             observer.observe(document.body, { childList: true, subtree: true });
+            
+            console.log('语言翻译系统已初始化（防死循环版），当前语言:', currentLang === 'zh' ? '中文' : 'English');
         })();
     </script>
 
-    <!-- 语言切换修复补丁 -->
+    <!-- 语言切换修复补丁（简化版，避免重复触发） -->
     <script>
         (function() {
             let fixing = false;
+            
             function refreshAuthModalText() {
-                if (!window.I18n) return;
+                if (!window.I18n || fixing) return;
+                fixing = true;
+                
                 const modal = document.getElementById('auth-modal');
                 const isEn = window.I18n.currentLang === 'en';
                 if (modal && modal.style.display === 'flex') {
                     const title = document.getElementById('auth-title');
                     const submitBtn = document.getElementById('auth-submit');
                     const switchDiv = document.getElementById('auth-switch');
-                    if (title) title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
-                    if (submitBtn) submitBtn.innerHTML = isEn ? 'Login' : '登录';
+                    if (title && title.innerHTML !== ('🔐 ' + (isEn ? 'Login' : '登录'))) {
+                        title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
+                    }
+                    if (submitBtn && submitBtn.innerHTML !== (isEn ? 'Login' : '登录')) {
+                        submitBtn.innerHTML = isEn ? 'Login' : '登录';
+                    }
                     if (switchDiv) {
-                        switchDiv.innerHTML = (isEn ? "Don't have an account? " : "没有账号？") + 
+                        const newHtml = (isEn ? "Don't have an account? " : "没有账号？") + 
                             '<span id="switch-to-register" style="cursor:pointer;color:#d46b8d;">' + 
                             (isEn ? "Register" : "立即注册") + '</span>';
-                        const registerSpan = document.getElementById('switch-to-register');
-                        if (registerSpan) registerSpan.onclick = () => {
-                            document.getElementById('auth-modal').style.display = 'none';
-                            document.getElementById('register-choice-modal').style.display = 'flex';
-                        };
+                        if (switchDiv.innerHTML !== newHtml) {
+                            switchDiv.innerHTML = newHtml;
+                            const registerSpan = document.getElementById('switch-to-register');
+                            if (registerSpan) {
+                                registerSpan.onclick = () => {
+                                    document.getElementById('auth-modal').style.display = 'none';
+                                    document.getElementById('register-choice-modal').style.display = 'flex';
+                                };
+                            }
+                        }
                     }
                 }
+                fixing = false;
             }
             
+            // 保留setLang覆盖，但不强制刷新（避免循环）
             if (window.I18n && window.I18n.setLang) {
                 const originalSetLang = window.I18n.setLang;
                 window.I18n.setLang = function(lang) {
-                    if (fixing) return;
-                    fixing = true;
                     originalSetLang.call(this, lang);
-                    setTimeout(refreshAuthModalText, 50);
-                    setTimeout(() => { fixing = false; }, 200);
+                    setTimeout(refreshAuthModalText, 100);
                 };
             }
             
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                        const target = mutation.target;
-                        if (target.id === 'auth-modal' || target.id === 'register-choice-modal') {
-                            if (target.style.display === 'flex') setTimeout(refreshAuthModalText, 30);
-                        }
-                    }
-                });
+            // 监听模态框打开，只执行一次
+            const observer = new MutationObserver(() => {
+                const modal = document.getElementById('auth-modal');
+                if (modal && modal.style.display === 'flex') {
+                    setTimeout(refreshAuthModalText, 50);
+                }
             });
             observer.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
-            setTimeout(refreshAuthModalText, 500);
+            
+            setTimeout(refreshAuthModalText, 300);
         })();
     </script>
 </body>
