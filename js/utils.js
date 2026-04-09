@@ -723,7 +723,7 @@
             return langData[key] || key;
         },
         
-        // ✅ 修改：setLang 只更新内部状态，不触发外部刷新（避免冲突）
+                // ✅ 修改：setLang 只更新内部状态，不触发外部刷新（避免与HTML翻译系统冲突）
         setLang(lang) {
             if (TRANSLATIONS[lang]) {
                 const oldLang = this.currentLang;
@@ -734,12 +734,18 @@
                     console.warn('无法保存语言设置');
                 }
                 
-                // 只有在没有外部语言控制系统时，才触发事件和刷新
+                // ✅ 关键修复：检查是否有外部语言控制系统
+                // 如果 window._externalLangControl 为 true，说明 HTML 中的翻译系统在控制
+                // 此时 utils.js 的 I18n 只负责提供翻译数据，不触发界面刷新
                 if (!window._externalLangControl) {
+                    // 没有外部控制时，才触发事件和刷新
                     this.triggerLanguageUpdate();
                     this.refreshAuthModalLanguage();
                 } else {
-                    console.log('外部语言系统控制中，I18n.setLang 只更新内部状态:', lang);
+                    console.log('外部语言系统控制中，utils.js I18n.setLang 只更新内部状态:', lang);
+                    // 仍然触发事件，让外部系统知道语言变化
+                    const event = new CustomEvent('languageChanged', { detail: { lang: this.currentLang } });
+                    window.dispatchEvent(event);
                 }
             }
             return this.currentLang;
