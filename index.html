@@ -2623,16 +2623,16 @@
         });
     </script>
 
-    <!-- ==================== 核心修复：完整的中英文翻译脚本（防死循环版） ==================== -->
+    <!-- ==================== 核心修复：完整的中英文翻译脚本（翻译按钮正常工作版） ==================== -->
     <script>
         (function() {
             // 设置外部语言控制标志
             window._externalLangControl = true;
             
             // ===== 防死循环关键变量 =====
-            let isTranslating = false;      // 是否正在翻译中
-            let pendingUpdate = false;      // 是否有待执行的更新
-            let lastUpdateTime = 0;         // 上次更新时间戳
+            let isTranslating = false;
+            let pendingUpdate = false;
+            let lastUpdateTime = 0;
             
             // 中英文翻译字典
             const TRANSLATIONS = {
@@ -2721,17 +2721,15 @@
                 return TRANSLATIONS[currentLang][key] || TRANSLATIONS['zh'][key] || key;
             }
             
-            // ===== 防死循环的翻译函数 =====
+            // ===== 翻译函数（防死循环） =====
             function updateAllText() {
-                // 防止重入
                 if (isTranslating) {
                     pendingUpdate = true;
                     return;
                 }
                 
-                // 防止过于频繁（100ms内最多执行一次）
                 const now = Date.now();
-                if (now - lastUpdateTime < 100) {
+                if (now - lastUpdateTime < 80) {
                     pendingUpdate = true;
                     return;
                 }
@@ -2741,7 +2739,7 @@
                 pendingUpdate = false;
                 
                 try {
-                    // 只翻译有 data-i18n 属性的元素，不遍历全部DOM
+                    // 翻译所有带 data-i18n 的元素
                     const elements = document.querySelectorAll('[data-i18n]');
                     for (let i = 0; i < elements.length; i++) {
                         const el = elements[i];
@@ -2753,14 +2751,12 @@
                                     el.placeholder = translation;
                                 }
                             } else {
-                                // 只更新文本内容，避免破坏内部HTML结构
                                 if (el.textContent !== translation && !el.textContent.includes(translation)) {
-                                    // 保留emoji
                                     const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS]/;
                                     if (hasEmoji.test(el.textContent)) {
-                                        const emoji = el.textContent.match(/[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS]/g);
-                                        if (emoji && emoji.length > 0) {
-                                            const emojiStr = emoji.join('');
+                                        const emojiMatch = el.textContent.match(/[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS]/g);
+                                        if (emojiMatch && emojiMatch.length > 0) {
+                                            const emojiStr = emojiMatch.join('');
                                             if (!translation.startsWith(emojiStr)) {
                                                 el.textContent = emojiStr + ' ' + translation;
                                             } else {
@@ -2777,7 +2773,7 @@
                         }
                     }
                     
-                    // 更新placeholder
+                    // 更新 placeholder
                     const placeholders = document.querySelectorAll('[data-i18n-placeholder]');
                     for (let i = 0; i < placeholders.length; i++) {
                         const el = placeholders[i];
@@ -2810,12 +2806,12 @@
                         authTitle.innerHTML = t('authTitle');
                     }
                     
+                    console.log('翻译完成，当前语言:', currentLang === 'zh' ? '中文' : 'English');
+                    
                 } catch(e) {
                     console.warn('翻译更新出错:', e);
                 } finally {
                     isTranslating = false;
-                    
-                    // 如果有待处理的更新，延迟执行
                     if (pendingUpdate) {
                         pendingUpdate = false;
                         setTimeout(updateAllText, 150);
@@ -2840,25 +2836,52 @@
                 currentLang: currentLang 
             };
             
-            // 绑定语言切换按钮
+            // ===== 语言切换按钮绑定（关键修复） =====
             const langBtn = document.getElementById('lang-switch');
             if (langBtn) {
                 const newBtn = langBtn.cloneNode(true);
                 langBtn.parentNode.replaceChild(newBtn, langBtn);
-                newBtn.onclick = (e) => { 
+                newBtn.onclick = function(e) { 
                     e.preventDefault(); 
-                    setLang(currentLang === 'zh' ? 'en' : 'zh'); 
+                    const newLang = currentLang === 'zh' ? 'en' : 'zh';
+                    setLang(newLang);
+                    // 额外确保所有文本更新
+                    setTimeout(function() {
+                        updateAllText();
+                        // 刷新登录模态框
+                        const modal = document.getElementById('auth-modal');
+                        if (modal && modal.style.display === 'flex') {
+                            const title = document.getElementById('auth-title');
+                            const submitBtn = document.getElementById('auth-submit');
+                            const switchDiv = document.getElementById('auth-switch');
+                            const isEn = newLang === 'en';
+                            if (title) title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
+                            if (submitBtn) submitBtn.innerHTML = isEn ? 'Login' : '登录';
+                            if (switchDiv) {
+                                switchDiv.innerHTML = (isEn ? "Don't have an account? " : "没有账号？") + 
+                                    '<span id="switch-to-register" style="cursor:pointer;color:#d46b8d;">' + 
+                                    (isEn ? "Register" : "立即注册") + '</span>';
+                                const registerSpan = document.getElementById('switch-to-register');
+                                if (registerSpan) {
+                                    registerSpan.onclick = () => {
+                                        document.getElementById('auth-modal').style.display = 'none';
+                                        document.getElementById('register-choice-modal').style.display = 'flex';
+                                    };
+                                }
+                            }
+                        }
+                    }, 50);
                 };
             }
             
-            // 页面加载完成后执行一次翻译
+            // 页面加载完成后执行翻译
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', updateAllText);
             } else {
                 updateAllText();
             }
             
-            // 使用防抖的MutationObserver，避免频繁触发
+            // 防抖的 MutationObserver
             let observerTimeout = null;
             const observer = new MutationObserver(() => {
                 if (observerTimeout) clearTimeout(observerTimeout);
@@ -2871,69 +2894,7 @@
             });
             observer.observe(document.body, { childList: true, subtree: true });
             
-            console.log('语言翻译系统已初始化（防死循环版），当前语言:', currentLang === 'zh' ? '中文' : 'English');
-        })();
-    </script>
-
-    <!-- 语言切换修复补丁（简化版，避免重复触发） -->
-    <script>
-        (function() {
-            let fixing = false;
-            
-            function refreshAuthModalText() {
-                if (!window.I18n || fixing) return;
-                fixing = true;
-                
-                const modal = document.getElementById('auth-modal');
-                const isEn = window.I18n.currentLang === 'en';
-                if (modal && modal.style.display === 'flex') {
-                    const title = document.getElementById('auth-title');
-                    const submitBtn = document.getElementById('auth-submit');
-                    const switchDiv = document.getElementById('auth-switch');
-                    if (title && title.innerHTML !== ('🔐 ' + (isEn ? 'Login' : '登录'))) {
-                        title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
-                    }
-                    if (submitBtn && submitBtn.innerHTML !== (isEn ? 'Login' : '登录')) {
-                        submitBtn.innerHTML = isEn ? 'Login' : '登录';
-                    }
-                    if (switchDiv) {
-                        const newHtml = (isEn ? "Don't have an account? " : "没有账号？") + 
-                            '<span id="switch-to-register" style="cursor:pointer;color:#d46b8d;">' + 
-                            (isEn ? "Register" : "立即注册") + '</span>';
-                        if (switchDiv.innerHTML !== newHtml) {
-                            switchDiv.innerHTML = newHtml;
-                            const registerSpan = document.getElementById('switch-to-register');
-                            if (registerSpan) {
-                                registerSpan.onclick = () => {
-                                    document.getElementById('auth-modal').style.display = 'none';
-                                    document.getElementById('register-choice-modal').style.display = 'flex';
-                                };
-                            }
-                        }
-                    }
-                }
-                fixing = false;
-            }
-            
-            // 保留setLang覆盖，但不强制刷新（避免循环）
-            if (window.I18n && window.I18n.setLang) {
-                const originalSetLang = window.I18n.setLang;
-                window.I18n.setLang = function(lang) {
-                    originalSetLang.call(this, lang);
-                    setTimeout(refreshAuthModalText, 100);
-                };
-            }
-            
-            // 监听模态框打开，只执行一次
-            const observer = new MutationObserver(() => {
-                const modal = document.getElementById('auth-modal');
-                if (modal && modal.style.display === 'flex') {
-                    setTimeout(refreshAuthModalText, 50);
-                }
-            });
-            observer.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
-            
-            setTimeout(refreshAuthModalText, 300);
+            console.log('语言翻译系统已初始化（翻译按钮正常工作版），当前语言:', currentLang === 'zh' ? '中文' : 'English');
         })();
     </script>
 </body>
