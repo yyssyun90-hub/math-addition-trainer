@@ -1781,7 +1781,6 @@
             </div>
         </div>
     </div>
-
     <!-- ========== 注册相关模态框 ========== -->
 
     <!-- 注册角色选择模态框 -->
@@ -1977,7 +1976,6 @@
             </div>
         </div>
     </div>
-
     <!-- 创建锦标赛模态框 -->
     <div class="create-tournament-modal" id="create-tournament-modal">
         <div class="create-card">
@@ -2123,7 +2121,7 @@
     </div>
 
     <!-- 创建班级模态框 -->
-    <div id="create-class-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); z-index: 6000; display: none; justify-content: center; align-items: center;">
+    <div id="create-class-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); z-index: 6000; justify-content: center; align-items: center;">
         <div style="background: white; border-radius: 30px; padding: 25px; max-width: 400px; width: 90%;">
             <h3 style="color: #d46b8d; margin-bottom: 20px; text-align: center;" data-i18n="createClass">创建班级</h3>
             <input type="text" id="new-class-name" placeholder="班级名称" style="width: 100%; padding: 12px; border: 2px solid #ffb6c1; border-radius: 30px; margin-bottom: 15px;" data-i18n-placeholder="className">
@@ -2211,7 +2209,6 @@
             observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
         })();
     </script>
-
     <!-- Supabase 连接修复和初始化脚本 -->
     <script>
         (function() {
@@ -2300,7 +2297,6 @@
 
     <!-- 统一按钮点击处理 -->
     <script>
-        // 全局用户同步函数
         function syncCurrentUser() {
             try {
                 if (window.currentUser && window.game && window.game.state) {
@@ -2322,7 +2318,6 @@
             }
         }
         
-        // 立即同步一次
         setTimeout(syncCurrentUser, 100);
         
         document.addEventListener('click', function(e) {
@@ -2342,8 +2337,8 @@
                 var authTitle = document.getElementById('auth-title');
                 var authError = document.getElementById('auth-error');
                 if (authModal) authModal.style.display = 'flex';
-                if (authTitle) authTitle.textContent = I18n?.t('authTitle') || '🔐 登录';
-                if (authError) authError.textContent = I18n?.t('loginRequired') || '请先登录后再使用此功能';
+                if (authTitle) authTitle.textContent = (window.I18n?.t('authTitle') || '🔐 登录');
+                if (authError) authError.textContent = (window.I18n?.t('loginRequired') || '请先登录后再使用此功能');
                 return false;
             }
             
@@ -2370,10 +2365,10 @@
                             else console.error('showModeSelect 方法不存在');
                         } catch (err) { 
                             console.error('快速匹配初始化失败:', err);
-                            alert(I18n?.t('initFailed') || '快速匹配功能初始化失败，请刷新页面重试'); 
+                            alert((window.I18n?.t('initFailed') || '快速匹配功能初始化失败，请刷新页面重试')); 
                         }
                     } else {
-                        alert(I18n?.t('featureUnavailable') || '快速匹配功能暂不可用，请刷新页面重试');
+                        alert((window.I18n?.t('featureUnavailable') || '快速匹配功能暂不可用，请刷新页面重试'));
                     }
                 }
             } else if (action === 'tournament') {
@@ -2419,7 +2414,7 @@
                     if (window.currentUser) {
                         if (window.game && window.game.state) { window.game.state.currentUser = window.currentUser; }
                         
-                        var displayName = window.currentUser.name || window.currentUser.email || (I18n?.t('user') || '用户');
+                        var displayName = window.currentUser.name || window.currentUser.email || ((window.I18n?.t('user') || '用户'));
                         var role = window.currentUser.role || 'student';
                         
                         if (role === 'admin') {
@@ -2431,9 +2426,9 @@
                         }
                         
                         if (role === 'admin') {
-                            if (userStatus) userStatus.textContent = (I18n?.t('adminStatus') || '👑 管理员 · 全校数据可见');
+                            if (userStatus) userStatus.textContent = (window.I18n?.t('adminStatus') || '👑 管理员 · 全校数据可见');
                         } else {
-                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? (I18n?.t('online') || '✨ 在线') : (I18n?.t('offline') || '📴 离线');
+                            if (userStatus) userStatus.textContent = (window.game && window.game.state && window.game.state.isOnline) ? ((window.I18n?.t('online') || '✨ 在线')) : ((window.I18n?.t('offline') || '📴 离线'));
                         }
                         
                         if (userName) userName.textContent = displayName;
@@ -2485,8 +2480,10 @@
                             if (loginBtn) {
                                 loginBtn.onclick = function() { 
                                     document.getElementById('auth-modal').style.display = 'flex'; 
-                                    document.getElementById('auth-title').textContent = I18n?.t('authTitle') || '🔐 登录'; 
-                                    document.getElementById('auth-submit').textContent = I18n?.t('submit') || '登录'; 
+                                    var titleEl = document.getElementById('auth-title');
+                                    if (titleEl) titleEl.textContent = window.I18n?.t('authTitle') || '🔐 登录'; 
+                                    var submitEl = document.getElementById('auth-submit');
+                                    if (submitEl) submitEl.textContent = window.I18n?.t('submit') || '登录'; 
                                     var errorDiv = document.getElementById('auth-error');
                                     if (errorDiv) errorDiv.textContent = '';
                                 };
@@ -2556,10 +2553,10 @@
                 var errorDiv = document.getElementById('auth-error');
                 
                 if (!email || !password) { 
-                    if (errorDiv) errorDiv.textContent = I18n?.t('emailAndPasswordRequired') || '请填写邮箱和密码'; 
+                    if (errorDiv) errorDiv.textContent = (window.I18n?.t('emailAndPasswordRequired') || '请填写邮箱和密码'); 
                     return; 
                 }
-                if (errorDiv) errorDiv.textContent = I18n?.t('processing') || '正在处理...';
+                if (errorDiv) errorDiv.textContent = (window.I18n?.t('processing') || '正在处理...');
                 if (!window.supabaseClient) { 
                     if (errorDiv) errorDiv.textContent = 'Supabase 客户端未初始化'; 
                     return; 
@@ -2570,7 +2567,7 @@
                         if (result.error) { 
                             if (errorDiv) errorDiv.textContent = result.error.message; 
                         } else { 
-                            if (errorDiv) errorDiv.textContent = I18n?.t('loginSuccess') || '登录成功！'; 
+                            if (errorDiv) errorDiv.textContent = (window.I18n?.t('loginSuccess') || '登录成功！'); 
                             window.currentUser = result.data.user; 
                             
                             if (window.game && window.game.auth && typeof window.game.auth.getUserProfile === 'function') {
@@ -2626,1053 +2623,219 @@
         });
     </script>
 
-    <!-- 完整的中英文翻译脚本（统一语言控制系统） - 修复版 -->
+    <!-- ==================== 核心修复：完整的中英文翻译脚本（修复版） ==================== -->
     <script>
         (function() {
-            // ✅ 设置外部语言控制标志，禁用 utils.js 中的自动刷新
+            // 设置外部语言控制标志
             window._externalLangControl = true;
-            
-            // 防循环标志
-            let _isSettingLang = false;
-            let _isUpdatingUI = false;
             
             // 中英文翻译字典
             const TRANSLATIONS = {
                 'zh': {
+                    'langIcon': '🇨🇳', 'langName': '中文',
                     'gameTitle': '🍬 糖果数学消消乐',
-                    'quickMatch': '快速匹配',
-                    'tournament': '锦标赛',
-                    'joinRoom': '加入房间',
-                    'startGame': '开始游戏',
-                    'hint': '提示',
-                    'refresh': '刷新',
-                    'pause': '暂停',
-                    'endGame': '结束游戏',
-                    'home': '首页',
-                    'teacherPanel': '教师面板',
-                    'challengeMode': '挑战模式',
-                    'standardMode': '标准模式',
-                    'practiceMode': '练习模式',
-                    'difficultyEasy': '简单',
-                    'difficultyMedium': '中等',
-                    'difficultyHard': '困难',
-                    'statScore': '得分',
-                    'statCompleted': '完成',
-                    'timeLabel': '剩余时间',
-                    'statAccuracy': '正确率',
-                    'targetLabel': '目标和',
-                    'studentList': '学生列表',
-                    'generateReport': '生成报告',
-                    'classStats': '班级统计',
-                    'allSchoolData': '全校数据',
-                    'importStudents': '导入学生',
-                    'syncData': '同步数据',
-                    'clearRecords': '清除记录',
-                    'generatePDF': '生成 PDF 报告',
-                    'exportExcel': '导出 Excel',
-                    'classReport': '全班报告',
-                    'selectStudent': '选择学生',
-                    'lobby': '大厅',
-                    'bracket': '赛程表',
-                    'history': '历史',
-                    'ranking': '排名',
-                    'createTournament': '创建锦标赛',
-                    'gameoverTitle': '🎉 游戏结束',
-                    'playAgain': '再玩一次',
-                    'exportData': '导出数据',
-                    'finalScore': '最终得分',
-                    'finalCompleted': '完成题数',
-                    'finalAccuracy': '正确率',
-                    'login': '登录',
-                    'register': '注册',
-                    'logout': '退出',
-                    'authTitle': '🔐 登录',
-                    'registerNow': '没有账号？立即注册',
-                    'registerStudent': '注册为学生',
-                    'registerTeacher': '注册为教师',
-                    'chooseRole': '选择注册身份',
-                    'hasAccount': '已有账号？',
-                    'loginNow': '立即登录',
-                    'submit': '登录',
-                    'emailPlaceholder': '邮箱',
-                    'passwordPlaceholder': '密码',
-                    'namePlaceholder': '姓名',
-                    'schoolPlaceholder': '学校名称',
-                    'classPlaceholder': '班级 (例: 5A)',
-                    'selectState': '请选择州属',
-                    'loginRequired': '请先登录',
-                    'teacherOnly': '只有教师或管理员可以访问此面板',
-                    'adminOnly': '只有超级管理员可以创建锦标赛',
-                    'tutorial1': '⭐ 选两张卡片，加起来等于 🎯',
-                    'tutorial2': '⭐ 正确！卡片会消失 ✨',
-                    'tutorial3': '⭐ 没得配？点刷新换一批',
-                    'noMatch': '没有数字能组成',
-                    'dontShow': '不再显示',
-                    'waitingForOpponent': '正在寻找对手...',
-                    'roomCodeLabel': '房间码',
-                    'youLabel': '你',
-                    'waitingLabel': '等待中...',
-                    'cancelLabel': '取消',
-                    'opponent': '对手',
-                    'yourTurn': '你的回合',
-                    'send': '发送',
-                    'enterMessage': '输入消息...',
-                    'rematch': '再战一局',
-                    'close': '关闭',
-                    'enterRoomCode': '输入6位房间码',
-                    'join': '加入',
-                    'cancel': '取消',
-                    'selectBattleMode': '选择对战模式',
-                    'multiplayerBattle': '双人对战',
-                    'multiplayerDesc': '创建/加入房间，实时对战',
-                    'aiBattle': 'AI对战',
-                    'aiDesc': '练习模式，AI有延迟答题',
-                    'selectAIDifficulty': '选择 AI 难度',
-                    'aiEasy': '简单',
-                    'aiEasyDesc': '延迟5-7秒，适合新手',
-                    'aiMedium': '中等',
-                    'aiMediumDesc': '延迟4-6秒，稍有挑战',
-                    'aiHard': '困难',
-                    'aiHardDesc': '延迟3-5秒，高手挑战',
-                    'createRoom': '创建房间',
-                    'joinRoomBtn': '加入房间',
-                    'confirm': '确认',
-                    'back': '返回',
-                    'tournamentName': '锦标赛名称',
-                    'enterTournamentName': '例如：班级杯 2024',
-                    'playerCount': '参赛人数',
-                    'gameMode': '比赛模式',
-                    'difficulty': '难度',
-                    'entryFee': '报名费',
-                    'prizePool': '🏆 奖池分配',
-                    'confirmCreate': '创建',
-                    'cancelCreate': '取消',
-                    'wonBet': '赢得赌注',
-                    'newRank': '新排名',
-                    'win': '胜利！',
-                    'lose': '惜败',
-                    'loading': '加载中...',
-                    'online': '在线',
-                    'offline': '离线',
-                    'backToLogin': '返回登录',
-                    'forgotPassword': '忘记密码？',
-                    'sendResetLink': '发送重置链接',
-                    'emailRequired': '邮箱不能为空',
-                    'invalidEmail': '请输入有效的邮箱地址',
-                    'invalidCredentials': '邮箱或密码错误',
-                    'processing': '处理中...',
-                    'sending': '发送中...',
-                    'loginSuccess': '登录成功！',
-                    'registerSuccess': '注册成功！',
-                    'logoutSuccess': '已退出登录',
-                    'networkOffline': '网络已断开，请检查连接',
-                    'supabaseNotConnected': 'Supabase未连接，请稍后重试',
-                    'createSuccess': '锦标赛创建成功',
-                    'createFailed': '创建失败',
-                    'joinSuccess': '报名成功',
-                    'joinFailed': '报名失败',
-                    'deleteConfirm': '⚠️ 确定要删除这个锦标赛吗？\n\n此操作不可恢复，所有相关数据将被永久删除！',
-                    'deleteSuccess': '✅ 锦标赛已删除',
-                    'deleting': '正在删除...',
-                    'noTournaments': '暂无进行中的锦标赛',
-                    'statusWaiting': '等待中',
-                    'statusRegistering': '报名中',
-                    'statusActive': '进行中',
-                    'statusFinished': '已结束',
-                    'players': '人',
-                    'remaining': '剩余',
-                    'hours': '小时',
-                    'minutes': '分钟',
-                    'registrationClosed': '报名已结束',
-                    'viewSchedule': '查看赛程',
-                    'delete': '删除',
-                    'champion': '冠军',
-                    'runnerUp': '亚军',
-                    'thirdPlace': '季军',
-                    'winRate': '胜率',
-                    'battles': '对战',
-                    'tournamentWins': '夺冠',
-                    'points': '积分',
-                    'player': '玩家',
-                    'unknownPlayer': '未知玩家',
-                    'round': '第',
-                    'roundSuffix': '轮',
-                    'pending': '待定',
-                    'byeAdvance': '轮空晋级',
-                    'inProgress': '进行中',
-                    'classCode': '班级代码',
-                    'studentCount': '学生人数',
-                    'academicYear': '学年',
-                    'viewStudents': '查看学生',
-                    'copyCode': '复制代码',
-                    'noClasses': '暂无班级，点击"创建班级"开始',
-                    'notGenerated': '未生成',
-                    'createClass': '创建班级',
-                    'className': '班级名称',
-                    'classCreated': '班级创建成功！',
-                    'classNameRequired': '请输入班级名称',
-                    'teacherOnlyCreate': '只有教师可以创建班级',
-                    'schoolInfoMissing': '无法获取学校信息，请确保您的教师账号已关联学校',
-                    'studentId': '学号',
-                    'name': '姓名',
-                    'class': '班级',
-                    'school': '学校',
-                    'registerDate': '注册日期',
-                    'studentData': '学生数据',
-                    'totalStudents': '共',
-                    'studentsUnit': '名学生',
-                    'noStudentData': '暂无学生数据',
-                    'clickForDetail': '点击查看详情',
-                    'unknown': '未知',
-                    'unassigned': '未分配',
-                    'studentDetail': '详情',
-                    'studentNotFound': '找不到该学生数据',
-                    'generateStudentReport': '生成学生报告',
-                    'networkRequired': '需要网络连接才能导出',
-                    'noDataToExport': '没有数据可导出',
-                    'exportSuccess': '成功导出',
-                    'exportFailed': '导出失败',
-                    'importSuccess': '成功导入',
-                    'importFailed': '导入失败',
-                    'duplicateSkipped': '条重复跳过',
-                    'failedCount': '条失败',
-                    'teacherOnlyImport': '只有教师可以导入学生',
-                    'offlineCannotSync': '网络离线，无法同步',
-                    'syncing': '同步中...',
-                    'syncSuccess': '数据同步完成',
-                    'syncFailed': '同步失败',
-                    'templateDownloaded': 'CSV模板已下载，学号可留空，系统会自动生成',
-                    'downloadFailed': '下载失败，请重试',
-                    'studentImportTemplate': '学生导入模板',
-                    'csvFormatHint': '格式说明：学号,姓名,班级',
-                    'csvNote1': '注意事项：',
-                    'csvNote2': '学号：可选，如果不填系统会自动生成（格式：学校代码_学年_班级_序号）',
-                    'csvNote3': '姓名：必填',
-                    'csvNote4': '班级：可选，如果不填则学生没有班级',
-                    'csvNote5': '如果班级不存在，系统会自动创建',
-                    'csvNote6': '学号不能重复，重复的学号会被跳过',
-                    'csvNote7': '示例数据仅供参考，导入前请删除',
-                    'exampleName1': '陈小明',
-                    'exampleName2': '李小花',
-                    'exampleName3': '张伟强',
-                    'exampleName4': '王丽丽',
-                    'exampleName5': '刘志明',
-                    'noClassCode': '没有班级代码',
-                    'codeCopied': '班级代码已复制',
-                    'copyFailed': '复制失败，请手动复制',
-                    'classNoStudents': '班级 "',
-                    'noStudents': '" 暂无学生',
-                    'classStudentList': '班级 "',
-                    'studentListSuffix': '学生列表',
-                    'no': '序号',
-                    'totalStudentsLabel': '共',
-                    'loadStudentsFailed': '获取学生列表失败',
-                    'loadFailed': '加载失败',
-                    'loadRankingFailed': '加载排名失败',
-                    'loadHistoryFailed': '加载历史记录失败',
-                    'noRankingData': '暂无排名数据',
-                    'noHistory': '暂无历史记录',
-                    'noBracketData': '暂无赛程数据',
-                    'loadingBracket': '加载赛程表...',
-                    'loadingRanking': '加载排名...',
-                    'loadingHistory': '加载历史记录...',
-                    'loadingSchoolData': '加载全校数据...',
-                    'noSchoolData': '暂无学校数据',
-                    'nationalStats': '全国统计',
-                    'schoolCount': '学校数量',
-                    'totalTeachers': '教师总数',
-                    'totalClasses': '班级总数',
-                    'schoolList': '学校列表',
-                    'state': '州属',
-                    'teachers': '教师',
-                    'students': '学生',
-                    'classes': '班级',
-                    'teachersUnit': '人',
-                    'classesUnit': '个',
-                    'clearConfirm': '确定要清除所有学生记录吗？此操作不可恢复。',
-                    'cannotLeave': '比赛已开始，无法退出',
-                    'leaveConfirm': '确定要退出锦标赛吗？报名费将不予退还。',
-                    'leaveSuccess': '已退出锦标赛',
-                    'alreadyJoined': '您已报名该锦标赛',
-                    'tournamentNotFound': '锦标赛不存在',
-                    'tournamentFull': '报名人数已满',
-                    'insufficientPoints': '积分不足',
-                    'dataExists': '数据已存在',
-                    'dataNotFound': '关联数据不存在',
-                    'validationFailed': '数据验证失败',
-                    'concurrencyError': '并发冲突，请重试',
-                    'columnNotFound': '字段不存在',
-                    'tableNotFound': '表不存在',
-                    'operationFailed': '操作失败',
-                    'requestTimeout': '网络超时，请重试',
-                    'unexpectedError': '发生未知错误，请重试',
-                    'tournamentStarted': '报名人数已满，锦标赛即将开始',
-                    'joining': '报名中...',
-                    'creating': '创建中...',
-                    'submitting': '提交中...',
-                    'resultUpdated': '比赛结果已更新',
-                    'updateFailed': '更新失败',
-                    'submitResult': '提交结果',
-                    'nameLengthError': '锦标赛名称长度必须在2-50字符之间',
-                    'playersRangeError': '参赛人数必须在2-100之间',
-                    'playersRequired': '请填写参赛人数',
-                    'invalidMode': '请选择有效的比赛模式',
-                    'invalidDifficulty': '请选择有效的难度',
-                    'entryFeeRangeError': '报名费必须在0-10000之间',
-                    'createConfirm': '创建锦标赛将扣除',
-                    'asEntryFee': '作为报名费',
-                    'totalPrize': '总奖池',
-                    'confirmContinue': '确定继续吗？',
-                    'adminStatus': '👑 管理员 · 全校数据可见',
-                    'noAccount': '没有账号'
+                    'quickMatch': '快速匹配', 'tournament': '锦标赛', 'joinRoom': '加入房间',
+                    'startGame': '开始游戏', 'hint': '提示', 'refresh': '刷新', 'pause': '暂停',
+                    'endGame': '结束游戏', 'home': '首页', 'teacherPanel': '教师面板',
+                    'challengeMode': '挑战模式', 'standardMode': '标准模式', 'practiceMode': '练习模式',
+                    'difficultyEasy': '简单', 'difficultyMedium': '中等', 'difficultyHard': '困难',
+                    'statScore': '得分', 'statCompleted': '完成', 'timeLabel': '剩余时间', 'statAccuracy': '正确率',
+                    'targetLabel': '目标和', 'studentList': '学生列表', 'generateReport': '生成报告',
+                    'classStats': '班级统计', 'allSchoolData': '全校数据', 'importStudents': '导入学生',
+                    'syncData': '同步数据', 'clearRecords': '清除记录', 'generatePDF': '生成 PDF 报告',
+                    'exportExcel': '导出 Excel', 'classReport': '全班报告', 'selectStudent': '选择学生',
+                    'lobby': '大厅', 'bracket': '赛程表', 'history': '历史', 'ranking': '排名',
+                    'createTournament': '创建锦标赛', 'gameoverTitle': '🎉 游戏结束', 'playAgain': '再玩一次',
+                    'exportData': '导出数据', 'finalScore': '最终得分', 'finalCompleted': '完成题数',
+                    'finalAccuracy': '正确率', 'login': '登录', 'register': '注册', 'logout': '退出',
+                    'authTitle': '🔐 登录', 'registerNow': '没有账号？立即注册', 'registerStudent': '注册为学生',
+                    'registerTeacher': '注册为教师', 'chooseRole': '选择注册身份', 'hasAccount': '已有账号？',
+                    'loginNow': '立即登录', 'submit': '登录', 'emailPlaceholder': '邮箱', 'passwordPlaceholder': '密码',
+                    'namePlaceholder': '姓名', 'schoolPlaceholder': '学校名称', 'classPlaceholder': '班级 (例: 5A)',
+                    'selectState': '请选择州属', 'loginRequired': '请先登录后再使用此功能',
+                    'tutorial1': '⭐ 选两张卡片，加起来等于 🎯', 'tutorial2': '⭐ 正确！卡片会消失 ✨',
+                    'tutorial3': '⭐ 没得配？点刷新换一批', 'noMatch': '没有数字能组成', 'dontShow': '不再显示',
+                    'waitingForOpponent': '正在寻找对手...', 'roomCodeLabel': '房间码', 'youLabel': '你',
+                    'waitingLabel': '等待中...', 'cancelLabel': '取消', 'opponent': '对手', 'yourTurn': '你的回合',
+                    'send': '发送', 'enterMessage': '输入消息...', 'rematch': '再战一局', 'close': '关闭',
+                    'enterRoomCode': '输入6位房间码', 'join': '加入', 'cancel': '取消', 'back': '返回',
+                    'tournamentName': '锦标赛名称', 'enterTournamentName': '例如：班级杯 2024', 'playerCount': '参赛人数',
+                    'gameMode': '比赛模式', 'difficulty': '难度', 'entryFee': '报名费', 'prizePool': '🏆 奖池分配',
+                    'confirmCreate': '创建', 'cancelCreate': '取消', 'wonBet': '赢得赌注', 'newRank': '新排名',
+                    'loading': '加载中...', 'online': '在线', 'offline': '离线', 'forgotPassword': '忘记密码？',
+                    'adminStatus': '👑 管理员 · 全校数据可见', 'noAccount': '没有账号', 'user': '用户',
+                    'emailAndPasswordRequired': '请填写邮箱和密码', 'processing': '处理中...', 'loginSuccess': '登录成功！',
+                    'initFailed': '初始化失败', 'featureUnavailable': '功能暂不可用'
                 },
                 'en': {
+                    'langIcon': '🇬🇧', 'langName': 'English',
                     'gameTitle': '🍬 Candy Math Match',
-                    'quickMatch': 'Quick Match',
-                    'tournament': 'Tournament',
-                    'joinRoom': 'Join Room',
-                    'startGame': 'Start Game',
-                    'hint': 'Hint',
-                    'refresh': 'Refresh',
-                    'pause': 'Pause',
-                    'endGame': 'End Game',
-                    'home': 'Home',
-                    'teacherPanel': 'Teacher Panel',
-                    'challengeMode': 'Challenge',
-                    'standardMode': 'Standard',
-                    'practiceMode': 'Practice',
-                    'difficultyEasy': 'Easy',
-                    'difficultyMedium': 'Medium',
-                    'difficultyHard': 'Hard',
-                    'statScore': 'Score',
-                    'statCompleted': 'Done',
-                    'timeLabel': 'Time Left',
-                    'statAccuracy': 'Accuracy',
-                    'targetLabel': 'Target',
-                    'studentList': 'Student List',
-                    'generateReport': 'Generate Report',
-                    'classStats': 'Class Stats',
-                    'allSchoolData': 'School Data',
-                    'importStudents': 'Import Students',
-                    'syncData': 'Sync Data',
-                    'clearRecords': 'Clear Records',
-                    'generatePDF': 'Generate PDF',
-                    'exportExcel': 'Export Excel',
-                    'classReport': 'Class Report',
-                    'selectStudent': 'Select Student',
-                    'lobby': 'Lobby',
-                    'bracket': 'Bracket',
-                    'history': 'History',
-                    'ranking': 'Ranking',
-                    'createTournament': 'Create Tournament',
-                    'gameoverTitle': '🎉 Game Over',
-                    'playAgain': 'Play Again',
-                    'exportData': 'Export Data',
-                    'finalScore': 'Final Score',
-                    'finalCompleted': 'Completed',
-                    'finalAccuracy': 'Accuracy',
-                    'login': 'Login',
-                    'register': 'Register',
-                    'logout': 'Logout',
-                    'authTitle': '🔐 Login',
-                    'registerNow': "Don't have an account? Register",
-                    'registerStudent': 'Register as Student',
-                    'registerTeacher': 'Register as Teacher',
-                    'chooseRole': 'Choose Role',
-                    'hasAccount': 'Already have an account?',
-                    'loginNow': 'Login',
-                    'submit': 'Login',
-                    'emailPlaceholder': 'Email',
-                    'passwordPlaceholder': 'Password',
-                    'namePlaceholder': 'Full Name',
-                    'schoolPlaceholder': 'School Name',
-                    'classPlaceholder': 'Class (e.g., 5A)',
-                    'selectState': 'Select State',
-                    'loginRequired': 'Please login first',
-                    'teacherOnly': 'Only teachers or admins can access this panel',
-                    'adminOnly': 'Only super admin can create tournaments',
-                    'tutorial1': '⭐ Pick 2 cards that add up to 🎯',
-                    'tutorial2': '⭐ Correct! Cards vanish ✨',
-                    'tutorial3': '⭐ No match? Refresh 🔄',
-                    'noMatch': 'No numbers make',
-                    'dontShow': "Don't show again",
-                    'waitingForOpponent': 'Waiting for opponent...',
-                    'roomCodeLabel': 'Room Code',
-                    'youLabel': 'You',
-                    'waitingLabel': 'Waiting...',
-                    'cancelLabel': 'Cancel',
-                    'opponent': 'Opponent',
-                    'yourTurn': 'Your Turn',
-                    'send': 'Send',
-                    'enterMessage': 'Enter message...',
-                    'rematch': 'Rematch',
-                    'close': 'Close',
-                    'enterRoomCode': 'Enter 6-digit room code',
-                    'join': 'Join',
-                    'cancel': 'Cancel',
-                    'selectBattleMode': 'Select Battle Mode',
-                    'multiplayerBattle': 'Multiplayer',
-                    'multiplayerDesc': 'Create/Join Room, Real-time Battle',
-                    'aiBattle': 'AI Battle',
-                    'aiDesc': 'Practice Mode, AI Delayed Response',
-                    'selectAIDifficulty': 'Select AI Difficulty',
-                    'aiEasy': 'Easy',
-                    'aiEasyDesc': 'Delay 5-7s, for beginners',
-                    'aiMedium': 'Medium',
-                    'aiMediumDesc': 'Delay 4-6s, some challenge',
-                    'aiHard': 'Hard',
-                    'aiHardDesc': 'Delay 3-5s, for experts',
-                    'createRoom': 'Create Room',
-                    'joinRoomBtn': 'Join Room',
-                    'confirm': 'Confirm',
-                    'back': 'Back',
-                    'tournamentName': 'Tournament Name',
-                    'enterTournamentName': 'e.g., Candy Cup 2026',
-                    'playerCount': 'Players',
-                    'gameMode': 'Game Mode',
-                    'difficulty': 'Difficulty',
-                    'entryFee': 'Entry Fee',
-                    'prizePool': '🏆 Prize Pool',
-                    'confirmCreate': 'Create',
-                    'cancelCreate': 'Cancel',
-                    'wonBet': 'Won Bet',
-                    'newRank': 'New Rank',
-                    'win': 'Victory!',
-                    'lose': 'Defeat',
-                    'loading': 'Loading...',
-                    'online': 'Online',
-                    'offline': 'Offline',
-                    'backToLogin': 'Back to Login',
-                    'forgotPassword': 'Forgot Password?',
-                    'sendResetLink': 'Send Reset Link',
-                    'emailRequired': 'Email is required',
-                    'invalidEmail': 'Please enter a valid email',
-                    'invalidCredentials': 'Invalid email or password',
-                    'processing': 'Processing...',
-                    'sending': 'Sending...',
-                    'loginSuccess': 'Login successful!',
-                    'registerSuccess': 'Registration successful!',
-                    'logoutSuccess': 'Logged out',
-                    'networkOffline': 'Network offline, please check connection',
-                    'supabaseNotConnected': 'Supabase not connected, please try again',
-                    'createSuccess': 'Tournament created successfully',
-                    'createFailed': 'Creation failed',
-                    'joinSuccess': 'Joined successfully',
-                    'joinFailed': 'Failed to join',
-                    'deleteConfirm': '⚠️ Are you sure you want to delete this tournament?\n\nThis action cannot be undone!',
-                    'deleteSuccess': '✅ Tournament deleted',
-                    'deleting': 'Deleting...',
-                    'noTournaments': 'No active tournaments',
-                    'statusWaiting': 'Waiting',
-                    'statusRegistering': 'Registering',
-                    'statusActive': 'Active',
-                    'statusFinished': 'Finished',
-                    'players': 'players',
-                    'remaining': 'Remaining',
-                    'hours': 'h',
-                    'minutes': 'm',
-                    'registrationClosed': 'Registration closed',
-                    'viewSchedule': 'View Schedule',
-                    'delete': 'Delete',
-                    'champion': 'Champion',
-                    'runnerUp': 'Runner-up',
-                    'thirdPlace': '3rd Place',
-                    'winRate': 'Win Rate',
-                    'battles': 'Battles',
-                    'tournamentWins': 'Wins',
-                    'points': 'Points',
-                    'player': 'Player',
-                    'unknownPlayer': 'Unknown',
-                    'round': 'Round ',
-                    'roundSuffix': '',
-                    'pending': 'TBD',
-                    'byeAdvance': 'bye advance',
-                    'inProgress': 'In Progress',
-                    'classCode': 'Class Code',
-                    'studentCount': 'Students',
-                    'academicYear': 'Year',
-                    'viewStudents': 'View Students',
-                    'copyCode': 'Copy Code',
-                    'noClasses': 'No classes, click "Create Class" to start',
-                    'notGenerated': 'Not generated',
-                    'createClass': 'Create Class',
-                    'className': 'Class Name',
-                    'classCreated': 'Class created successfully!',
-                    'classNameRequired': 'Please enter class name',
-                    'teacherOnlyCreate': 'Only teachers can create classes',
-                    'schoolInfoMissing': 'Unable to get school info',
-                    'studentId': 'Student ID',
-                    'name': 'Name',
-                    'class': 'Class',
-                    'school': 'School',
-                    'registerDate': 'Register Date',
-                    'studentData': 'Student Data',
-                    'totalStudents': 'Total',
-                    'studentsUnit': 'students',
-                    'noStudentData': 'No student data',
-                    'clickForDetail': 'Click for details',
-                    'unknown': 'Unknown',
-                    'unassigned': 'Unassigned',
-                    'studentDetail': 'Details',
-                    'studentNotFound': 'Student not found',
-                    'generateStudentReport': 'Generate Report',
-                    'networkRequired': 'Network connection required',
-                    'noDataToExport': 'No data to export',
-                    'exportSuccess': 'Successfully exported',
-                    'exportFailed': 'Export failed',
-                    'importSuccess': 'Successfully imported',
-                    'importFailed': 'Import failed',
-                    'duplicateSkipped': 'duplicates skipped',
-                    'failedCount': 'failed',
-                    'teacherOnlyImport': 'Only teachers can import students',
-                    'offlineCannotSync': 'Offline, cannot sync',
-                    'syncing': 'Syncing...',
-                    'syncSuccess': 'Sync completed',
-                    'syncFailed': 'Sync failed',
-                    'templateDownloaded': 'CSV template downloaded, student ID can be left blank',
-                    'downloadFailed': 'Download failed, please retry',
-                    'studentImportTemplate': 'student_import_template',
-                    'csvFormatHint': 'Format: Student ID,Name,Class',
-                    'csvNote1': 'Notes:',
-                    'csvNote2': 'Student ID: Optional, auto-generated if empty',
-                    'csvNote3': 'Name: Required',
-                    'csvNote4': 'Class: Optional',
-                    'csvNote5': 'New classes will be auto-created',
-                    'csvNote6': 'Duplicate student IDs will be skipped',
-                    'csvNote7': 'Sample data for reference only, delete before import',
-                    'exampleName1': 'Chen Xiaoming',
-                    'exampleName2': 'Li Xiaohua',
-                    'exampleName3': 'Zhang Weiqiang',
-                    'exampleName4': 'Wang Lili',
-                    'exampleName5': 'Liu Zhiming',
-                    'noClassCode': 'No class code',
-                    'codeCopied': 'Class code copied',
-                    'copyFailed': 'Copy failed',
-                    'classNoStudents': 'Class "',
-                    'noStudents': '" has no students',
-                    'classStudentList': 'Class "',
-                    'studentListSuffix': ' Student List',
-                    'no': 'No',
-                    'totalStudentsLabel': 'Total',
-                    'loadStudentsFailed': 'Failed to load students',
-                    'loadFailed': 'Load failed',
-                    'loadRankingFailed': 'Failed to load ranking',
-                    'loadHistoryFailed': 'Failed to load history',
-                    'noRankingData': 'No ranking data',
-                    'noHistory': 'No history',
-                    'noBracketData': 'No bracket data',
-                    'loadingBracket': 'Loading bracket...',
-                    'loadingRanking': 'Loading ranking...',
-                    'loadingHistory': 'Loading history...',
-                    'loadingSchoolData': 'Loading school data...',
-                    'noSchoolData': 'No school data',
-                    'nationalStats': 'National Statistics',
-                    'schoolCount': 'Schools',
-                    'totalTeachers': 'Teachers',
-                    'totalClasses': 'Classes',
-                    'schoolList': 'School List',
-                    'state': 'State',
-                    'teachers': 'Teachers',
-                    'students': 'Students',
-                    'classes': 'Classes',
-                    'teachersUnit': '',
-                    'classesUnit': '',
-                    'clearConfirm': 'Are you sure you want to clear all student records? This cannot be undone.',
-                    'cannotLeave': 'Tournament has started, cannot leave',
-                    'leaveConfirm': 'Are you sure you want to leave this tournament? Entry fee will not be refunded.',
-                    'leaveSuccess': 'Left tournament',
-                    'alreadyJoined': 'You have already joined this tournament',
-                    'tournamentNotFound': 'Tournament not found',
-                    'tournamentFull': 'Tournament is full',
-                    'insufficientPoints': 'Insufficient points',
-                    'dataExists': 'Data already exists',
-                    'dataNotFound': 'Related data not found',
-                    'validationFailed': 'Data validation failed',
-                    'concurrencyError': 'Concurrency conflict, please retry',
-                    'columnNotFound': 'Column not found',
-                    'tableNotFound': 'Table not found',
-                    'operationFailed': 'Operation failed',
-                    'requestTimeout': 'Request timeout, please retry',
-                    'unexpectedError': 'An unexpected error occurred',
-                    'tournamentStarted': 'Tournament is full, starting soon',
-                    'joining': 'Joining...',
-                    'creating': 'Creating...',
-                    'submitting': 'Submitting...',
-                    'resultUpdated': 'Match result updated',
-                    'updateFailed': 'Update failed',
-                    'submitResult': 'Submit Result',
-                    'nameLengthError': 'Tournament name must be 2-50 characters',
-                    'playersRangeError': 'Players must be between 2-100',
-                    'playersRequired': 'Please enter number of players',
-                    'invalidMode': 'Please select a valid game mode',
-                    'invalidDifficulty': 'Please select a valid difficulty',
-                    'entryFeeRangeError': 'Entry fee must be between 0-10000',
-                    'createConfirm': 'Creating tournament will deduct',
-                    'asEntryFee': 'as entry fee',
-                    'totalPrize': 'Total Prize Pool',
-                    'confirmContinue': 'Continue?',
-                    'adminStatus': '👑 Admin · Full Access',
-                    'noAccount': "Don't have an account"
+                    'quickMatch': 'Quick Match', 'tournament': 'Tournament', 'joinRoom': 'Join Room',
+                    'startGame': 'Start Game', 'hint': 'Hint', 'refresh': 'Refresh', 'pause': 'Pause',
+                    'endGame': 'End Game', 'home': 'Home', 'teacherPanel': 'Teacher Panel',
+                    'challengeMode': 'Challenge', 'standardMode': 'Standard', 'practiceMode': 'Practice',
+                    'difficultyEasy': 'Easy', 'difficultyMedium': 'Medium', 'difficultyHard': 'Hard',
+                    'statScore': 'Score', 'statCompleted': 'Done', 'timeLabel': 'Time Left', 'statAccuracy': 'Accuracy',
+                    'targetLabel': 'Target', 'studentList': 'Student List', 'generateReport': 'Generate Report',
+                    'classStats': 'Class Stats', 'allSchoolData': 'School Data', 'importStudents': 'Import Students',
+                    'syncData': 'Sync Data', 'clearRecords': 'Clear Records', 'generatePDF': 'Generate PDF',
+                    'exportExcel': 'Export Excel', 'classReport': 'Class Report', 'selectStudent': 'Select Student',
+                    'lobby': 'Lobby', 'bracket': 'Bracket', 'history': 'History', 'ranking': 'Ranking',
+                    'createTournament': 'Create Tournament', 'gameoverTitle': '🎉 Game Over', 'playAgain': 'Play Again',
+                    'exportData': 'Export Data', 'finalScore': 'Final Score', 'finalCompleted': 'Completed',
+                    'finalAccuracy': 'Accuracy', 'login': 'Login', 'register': 'Register', 'logout': 'Logout',
+                    'authTitle': '🔐 Login', 'registerNow': "Don't have an account? Register",
+                    'registerStudent': 'Register as Student', 'registerTeacher': 'Register as Teacher',
+                    'chooseRole': 'Choose Role', 'hasAccount': 'Already have an account?', 'loginNow': 'Login',
+                    'submit': 'Login', 'emailPlaceholder': 'Email', 'passwordPlaceholder': 'Password',
+                    'namePlaceholder': 'Full Name', 'schoolPlaceholder': 'School Name', 'classPlaceholder': 'Class (e.g., 5A)',
+                    'selectState': 'Select State', 'loginRequired': 'Please login first',
+                    'tutorial1': '⭐ Pick 2 cards that add up to 🎯', 'tutorial2': '⭐ Correct! Cards vanish ✨',
+                    'tutorial3': '⭐ No match? Refresh 🔄', 'noMatch': 'No numbers make', 'dontShow': "Don't show again",
+                    'waitingForOpponent': 'Waiting for opponent...', 'roomCodeLabel': 'Room Code', 'youLabel': 'You',
+                    'waitingLabel': 'Waiting...', 'cancelLabel': 'Cancel', 'opponent': 'Opponent', 'yourTurn': 'Your Turn',
+                    'send': 'Send', 'enterMessage': 'Enter message...', 'rematch': 'Rematch', 'close': 'Close',
+                    'enterRoomCode': 'Enter 6-digit room code', 'join': 'Join', 'cancel': 'Cancel', 'back': 'Back',
+                    'tournamentName': 'Tournament Name', 'enterTournamentName': 'e.g., Class Cup 2024', 'playerCount': 'Players',
+                    'gameMode': 'Game Mode', 'difficulty': 'Difficulty', 'entryFee': 'Entry Fee', 'prizePool': '🏆 Prize Pool',
+                    'confirmCreate': 'Create', 'cancelCreate': 'Cancel', 'wonBet': 'Won Bet', 'newRank': 'New Rank',
+                    'loading': 'Loading...', 'online': 'Online', 'offline': 'Offline', 'forgotPassword': 'Forgot Password?',
+                    'adminStatus': '👑 Admin · Full Access', 'noAccount': "Don't have an account", 'user': 'User',
+                    'emailAndPasswordRequired': 'Please enter email and password', 'processing': 'Processing...',
+                    'loginSuccess': 'Login successful!', 'initFailed': 'Initialization failed', 'featureUnavailable': 'Feature unavailable'
                 }
             };
             
             let currentLang = 'zh';
-            
-            // 读取保存的语言
             try {
                 const saved = localStorage.getItem('candyMathGame_v4_lang');
                 if (saved === 'en') currentLang = 'en';
             } catch(e) {}
             
-            // 获取翻译
             function t(key) {
                 return TRANSLATIONS[currentLang][key] || TRANSLATIONS['zh'][key] || key;
             }
             
-            // 设置语言（添加防循环）
-            function setLang(lang) {
-                if (_isSettingLang) return;
-                if (lang === 'zh' || lang === 'en') {
-                    _isSettingLang = true;
-                    try {
-                        currentLang = lang;
-                        localStorage.setItem('candyMathGame_v4_lang', lang);
-                        updateAllText();
-                    } finally {
-                        setTimeout(() => { _isSettingLang = false; }, 100);
-                    }
-                }
-            }
-            
-            // 获取当前语言
-            function getLang() {
-                return currentLang;
-            }
-            
-            // 更新所有界面文字（添加防循环）
             function updateAllText() {
-                if (_isUpdatingUI) return;
-                _isUpdatingUI = true;
-                
-                try {
-                    // 更新所有带 data-i18n 属性的元素
-                    document.querySelectorAll('[data-i18n]').forEach(el => {
-                        const key = el.dataset.i18n;
-                        const translation = t(key);
-                        if (translation && translation !== key) {
-                            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                                if (el.placeholder !== undefined) {
-                                    el.placeholder = translation;
-                                } else {
-                                    el.value = translation;
-                                }
+                document.querySelectorAll('[data-i18n]').forEach(el => {
+                    const key = el.dataset.i18n;
+                    const translation = t(key);
+                    if (translation && translation !== key) {
+                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                            if (el.placeholder !== undefined) el.placeholder = translation;
+                            else el.value = translation;
+                        } else {
+                            const originalText = el.innerHTML;
+                            const emojiMatch = originalText.match(/[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g);
+                            if (emojiMatch && emojiMatch.length > 0) {
+                                const emoji = emojiMatch.join('');
+                                if (!translation.startsWith(emoji)) el.innerHTML = emoji + ' ' + translation;
+                                else el.innerHTML = translation;
                             } else {
-                                const originalText = el.innerHTML;
-                                const hasEmoji = /[🍬🍭🍫🎯🏆⚡📚🔑👥💰⭐✅❌✨🔄⏸️🏁🏠📊📈👑📥🗑️📄📋👩‍🏫👨‍🎓🔐📝🚪➕🗑️👤❓VS🔄👥💰🎉💡🏠🌍🇨🇳🇬🇧]/g;
-                                const emojiMatch = originalText.match(hasEmoji);
-                                if (emojiMatch && emojiMatch.length > 0) {
-                                    const emoji = emojiMatch.join('');
-                                    if (!translation.startsWith(emoji)) {
-                                        el.innerHTML = emoji + ' ' + translation;
-                                    } else {
-                                        el.innerHTML = translation;
-                                    }
-                                } else {
-                                    el.textContent = translation;
-                                }
+                                el.textContent = translation;
                             }
                         }
-                    });
-                    
-                    // 更新 placeholder
-                    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                        const key = el.dataset.i18nPlaceholder;
-                        const translation = t(key);
-                        if (translation && translation !== key) {
-                            el.placeholder = translation;
-                        }
-                    });
-                    
-                    // 更新游戏标题
-                    const gameTitle = document.getElementById('game-title');
-                    if (gameTitle) gameTitle.textContent = t('gameTitle');
-                    
-                    // 更新语言按钮
-                    const langText = document.getElementById('lang-text');
-                    const langIcon = document.getElementById('lang-icon');
-                    if (langText) langText.textContent = currentLang === 'zh' ? '中文' : 'English';
-                    if (langIcon) langIcon.textContent = currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
-                    
-                    // 触发自定义事件，通知其他组件语言已更新
-                    const event = new CustomEvent('languageChanged', { detail: { lang: currentLang } });
-                    document.dispatchEvent(event);
-                    
-                    console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
-                } finally {
-                    setTimeout(() => { _isUpdatingUI = false; }, 100);
+                    }
+                });
+                
+                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                    const key = el.dataset.i18nPlaceholder;
+                    const translation = t(key);
+                    if (translation && translation !== key) el.placeholder = translation;
+                });
+                
+                const gameTitle = document.getElementById('game-title');
+                if (gameTitle) gameTitle.textContent = t('gameTitle');
+                
+                const langText = document.getElementById('lang-text');
+                const langIcon = document.getElementById('lang-icon');
+                if (langText) langText.textContent = currentLang === 'zh' ? '中文' : 'English';
+                if (langIcon) langIcon.textContent = currentLang === 'zh' ? '🇨🇳' : '🇬🇧';
+                
+                const authTitle = document.getElementById('auth-title');
+                if (authTitle) authTitle.innerHTML = t('authTitle');
+                
+                document.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang: currentLang } }));
+                console.log('界面语言已更新:', currentLang === 'zh' ? '中文' : 'English');
+            }
+            
+            function setLang(lang) {
+                if (lang === 'zh' || lang === 'en') {
+                    currentLang = lang;
+                    try { localStorage.setItem('candyMathGame_v4_lang', lang); } catch(e) {}
+                    updateAllText();
+                    if (window.I18n) window.I18n.currentLang = lang;
                 }
             }
             
-            // 创建全局 I18n 对象
-            window.I18n = {
-                t: t,
-                setLang: setLang,
-                getLang: getLang,
-                updateAllText: updateAllText,
-                currentLang: currentLang,
-                refreshAuthModalLanguage: function() {
-                    updateAllText();
-                },
-                triggerLanguageUpdate: function() {
-                    updateAllText();
-                }
-            };
+            window.I18n = { t: t, setLang: setLang, getLang: () => currentLang, updateAllText: updateAllText, currentLang: currentLang };
             
-            // 绑定语言切换按钮
             const langBtn = document.getElementById('lang-switch');
             if (langBtn) {
                 const newBtn = langBtn.cloneNode(true);
                 langBtn.parentNode.replaceChild(newBtn, langBtn);
-                
-                newBtn.onclick = function(e) {
-                    e.preventDefault();
-                    const newLang = currentLang === 'zh' ? 'en' : 'zh';
-                    window.I18n.setLang(newLang);
-                };
+                newBtn.onclick = (e) => { e.preventDefault(); setLang(currentLang === 'zh' ? 'en' : 'zh'); };
             }
             
-            // 初始更新
-            updateAllText();
-            console.log('语言切换功能已初始化（统一控制系统），当前语言:', currentLang === 'zh' ? '中文' : 'English');
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updateAllText);
+            else updateAllText();
+            
+            const observer = new MutationObserver(() => { setTimeout(updateAllText, 50); });
+            observer.observe(document.body, { childList: true, subtree: true });
         })();
     </script>
-    
-    <!-- 修复语言切换问题 - 添加防循环的 localStorage 拦截 -->
+
+    <!-- 语言切换修复补丁 -->
     <script>
-    (function() {
-        // ✅ 设置外部语言控制标志
-        window._externalLangControl = true;
-        
-        let _isSettingLanguage = false;  // 防循环标志
-        
-        // 强制覆盖所有可能改变语言的函数
-        window._forceLanguage = function(lang) {
-            console.log('强制语言更新:', lang);
-            // 更新所有带 data-i18n 的元素
-            document.querySelectorAll('[data-i18n]').forEach(el => {
-                const key = el.dataset.i18n;
-                const translation = window.I18n ? window.I18n.t(key) : null;
-                if (translation && translation !== key) {
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                        if (el.placeholder !== undefined) el.placeholder = translation;
-                    } else {
-                        el.textContent = translation;
+        (function() {
+            let fixing = false;
+            function refreshAuthModalText() {
+                if (!window.I18n) return;
+                const modal = document.getElementById('auth-modal');
+                const isEn = window.I18n.currentLang === 'en';
+                if (modal && modal.style.display === 'flex') {
+                    const title = document.getElementById('auth-title');
+                    const submitBtn = document.getElementById('auth-submit');
+                    const switchDiv = document.getElementById('auth-switch');
+                    if (title) title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
+                    if (submitBtn) submitBtn.innerHTML = isEn ? 'Login' : '登录';
+                    if (switchDiv) {
+                        switchDiv.innerHTML = (isEn ? "Don't have an account? " : "没有账号？") + 
+                            '<span id="switch-to-register" style="cursor:pointer;color:#d46b8d;">' + 
+                            (isEn ? "Register" : "立即注册") + '</span>';
+                        const registerSpan = document.getElementById('switch-to-register');
+                        if (registerSpan) registerSpan.onclick = () => {
+                            document.getElementById('auth-modal').style.display = 'none';
+                            document.getElementById('register-choice-modal').style.display = 'flex';
+                        };
                     }
                 }
+            }
+            
+            if (window.I18n && window.I18n.setLang) {
+                const originalSetLang = window.I18n.setLang;
+                window.I18n.setLang = function(lang) {
+                    if (fixing) return;
+                    fixing = true;
+                    originalSetLang.call(this, lang);
+                    setTimeout(refreshAuthModalText, 50);
+                    setTimeout(() => { fixing = false; }, 200);
+                };
+            }
+            
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                        const target = mutation.target;
+                        if (target.id === 'auth-modal' || target.id === 'register-choice-modal') {
+                            if (target.style.display === 'flex') setTimeout(refreshAuthModalText, 30);
+                        }
+                    }
+                });
             });
-            
-            // 更新登录/注册按钮
-            const authButtons = document.getElementById('auth-buttons');
-            if (authButtons && !window.currentUser) {
-                const loginText = window.I18n ? window.I18n.t('login') : '登录';
-                const registerText = window.I18n ? window.I18n.t('register') : '注册';
-                authButtons.innerHTML = `<button class="auth-btn login" id="show-login-btn">🔐 <span class="btn-text">${loginText}</span></button>
-                                        <button class="auth-btn register" id="show-register-btn">📝 <span class="btn-text">${registerText}</span></button>`;
-                // 重新绑定事件
-                const newLoginBtn = document.getElementById('show-login-btn');
-                const newRegisterBtn = document.getElementById('show-register-btn');
-                if (newLoginBtn) {
-                    newLoginBtn.onclick = function() { 
-                        document.getElementById('auth-modal').style.display = 'flex'; 
-                        const titleEl = document.getElementById('auth-title');
-                        if (titleEl) titleEl.textContent = window.I18n ? window.I18n.t('authTitle') : '🔐 登录';
-                        const submitEl = document.getElementById('auth-submit');
-                        if (submitEl) submitEl.textContent = window.I18n ? window.I18n.t('submit') : '登录';
-                        const errorDiv = document.getElementById('auth-error');
-                        if (errorDiv) errorDiv.textContent = '';
-                    };
-                }
-                if (newRegisterBtn) {
-                    newRegisterBtn.onclick = function() { 
-                        document.getElementById('register-choice-modal').style.display = 'flex'; 
-                    };
-                }
-            }
-            
-            // 更新退出按钮
-            if (window.currentUser && authButtons) {
-                const logoutText = window.I18n ? window.I18n.t('logout') : '退出';
-                authButtons.innerHTML = `<button class="auth-btn logout" id="logout-btn">🚪 <span class="btn-text">${logoutText}</span></button>`;
-                const logoutBtn = document.getElementById('logout-btn');
-                if (logoutBtn) {
-                    logoutBtn.onclick = function() {
-                        if (window.supabaseClient) { 
-                            window.supabaseClient.auth.signOut().then(function() { 
-                                window.currentUser = null; 
-                                if (window.game && window.game.state) window.game.state.currentUser = null; 
-                                location.reload(); 
-                            }).catch(function() { location.reload(); });
-                        } else { 
-                            window.currentUser = null; 
-                            if (window.game && window.game.state) window.game.state.currentUser = null; 
-                            location.reload(); 
-                        }
-                    };
-                }
-            }
-        };
-        
-        // 覆盖 UI.js 中的语言更新方法
-        if (window.UI && window.UI.updateLanguage) {
-            const originalUpdateLanguage = window.UI.updateLanguage;
-            window.UI.updateLanguage = function() {
-                console.log('UI.updateLanguage 被拦截，使用统一语言控制');
-                if (window.I18n) window.I18n.updateAllText();
-            };
-        }
-                
-        // 定期检查并修复语言（每500ms检查一次，持续3秒）
-        let checkCount = 0;
-        const fixInterval = setInterval(function() {
-            checkCount++;
-            const currentBtnText = document.querySelector('#auth-buttons .btn-text')?.textContent;
-            const expectedText = window.I18n && window.I18n.currentLang === 'en' ? 'Login' : '登录';
-            
-            if (currentBtnText && currentBtnText !== expectedText && currentBtnText !== 'Login' && currentBtnText !== '登录') {
-                console.log('检测到语言不一致，强制修复:', currentBtnText, '->', expectedText);
-                if (window.I18n) window.I18n.updateAllText();
-                window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
-            }
-            
-            if (checkCount > 20) clearInterval(fixInterval);
-        }, 500);
-        
-        // 监听模态框打开，重新应用语言
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                    const target = mutation.target;
-                    if (target.classList && (target.classList.contains('auth-modal') || 
-                        target.id === 'auth-modal' ||
-                        target.classList.contains('register-choice-modal'))) {
-                        if (target.style.display === 'flex') {
-                            setTimeout(() => {
-                                if (window.I18n) window.I18n.updateAllText();
-                                window._forceLanguage(window.I18n ? window.I18n.currentLang : 'zh');
-                            }, 50);
-                        }
-                    }
-                }
-            });
-        });
-        
-        observer.observe(document.body, { 
-            attributes: true, 
-            attributeFilter: ['style'],
-            subtree: true 
-        });
-        
-        console.log('语言修复脚本已启动 - 将阻止按钮文字被覆盖');
-    })();
+            observer.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
+            setTimeout(refreshAuthModalText, 500);
+        })();
     </script>
-    
-    <!-- 覆盖 Auth.js 方法以修复语言问题 -->
-    <script>
-    (function overrideAuthMethods() {
-        // 等待 AuthManager 加载完成
-        const checkInterval = setInterval(function() {
-            // 获取 Auth 实例
-            let authInstance = null;
-            
-            if (window.game && window.game.auth) {
-                authInstance = window.game.auth;
-            } else if (window.authManager) {
-                authInstance = window.authManager;
-            } else if (window.AuthManager && window._authInstance) {
-                authInstance = window._authInstance;
-            }
-            
-            if (authInstance && typeof authInstance.getI18n === 'function') {
-                clearInterval(checkInterval);
-                console.log('找到 Auth 实例，开始覆盖方法...');
-                
-                // 覆盖 getI18n 方法
-                const originalGetI18n = authInstance.getI18n;
-                authInstance.getI18n = function() {
-                    if (window.I18n && window.I18n.t) {
-                        return window.I18n;
-                    }
-                    return originalGetI18n ? originalGetI18n.call(this) : { t: (key) => key };
-                };
-                
-                // 覆盖 updateAuthModalUI 方法
-                authInstance.updateAuthModalUI = function(mode, elements) {
-                    const i18n = this.getI18n();
-                    const { title, submitBtn, switchDiv, forgotPasswordDiv, passwordInput, passwordLabel } = elements;
-                    
-                    const getText = (key, defaultText) => {
-                        const translation = i18n.t(key);
-                        return (translation && translation !== key) ? translation : defaultText;
-                    };
-                    
-                    switchDiv.innerHTML = '';
-                    
-                    if (mode === 'login') {
-                        if (title) title.innerHTML = '🔐 ' + getText('login', '登录');
-                        if (submitBtn) submitBtn.innerHTML = getText('login', '登录');
-                        
-                        const registerSpan = document.createElement('span');
-                        registerSpan.id = 'switch-to-register';
-                        registerSpan.style.cssText = 'cursor:pointer;color:#667eea;';
-                        registerSpan.textContent = getText('registerNow', '立即注册');
-                        switchDiv.appendChild(document.createTextNode((getText('noAccount', '没有账号') || '没有账号') + ' '));
-                        switchDiv.appendChild(registerSpan);
-                        
-                        const registerHandler = () => this.showRegisterChoice();
-                        registerSpan.addEventListener('click', registerHandler);
-                        
-                        if (forgotPasswordDiv) {
-                            forgotPasswordDiv.style.display = 'block';
-                            forgotPasswordDiv.innerHTML = '';
-                            const forgotSpan = document.createElement('span');
-                            forgotSpan.id = 'forgot-password';
-                            forgotSpan.style.cssText = 'cursor:pointer;color:#666;font-size:0.9em;text-decoration:underline;';
-                            forgotSpan.textContent = (getText('forgotPassword', '忘记密码') || '忘记密码') + '?';
-                            forgotSpan.addEventListener('click', (e) => {
-                                e.preventDefault();
-                                this.showForgotPasswordModal();
-                            });
-                            forgotPasswordDiv.appendChild(forgotSpan);
-                        }
-                    } 
-                    else if (mode === 'register') {
-                        if (title) title.innerHTML = '📝 ' + getText('register', '注册');
-                        if (submitBtn) submitBtn.innerHTML = getText('register', '注册');
-                        
-                        const loginSpan = document.createElement('span');
-                        loginSpan.id = 'switch-to-login';
-                        loginSpan.style.cssText = 'cursor:pointer;color:#667eea;';
-                        loginSpan.textContent = getText('loginNow', '立即登录');
-                        switchDiv.appendChild(document.createTextNode((getText('hasAccount', '已有账号') || '已有账号') + ' '));
-                        switchDiv.appendChild(loginSpan);
-                        
-                        const loginHandler = () => this.showAuthModal('login');
-                        loginSpan.addEventListener('click', loginHandler);
-                        
-                        if (forgotPasswordDiv) {
-                            forgotPasswordDiv.style.display = 'none';
-                            forgotPasswordDiv.innerHTML = '';
-                        }
-                    }
-                };
-                
-                // 覆盖 showAuthModal 方法
-                const originalShowAuthModal = authInstance.showAuthModal;
-                authInstance.showAuthModal = function(mode, prefillEmail) {
-                    if (window.I18n && window.I18n.updateAllText) {
-                        window.I18n.updateAllText();
-                    }
-                    originalShowAuthModal.call(this, mode, prefillEmail);
-                };
-                
-                // 覆盖 showRegisterChoice 方法
-                const originalShowRegisterChoice = authInstance.showRegisterChoice;
-                authInstance.showRegisterChoice = function() {
-                    originalShowRegisterChoice.call(this);
-                    setTimeout(() => {
-                        if (window.I18n) window.I18n.updateAllText();
-                    }, 50);
-                };
-                
-                console.log('Auth 方法覆盖完成');
-            }
-        }, 500);
-    })();
-    </script>
-    <!-- 语言切换修复补丁 - 解决按钮被覆盖问题 -->
-<script>
-(function() {
-    // 保存原始 setLang 方法
-    let _fixing = false;
-    
-    // 强制刷新登录模态框的文字
-    function refreshAuthModalText() {
-        if (!window.I18n) return;
-        
-        const modal = document.getElementById('auth-modal');
-        const isEn = window.I18n.currentLang === 'en';
-        
-        // 如果登录框是打开的，刷新里面的文字
-        if (modal && modal.style.display === 'flex') {
-            const title = document.getElementById('auth-title');
-            const submitBtn = document.getElementById('auth-submit');
-            const switchDiv = document.getElementById('auth-switch');
-            
-            if (title) title.innerHTML = '🔐 ' + (isEn ? 'Login' : '登录');
-            if (submitBtn) submitBtn.innerHTML = isEn ? 'Login' : '登录';
-            if (switchDiv) {
-                switchDiv.innerHTML = (isEn ? "Don't have an account? " : "没有账号？") + 
-                    '<span id="switch-to-register" style="cursor:pointer;color:#667eea;">' + 
-                    (isEn ? "Register" : "立即注册") + '</span>';
-                
-                // 重新绑定事件
-                const registerSpan = document.getElementById('switch-to-register');
-                if (registerSpan && window.game && window.game.auth) {
-                    registerSpan.onclick = function() {
-                        document.getElementById('auth-modal').style.display = 'none';
-                        document.getElementById('register-choice-modal').style.display = 'flex';
-                    };
-                }
-            }
-        }
-        
-        // 刷新注册选择框
-        const choiceModal = document.getElementById('register-choice-modal');
-        if (choiceModal && choiceModal.style.display === 'flex') {
-            const title = choiceModal.querySelector('h2');
-            if (title) title.innerHTML = isEn ? 'Choose Role' : '选择注册身份';
-            
-            const studentBtn = document.getElementById('choose-student');
-            if (studentBtn) studentBtn.innerHTML = '👨‍🎓 ' + (isEn ? 'Register as Student' : '注册为学生');
-            
-            const teacherBtn = document.getElementById('choose-teacher');
-            if (teacherBtn) teacherBtn.innerHTML = '👩‍🏫 ' + (isEn ? 'Register as Teacher' : '注册为教师');
-        }
-    }
-    
-    // 拦截 I18n.setLang，刷新后强制修复模态框
-    if (window.I18n && window.I18n.setLang) {
-        const originalSetLang = window.I18n.setLang;
-        window.I18n.setLang = function(lang) {
-            if (_fixing) return;
-            _fixing = true;
-            originalSetLang.call(this, lang);
-            setTimeout(refreshAuthModalText, 50);
-            setTimeout(() => { _fixing = false; }, 200);
-        };
-    }
-    
-    // 监听模态框打开事件
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                const target = mutation.target;
-                if (target.id === 'auth-modal' || target.id === 'register-choice-modal') {
-                    if (target.style.display === 'flex') {
-                        setTimeout(refreshAuthModalText, 30);
-                    }
-                }
-            }
-        });
-    });
-    observer.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
-    
-    // 页面加载完成后执行一次
-    setTimeout(refreshAuthModalText, 500);
-    setTimeout(refreshAuthModalText, 1000);
-    
-    console.log('语言修复补丁已加载');
-})();
-</script>
 </body>
 </html>
