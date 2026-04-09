@@ -3335,10 +3335,14 @@
                 langBtn.parentNode.replaceChild(newBtn, langBtn);
                 
                 newBtn.onclick = function(e) {
-		    e.preventDefault();
-    		    const newLang = currentLang === 'zh' ? 'en' : 'zh';
-    		    window.I18n.setLang(newLang);
-    		    window.I18n.updateAllText();  // ✅ 通过 I18n 对象调用
+    		    e.preventDefault();
+    	   	    const newLang = currentLang === 'zh' ? 'en' : 'zh';
+    		    currentLang = newLang;
+    		    localStorage.setItem('candyMathGame_v4_lang', newLang);
+    		    updateAllText();  // 直接调用，不通过 I18n
+    		    // 额外强制刷新一次
+    		    setTimeout(updateAllText, 50);
+    		    setTimeout(updateAllText, 100);
 		};
             }
             
