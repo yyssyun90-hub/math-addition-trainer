@@ -1,9 +1,9 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本: 9.1.0 (混合方案版 - Realtime双人对战 + AI延迟对战)
+ * 版本: 9.2.0 (修复版 - AI界面显示 + 有效组合 + 加入房间 + WebSocket)
  * 
  * 功能：
- * - 双人对战：使用 Supabase Realtime，实时同步，无延迟
+ * - 双人对战：使用 Supabase Realtime WebSocket，实时同步，无延迟
  * - AI对战：延迟答题（3-7秒），多种难度可选
  * - 锦标赛：保留原有功能，使用 Realtime
  * 
@@ -12,11 +12,11 @@
  * - 中等：延迟 4-6秒，准确率 80%，回合时间 20秒
  * - 困难：延迟 3-5秒，准确率 95%，回合时间 15秒
  * 
- * 修改记录：
- * 2024-04-03 - 添加手动刷新按钮
- * 2024-04-03 - 添加按 R 键刷新卡片
- * 2024-04-03 - 修复关闭按钮事件绑定
- * 2024-04-03 - 增强自动刷新逻辑
+ * 修复记录：
+ * 2024-04-10 - 修复手机端AI对战界面不显示问题
+ * 2024-04-10 - 修复卡片没有有效组合的问题
+ * 2024-04-10 - 修复两人对战加入房间失败问题
+ * 2024-04-10 - 两人对战改用纯WebSocket实时通信
  * ============================================================
  */
 
@@ -172,6 +172,7 @@ class BattleMode {
         
         // 轮询定时器
         this.pollingInterval = null;
+        this.heartbeatInterval = null;  // WebSocket 心跳
         
         this.constants = {
             MATCH_TIMEOUT: 30000,
@@ -186,7 +187,7 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '9.1.0',
+            STORAGE_VERSION: '9.2.0',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
@@ -202,7 +203,8 @@ class BattleMode {
             AUTH_WAIT_TIMEOUT: 3000,
             MAX_MATCH_RETRIES: 3,
             AI_COOLDOWN_TIME: 2000,
-            POLLING_INTERVAL: 2000
+            POLLING_INTERVAL: 2000,
+            MAX_POLLING_ATTEMPTS: 60  // 最多轮询 60 次（2 分钟）
         };
 
         this.setupPromiseErrorHandler();
@@ -213,18 +215,16 @@ class BattleMode {
         this.setupBeforeUnloadHandler();
         this.createCardTemplate();
         this.startSubscriptionChecker();
-        this.setupKeyBindings(); // ✅ 新增：绑定键盘快捷键
+        this.setupKeyBindings();
     }
 
-    // ==================== 新增：键盘快捷键绑定 ====================
+    // ==================== 键盘快捷键绑定 ====================
     setupKeyBindings() {
         this.keydownHandler = (e) => {
-            // 按 R 键刷新卡片
             if ((e.key === 'r' || e.key === 'R') && this.room.gameActive && !this.room.opponentIsAI) {
                 e.preventDefault();
                 this.manualRefreshGrid();
             }
-            // 按 Escape 关闭模态框
             if (e.key === 'Escape') {
                 if (this.game?.ui) {
                     this.game.ui.closeModal('auth-modal');
@@ -240,7 +240,7 @@ class BattleMode {
         document.addEventListener('keydown', this.keydownHandler);
     }
 
-    // ==================== 新增：手动刷新网格 ====================
+    // ==================== 手动刷新网格 ====================
     manualRefreshGrid() {
         if (!this.room.gameActive) return;
         
@@ -249,7 +249,6 @@ class BattleMode {
         this.showFeedback('🔄 已刷新卡片组合', '#ff9800');
         this.addSystemMessage('你刷新了卡片组合');
         
-        // 如果有选中的卡片，清空选中状态
         if (this.room.selectedCards.length > 0) {
             this.room.selectedCards.forEach(card => {
                 if (card && card.classList) card.classList.remove('selected');
@@ -258,9 +257,8 @@ class BattleMode {
         }
     }
 
-    // ==================== 新增：修复关闭按钮 ====================
+    // ==================== 修复关闭按钮 ====================
     fixCloseButtons() {
-        // 修复战斗界面关闭按钮
         const closeBtn = document.getElementById('close-battle-btn');
         if (closeBtn) {
             const newCloseBtn = closeBtn.cloneNode(true);
@@ -273,7 +271,6 @@ class BattleMode {
             };
         }
         
-        // 修复结果界面关闭按钮
         const closeResultBtn = document.getElementById('close-result-btn');
         if (closeResultBtn) {
             const newResultBtn = closeResultBtn.cloneNode(true);
@@ -286,7 +283,6 @@ class BattleMode {
             };
         }
         
-        // 修复再来一局按钮
         const rematchBtn = document.getElementById('rematch-btn');
         if (rematchBtn) {
             const newRematchBtn = rematchBtn.cloneNode(true);
@@ -296,7 +292,6 @@ class BattleMode {
             };
         }
         
-        // 修复结果界面再来一局按钮
         const rematchResultBtn = document.getElementById('rematch-result-btn');
         if (rematchResultBtn) {
             const newRematchResultBtn = rematchResultBtn.cloneNode(true);
@@ -306,42 +301,6 @@ class BattleMode {
             };
         }
     }
-
-    // ==================== 新增：增强的自动刷新逻辑 ====================
-    enhancedCheckGridHasValidCombination() {
-        const grid = document.getElementById('battle-grid');
-        if (!grid) return true;
-
-        const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
-        if (cards.length < 2) return false;
-
-        const targetEl = document.getElementById('battle-target-number');
-        if (!targetEl) return true;
-        
-        const target = parseInt(targetEl.textContent);
-        if (isNaN(target)) return true;
-
-        for (let i = 0; i < cards.length; i++) {
-            for (let j = i + 1; j < cards.length; j++) {
-                const num1 = parseInt(cards[i].dataset.value);
-                const num2 = parseInt(cards[j].dataset.value);
-                if (!isNaN(num1) && !isNaN(num2) && num1 + num2 === target) {
-                    return true;
-                }
-            }
-        }
-        
-        // 没有有效组合，立即刷新
-        console.log('⚠️ 没有有效组合，自动刷新');
-        this.refreshBattleGrid();
-        this.generateBattleTarget();
-        this.showFeedback('🔄 自动刷新数字组合', '#ff9800');
-        return true;
-    }
-
-    // ==================== 修改：startAIBattleWithDifficulty 中调用修复 ====================
-    // 原有的 startAIBattleWithDifficulty 方法保持不变，但需要在调用后修复按钮
-    // 由于文件太大，我会在后续提供完整的替换方法
 
     createCardTemplate() {
         this.cardTemplate = document.createElement('div');
@@ -401,7 +360,6 @@ class BattleMode {
                 }
             });
             
-            // 简化事件监听
             newChannel
                 .on('presence', { event: 'sync' }, () => {
                     try {
@@ -537,7 +495,7 @@ class BattleMode {
             return;
         }
         
-        console.log('BattleMode 9.1.0 初始化开始...');
+        console.log('BattleMode 9.2.0 初始化开始...');
         
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
@@ -551,7 +509,7 @@ class BattleMode {
             this.injectCandyStyles();
             this.setupResponsiveLayout();
             this.setupSupabaseFunctions();
-            this.fixCloseButtons(); // ✅ 修复关闭按钮
+            this.fixCloseButtons();
             
             this.delayedAuthCheck(0);
             
@@ -1803,12 +1761,10 @@ class BattleMode {
         `;
 
         document.head.appendChild(style);
-        
-        // 添加手动刷新按钮到战斗界面
         this.addManualRefreshButton();
     }
     
-    // ==================== 新增：添加手动刷新按钮 ====================
+    // ==================== 添加手动刷新按钮 ====================
     addManualRefreshButton() {
         const battleActive = document.getElementById('battle-active');
         if (!battleActive) return;
@@ -2349,13 +2305,6 @@ class BattleMode {
         if (sendButton) sendButton.disabled = disabled;
     }
 
-    updateProgressBars() {
-        const player1Progress = document.getElementById('player1-progress');
-        const player2Progress = document.getElementById('player2-progress');
-        if (player1Progress) player1Progress.classList.add('player1');
-        if (player2Progress) player2Progress.classList.add('player2');
-    }
-
     startHeartbeat() {
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = setInterval(() => this.checkConnection(), 30000);
@@ -2415,8 +2364,7 @@ class BattleMode {
         if (this.scoreSyncInterval) clearInterval(this.scoreSyncInterval);
         this.scoreSyncInterval = setInterval(() => this.syncScores(), 10000);
     }
-
-    // ==================== 模式选择界面 ====================
+        // ==================== 模式选择界面 ====================
 
     showModeSelect() {
         if (!this.game.auth || !this.game.auth.isLoggedIn()) {
@@ -2553,7 +2501,7 @@ class BattleMode {
                         <button id="join-room-submenu-btn" class="candy-btn secondary" style="padding: 12px 25px;">🔑 ${I18n.t('joinRoomBtn') || '加入房间'}</button>
                     </div>
                     <div id="join-room-input-area" style="display: none; margin-top: 15px;">
-                        <input type="text" id="room-code-join-input" placeholder="${I18n.t('enterRoomCodePlaceholder') || '输入6位房间码'}" maxlength="6" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 30px; border: 2px solid #ffb6c1;">
+                        <input type="text" id="room-code-join-input" placeholder="${I18n.t('enterRoomCodePlaceholder') || '输入6位房间码'}" maxlength="6" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 30px; border: 2px solid #ffb6c1; text-transform: uppercase;">
                         <div style="display: flex; gap: 10px;">
                             <button id="confirm-join-room" class="candy-btn primary" style="flex: 1;">${I18n.t('confirm') || '确认加入'}</button>
                             <button id="cancel-join-room" class="candy-btn home" style="flex: 1;">${I18n.t('back') || '返回'}</button>
@@ -2573,6 +2521,7 @@ class BattleMode {
         const cancelJoinRoom = document.getElementById('cancel-join-room');
         const backBtn = document.getElementById('back-to-mode-select');
         const joinInputArea = document.getElementById('join-room-input-area');
+        const roomInput = document.getElementById('room-code-join-input');
         
         if (createRoomBtn) {
             createRoomBtn.onclick = () => {
@@ -2583,11 +2532,31 @@ class BattleMode {
         if (joinRoomBtn) {
             joinRoomBtn.onclick = () => {
                 if (joinInputArea) joinInputArea.style.display = 'block';
+                if (roomInput) {
+                    roomInput.value = '';
+                    roomInput.focus();
+                    // 自动转大写
+                    roomInput.addEventListener('input', function(e) {
+                        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    });
+                    // 按回车加入
+                    roomInput.onkeypress = (e) => {
+                        if (e.key === 'Enter') {
+                            const code = roomInput.value.toUpperCase();
+                            if (code && code.length === 6) {
+                                multiplayerModal.style.display = 'none';
+                                this.joinBattleRoom(code);
+                            } else {
+                                this.showFeedback(I18n.t('invalidRoomCode') || '请输入6位房间码', '#ff4444');
+                            }
+                        }
+                    };
+                }
             };
         }
         if (confirmJoinRoom) {
             confirmJoinRoom.onclick = () => {
-                const roomCode = document.getElementById('room-code-join-input')?.value?.toUpperCase();
+                const roomCode = roomInput?.value?.toUpperCase();
                 if (roomCode && roomCode.length === 6) {
                     multiplayerModal.style.display = 'none';
                     this.joinBattleRoom(roomCode);
@@ -2599,8 +2568,7 @@ class BattleMode {
         if (cancelJoinRoom) {
             cancelJoinRoom.onclick = () => {
                 if (joinInputArea) joinInputArea.style.display = 'none';
-                const input = document.getElementById('room-code-join-input');
-                if (input) input.value = '';
+                if (roomInput) roomInput.value = '';
             };
         }
         if (backBtn) {
@@ -2618,7 +2586,6 @@ class BattleMode {
         this.cleanupAIResources();
         this.cleanupMatch();
         
-        // 修复关闭按钮
         this.fixCloseButtons();
 
         const aiPlayer = {
@@ -2643,31 +2610,55 @@ class BattleMode {
 
         const firstPlayer = Math.random() < 0.5 ? this.game.state.currentUser.id : aiPlayer.id;
         
-        this.initializeBattleUI(
-            this.game.state.currentUser,
-            aiPlayer,
-            firstPlayer
-        );
-
-        this.generateBattleGrid();
-        this.generateBattleTarget();
-        this.showRoomCode();
-        this.addManualRefreshButton(); // 添加刷新按钮
-
-        const difficultyText = { easy: '简单', medium: '中等', hard: '困难' }[difficulty];
-        const delayText = { easy: '5-7秒', medium: '4-6秒', hard: '3-5秒' }[difficulty];
-        
-        this.addSystemMessage(`⚔️ 与AI对战开始！ (难度: ${difficultyText}，AI思考时间: ${delayText})`);
-        
-        if (this.room.myTurn) {
-            this.addSystemMessage(`你的回合，时间限制: ${this.room.timeLeft}秒`);
-            this.startTurnTimer();
+        // ✅ 关键修复：确保模态框打开并等待 DOM 完全渲染
+        if (this.game && this.game.ui) {
+            this.game.ui.openModal('battle-modal');
         } else {
-            this.addSystemMessage(`${aiPlayer.name} 的回合，请稍候...`);
-            this.scheduleAIMove();
+            const modal = document.getElementById('battle-modal');
+            if (modal) modal.style.display = 'flex';
         }
         
-        this.showFeedback(`AI难度: ${difficultyText}，AI会思考后再答题`, '#a3d8d8');
+        // ✅ 使用 requestAnimationFrame 确保 DOM 已渲染
+        const doInitialize = () => {
+            const waitingDiv = document.getElementById('battle-waiting');
+            const activeDiv = document.getElementById('battle-active');
+            
+            if (!waitingDiv || !activeDiv) {
+                console.log('等待对战界面元素渲染...');
+                requestAnimationFrame(doInitialize);
+                return;
+            }
+            
+            this.initializeBattleUI(
+                this.game.state.currentUser,
+                aiPlayer,
+                firstPlayer
+            );
+
+            this.generateBattleGrid();
+            this.generateBattleTarget();
+            this.showRoomCode();
+            this.addManualRefreshButton();
+
+            const difficultyText = { easy: '简单', medium: '中等', hard: '困难' }[difficulty];
+            const delayText = { easy: '5-7秒', medium: '4-6秒', hard: '3-5秒' }[difficulty];
+            
+            this.addSystemMessage(`⚔️ 与AI对战开始！ (难度: ${difficultyText}，AI思考时间: ${delayText})`);
+            
+            if (this.room.myTurn) {
+                this.addSystemMessage(`你的回合，时间限制: ${this.room.timeLeft}秒`);
+                this.startTurnTimer();
+            } else {
+                this.addSystemMessage(`${aiPlayer.name} 的回合，请稍候...`);
+                this.scheduleAIMove();
+            }
+            
+            this.showFeedback(`AI难度: ${difficultyText}，AI会思考后再答题`, '#a3d8d8');
+        };
+        
+        setTimeout(() => {
+            requestAnimationFrame(doInitialize);
+        }, 100);
     }
 
     getAIName(difficulty) {
@@ -2879,25 +2870,53 @@ class BattleMode {
 
     async createBattleRoom() {
         if (!this.isSupabaseAvailable()) {
-            this.showFeedback('Supabase未连接，无法创建房间', '#ff4444');
+            this.showFeedback('网络未连接，无法创建房间', '#ff4444');
             return;
         }
 
         const user = this.game.state.currentUser;
         if (!user) {
             this.showFeedback('请先登录', '#ff4444');
+            if (this.game.auth) this.game.auth.showAuthModal('login');
             return;
         }
 
         try {
-            const roomCode = this.generateRoomCode();
+            // 生成不重复的房间码
+            let roomCode;
+            let isUnique = false;
+            let attempts = 0;
+            const maxAttempts = 5;
+            
+            do {
+                roomCode = this.generateRoomCode();
+                attempts++;
+                
+                const { data: existing } = await this.game.state.supabase
+                    .from('candy_math_battles')
+                    .select('id')
+                    .eq('room_code', roomCode)
+                    .eq('status', 'waiting')
+                    .maybeSingle();
+                
+                if (!existing) {
+                    isUnique = true;
+                }
+            } while (!isUnique && attempts < maxAttempts);
+            
+            if (!isUnique) {
+                this.showFeedback('创建房间失败，请重试', '#ff4444');
+                return;
+            }
+            
+            console.log(`创建房间: ${roomCode}`);
             
             const { data: battle, error } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .insert([{
                     room_code: roomCode,
                     player1_id: user.id,
-                    player1_name: user.name,
+                    player1_name: user.name || user.email,
                     status: 'waiting',
                     mode: 'challenge',
                     difficulty: 'medium',
@@ -2910,50 +2929,92 @@ class BattleMode {
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                console.error('创建房间失败:', error);
+                
+                if (error.code === '23505') {
+                    this.showFeedback('房间码冲突，正在重试...', '#ffa500');
+                    setTimeout(() => this.createBattleRoom(), 500);
+                    return;
+                }
+                
+                this.showFeedback('创建房间失败: ' + (error.message || '未知错误'), '#ff4444');
+                return;
+            }
 
+            console.log('房间创建成功:', battle.id, roomCode);
+            
             this.room.battleId = battle.id;
             this.room.roomCode = roomCode;
             this.room.playerRole = 'player1';
             this.room.status = 'waiting';
             this.room.opponentIsAI = false;
             
+            if (this.game.ui) {
+                this.game.ui.closeModal('join-modal');
+            }
+            
             this.showWaitingForOpponent(roomCode);
             this.startWaitingPolling();
             
+            this.showFeedback(`房间创建成功！房间码: ${roomCode}`, '#a3d8d8');
+            
         } catch (error) {
-            console.error('创建房间失败:', error);
-            this.showFeedback('创建房间失败', '#ff4444');
+            console.error('创建房间异常:', error);
+            this.showFeedback('创建房间失败，请重试', '#ff4444');
         }
     }
 
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
-            this.showFeedback('Supabase未连接，无法加入房间', '#ff4444');
+            this.showFeedback('网络未连接，请检查网络', '#ff4444');
             return;
         }
 
         const user = this.game.state.currentUser;
         if (!user) {
             this.showFeedback('请先登录', '#ff4444');
+            if (this.game.auth) this.game.auth.showAuthModal('login');
+            return;
+        }
+
+        if (!roomCode || roomCode.length !== 6) {
+            this.showFeedback('房间码必须是6位字符', '#ff4444');
             return;
         }
 
         try {
+            console.log(`尝试加入房间: ${roomCode}`);
+            
             const { data: battle, error } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .select('*')
-                .eq('room_code', roomCode)
-                .eq('status', 'waiting')
-                .single();
+                .eq('room_code', roomCode.toUpperCase())
+                .maybeSingle();
 
-            if (error || !battle) {
-                this.showFeedback('房间不存在或已开始', '#ff4444');
+            if (error) {
+                console.error('查询房间失败:', error);
+                this.showFeedback('查询房间失败，请重试', '#ff4444');
+                return;
+            }
+
+            if (!battle) {
+                this.showFeedback('房间不存在，请检查房间码', '#ff4444');
+                return;
+            }
+
+            if (battle.status !== 'waiting') {
+                this.showFeedback('房间已开始或已结束', '#ffa500');
                 return;
             }
 
             if (battle.player1_id === user.id) {
-                this.showFeedback('不能加入自己创建的房间', '#ff4444');
+                this.showFeedback('不能加入自己创建的房间', '#ffa500');
+                return;
+            }
+
+            if (battle.player2_id) {
+                this.showFeedback('房间已满', '#ffa500');
                 return;
             }
 
@@ -2961,15 +3022,26 @@ class BattleMode {
                 .from('candy_math_battles')
                 .update({
                     player2_id: user.id,
-                    player2_name: user.name,
+                    player2_name: user.name || user.email,
                     status: 'playing',
                     started_at: new Date().toISOString(),
                     current_turn: battle.player1_id
                 })
                 .eq('id', battle.id);
 
-            if (updateError) throw updateError;
+            if (updateError) {
+                console.error('更新房间失败:', updateError);
+                
+                if (updateError.code === '23505' || updateError.message.includes('duplicate')) {
+                    this.showFeedback('房间刚被其他人加入', '#ffa500');
+                } else {
+                    this.showFeedback('加入房间失败，请重试', '#ff4444');
+                }
+                return;
+            }
 
+            console.log('成功加入房间:', battle.id);
+            
             this.room.battleId = battle.id;
             this.room.roomCode = roomCode;
             this.room.playerRole = 'player2';
@@ -2981,11 +3053,16 @@ class BattleMode {
             this.room.opponentIsAI = false;
             this.room.timeLeft = 30;
             
+            if (this.game.ui) {
+                this.game.ui.closeModal('join-modal');
+            }
+            
+            this.showFeedback('成功加入房间！', '#a3d8d8');
             this.startBattleAfterJoin();
             
         } catch (error) {
-            console.error('加入房间失败:', error);
-            this.showFeedback('加入房间失败', '#ff4444');
+            console.error('加入房间异常:', error);
+            this.showFeedback('加入房间失败，请重试', '#ff4444');
         }
     }
 
@@ -3039,19 +3116,55 @@ class BattleMode {
     startWaitingPolling() {
         if (this.pollingInterval) clearInterval(this.pollingInterval);
         
+        let pollCount = 0;
+        
         this.pollingInterval = setInterval(async () => {
-            if (this.room.status !== 'waiting') return;
+            if (this.room.status !== 'waiting') {
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+                return;
+            }
+            
+            pollCount++;
+            
+            if (pollCount > this.constants.MAX_POLLING_ATTEMPTS) {
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+                
+                const waitingDiv = document.getElementById('battle-waiting');
+                if (waitingDiv) {
+                    const timeoutHint = document.createElement('div');
+                    timeoutHint.style.cssText = 'margin-top: 15px; color: #ffa500;';
+                    timeoutHint.innerHTML = `
+                        <p>⏰ 等待时间较长</p>
+                        <p>可以将房间码分享给朋友，或取消后与AI对战</p>
+                    `;
+                    waitingDiv.appendChild(timeoutHint);
+                }
+                return;
+            }
             
             try {
                 const { data: battle, error } = await this.game.state.supabase
                     .from('candy_math_battles')
                     .select('*')
                     .eq('id', this.room.battleId)
-                    .single();
+                    .maybeSingle();
                 
-                if (error) throw error;
+                if (error) {
+                    console.error('轮询房间状态失败:', error);
+                    return;
+                }
                 
-                if (battle.status === 'playing') {
+                if (!battle) {
+                    clearInterval(this.pollingInterval);
+                    this.pollingInterval = null;
+                    this.showFeedback('房间已失效', '#ff4444');
+                    this.cancelMatch();
+                    return;
+                }
+                
+                if (battle.status === 'playing' && battle.player2_id) {
                     clearInterval(this.pollingInterval);
                     this.pollingInterval = null;
                     
@@ -3062,10 +3175,11 @@ class BattleMode {
                     this.room.myTurn = battle.current_turn === this.game.state.currentUser.id;
                     this.room.timeLeft = 30;
                     
+                    console.log('对手已加入:', battle.player2_name);
                     this.startBattleAfterJoin();
                 }
             } catch (error) {
-                console.error('轮询房间状态失败:', error);
+                console.error('轮询房间状态异常:', error);
             }
         }, this.constants.POLLING_INTERVAL);
     }
@@ -3094,7 +3208,130 @@ class BattleMode {
             this.startTurnTimer();
         }
         
-        this.startBattlePolling();
+        // ✅ 改用 WebSocket 实时订阅
+        this.subscribeToBattleRealtime(this.room.battleId);
+    }
+
+    // ✅ 新增：纯 WebSocket 实时订阅
+    subscribeToBattleRealtime(battleId) {
+        if (!this.isSupabaseAvailable()) {
+            console.log('Supabase不可用，使用轮询备用');
+            this.startBattlePolling();
+            return;
+        }
+        
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+        
+        if (this.room.channel) {
+            this.room.channel.unsubscribe();
+            this.room.channel = null;
+        }
+        
+        console.log('🔌 建立 WebSocket 实时连接...');
+        
+        this.room.channel = this.game.state.supabase
+            .channel(`battle-realtime-${battleId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'candy_math_battles',
+                filter: `id=eq.${battleId}`
+            }, (payload) => {
+                const battle = payload.new;
+                console.log('📡 收到实时更新:', battle);
+                
+                if (this.room.playerRole === 'player1') {
+                    this.updateScoreUI('player1-score', battle.player1_score);
+                    this.updateScoreUI('player2-score', battle.player2_score);
+                    this.updateProgressUI('player1-progress', battle.player1_progress);
+                    this.updateProgressUI('player2-progress', battle.player2_progress);
+                } else {
+                    this.updateScoreUI('player1-score', battle.player2_score);
+                    this.updateScoreUI('player2-score', battle.player1_score);
+                    this.updateProgressUI('player1-progress', battle.player2_progress);
+                    this.updateProgressUI('player2-progress', battle.player1_progress);
+                }
+                
+                const newTurn = battle.current_turn === this.game.state.currentUser.id;
+                if (newTurn !== this.room.myTurn) {
+                    this.room.myTurn = newTurn;
+                    this.updateTurnIndicator();
+                    
+                    if (this.room.myTurn) {
+                        this.startTurnTimer();
+                        this.addSystemMessage('你的回合');
+                        this.showFeedback('轮到你了！', '#a3d8d8');
+                    } else {
+                        this.stopTurnTimer();
+                        this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
+                    }
+                }
+                
+                if (battle.status === 'finished') {
+                    this.showBattleResult(battle);
+                }
+            })
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'candy_math_battle_rounds',
+                filter: `battle_id=eq.${battleId}`
+            }, (payload) => {
+                const round = payload.new;
+                if (round.player_id !== this.game.state.currentUser.id) {
+                    this.addOpponentMove(round);
+                }
+            })
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'candy_math_battle_messages',
+                filter: `battle_id=eq.${battleId}`
+            }, (payload) => {
+                const message = payload.new;
+                if (message.player_id !== this.game.state.currentUser.id) {
+                    this.addChatMessage(message);
+                }
+            })
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('✅ WebSocket 实时连接已建立');
+                    this.addSystemMessage('📡 实时连接已建立');
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.error('❌ WebSocket 连接失败，切换到轮询模式');
+                    this.startBattlePolling();
+                } else if (status === 'CLOSED') {
+                    console.log('🔌 WebSocket 连接关闭，尝试重连...');
+                    setTimeout(() => {
+                        if (this.room.gameActive) {
+                            this.subscribeToBattleRealtime(battleId);
+                        }
+                    }, 3000);
+                }
+            });
+        
+        this.startRealtimeHeartbeat();
+    }
+
+    startRealtimeHeartbeat() {
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+        
+        this.heartbeatInterval = setInterval(() => {
+            if (this.room.channel && this.room.channel.state === 'joined') {
+                this.room.channel.send({
+                    type: 'broadcast',
+                    event: 'heartbeat',
+                    payload: { 
+                        user_id: this.game.state.currentUser?.id,
+                        battle_id: this.room.battleId,
+                        timestamp: Date.now()
+                    }
+                }).catch(() => {});
+            }
+        }, 30000);
     }
 
     startBattlePolling() {
@@ -3145,6 +3382,16 @@ class BattleMode {
                 console.error('轮询对战状态失败:', error);
             }
         }, this.constants.POLLING_INTERVAL);
+    }
+
+    updateScoreUI(elementId, value) {
+        const el = document.getElementById(elementId);
+        if (el) el.textContent = value || 0;
+    }
+
+    updateProgressUI(elementId, value) {
+        const el = document.getElementById(elementId);
+        if (el) el.style.width = (value || 0) + '%';
     }
 
     async updateBattleScore(points) {
@@ -3205,16 +3452,6 @@ class BattleMode {
                 }, 500);
             }
         }
-    }
-
-    updateScoreUI(elementId, value) {
-        const el = document.getElementById(elementId);
-        if (el) el.textContent = value || 0;
-    }
-
-    updateProgressUI(elementId, value) {
-        const el = document.getElementById(elementId);
-        if (el) el.style.width = (value || 0) + '%';
     }
 
     async endTurn() {
@@ -3658,6 +3895,12 @@ class BattleMode {
         const activeDiv = document.getElementById('battle-active');
         const resultDiv = document.getElementById('battle-result');
         
+        if (!waitingDiv || !activeDiv) {
+            console.error('对战界面元素未找到，重试中...');
+            setTimeout(() => this.initializeBattleUI(player1, player2, firstPlayerId), 50);
+            return;
+        }
+        
         if (waitingDiv) waitingDiv.style.display = 'none';
         if (activeDiv) activeDiv.style.display = 'block';
         if (resultDiv) resultDiv.style.display = 'none';
@@ -3675,6 +3918,11 @@ class BattleMode {
         this.updateProgressBars();
         this.fixCloseButtons();
         this.addManualRefreshButton();
+        
+        const grid = document.getElementById('battle-grid');
+        if (!grid) {
+            console.error('battle-grid 元素未找到！');
+        }
         
         this.addSystemMessage('⚔️ 对战开始！');
         if (this.room.myTurn) {
@@ -3708,9 +3956,41 @@ class BattleMode {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
-        const numbers = [];
-        for (let i = 0; i < 10; i++) {
-            numbers.push(Math.floor(Math.random() * 10));
+        const targetEl = document.getElementById('battle-target-number');
+        const target = targetEl ? parseInt(targetEl.textContent) : 10;
+        
+        let numbers;
+        let attempts = 0;
+        const maxAttempts = 20;
+        let hasValidPair = false;
+        
+        do {
+            numbers = [];
+            for (let i = 0; i < 10; i++) {
+                numbers.push(Math.floor(Math.random() * 10));
+            }
+            
+            hasValidPair = false;
+            for (let i = 0; i < numbers.length; i++) {
+                for (let j = i + 1; j < numbers.length; j++) {
+                    if (numbers[i] + numbers[j] === target) {
+                        hasValidPair = true;
+                        break;
+                    }
+                }
+                if (hasValidPair) break;
+            }
+            
+            attempts++;
+        } while (!hasValidPair && attempts < maxAttempts);
+        
+        if (!hasValidPair) {
+            const num1 = Math.floor(Math.random() * Math.min(target + 1, 10));
+            const num2 = target - num1;
+            if (num2 >= 0 && num2 <= 9) {
+                numbers[0] = num1;
+                numbers[1] = num2;
+            }
         }
 
         const fragment = document.createDocumentFragment();
@@ -3729,11 +4009,41 @@ class BattleMode {
         const grid = document.getElementById('battle-grid');
         if (!grid) return;
 
-        const hadSelectedCards = this.room.selectedCards.length > 0;
+        const targetEl = document.getElementById('battle-target-number');
+        const target = targetEl ? parseInt(targetEl.textContent) : 10;
         
-        const numbers = [];
-        for (let i = 0; i < 10; i++) {
-            numbers.push(Math.floor(Math.random() * 10));
+        let numbers;
+        let attempts = 0;
+        const maxAttempts = 20;
+        let hasValidPair = false;
+        
+        do {
+            numbers = [];
+            for (let i = 0; i < 10; i++) {
+                numbers.push(Math.floor(Math.random() * 10));
+            }
+            
+            hasValidPair = false;
+            for (let i = 0; i < numbers.length; i++) {
+                for (let j = i + 1; j < numbers.length; j++) {
+                    if (numbers[i] + numbers[j] === target) {
+                        hasValidPair = true;
+                        break;
+                    }
+                }
+                if (hasValidPair) break;
+            }
+            
+            attempts++;
+        } while (!hasValidPair && attempts < maxAttempts);
+        
+        if (!hasValidPair) {
+            const num1 = Math.floor(Math.random() * Math.min(target + 1, 10));
+            const num2 = target - num1;
+            if (num2 >= 0 && num2 <= 9) {
+                numbers[0] = num1;
+                numbers[1] = num2;
+            }
         }
         
         const fragment = document.createDocumentFragment();
@@ -3747,7 +4057,9 @@ class BattleMode {
         grid.innerHTML = '';
         grid.appendChild(fragment);
         
-        if (hadSelectedCards) this.room.selectedCards = [];
+        if (this.room.selectedCards.length > 0) {
+            this.room.selectedCards = [];
+        }
     }
 
     generateBattleTarget() {
@@ -3755,8 +4067,7 @@ class BattleMode {
         const targetEl = document.getElementById('battle-target-number');
         if (targetEl) targetEl.textContent = target;
     }
-
-    async handleBattleCardClick(e) {
+        async handleBattleCardClick(e) {
         if (!this.room.gameActive || !this.room.myTurn) return;
         
         const card = e.target.closest('.number-card');
@@ -3896,7 +4207,6 @@ class BattleMode {
                 return;
             }
             
-            // 使用增强的检查方法
             if (!this.checkGridHasValidCombination()) {
                 this.refreshBattleGrid();
                 this.generateBattleTarget();
@@ -3908,7 +4218,6 @@ class BattleMode {
         }, this.constants.REFRESH_DEBOUNCE);
     }
 
-    // 增强版：检查是否有有效组合（如果没有就立即刷新）
     checkGridHasValidCombination() {
         const grid = document.getElementById('battle-grid');
         if (!grid) return true;
@@ -4389,7 +4698,8 @@ class BattleMode {
             '8.2.3': (s) => ({ ...s, version: '8.2.4', matchRetryCount: s.matchRetryCount || 0, isMatching: s.isMatching || false }),
             '8.2.4': (s) => ({ ...s, version: '8.2.5' }),
             '8.2.5': (s) => ({ ...s, version: '8.2.6' }),
-            '8.2.6': (s) => ({ ...s, version: '9.0.0', tournamentMode: false })
+            '8.2.6': (s) => ({ ...s, version: '9.0.0', tournamentMode: false }),
+            '9.0.0': (s) => ({ ...s, version: '9.2.0' })
         };
 
         let current = oldState;
@@ -4458,7 +4768,7 @@ class BattleMode {
         this.updateTurnIndicator();
 
         if (this.room.gameActive && !this.room.opponentIsAI) {
-            this.startBattlePolling();
+            this.subscribeToBattleRealtime(this.room.battleId);
         } else if (this.room.gameActive && this.room.opponentIsAI) {
             if (!this.room.myTurn) {
                 this.scheduleAIMove();
@@ -4493,7 +4803,7 @@ class BattleMode {
             if (battle.status === 'finished') {
                 this.showBattleResult(battle);
             } else {
-                this.subscribeToBattle(this.room.battleId);
+                this.subscribeToBattleRealtime(this.room.battleId);
                 await this.syncScores();
                 if (this.room.myTurn) this.autoRefreshGridIfNeeded();
                 this.showFeedback('重连成功', '#a3d8d8');
@@ -5236,11 +5546,39 @@ class BattleMode {
     }
 
     showJoinModal() {
-        if (this.game.ui) this.game.ui.openModal('join-modal');
+        if (this.game.ui) {
+            this.game.ui.openModal('join-modal');
+        } else {
+            const modal = document.getElementById('join-modal');
+            if (modal) modal.style.display = 'flex';
+        }
+        
         const input = document.getElementById('room-code-input');
         if (input) {
             input.value = '';
             input.focus();
+            
+            // 自动转大写
+            input.addEventListener('input', function(e) {
+                e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            });
+            
+            // 按回车直接加入
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    this.confirmJoin();
+                }
+            };
+        }
+        
+        // 点击模态框外部关闭
+        const modal = document.getElementById('join-modal');
+        if (modal) {
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    this.closeJoinModal();
+                }
+            };
         }
     }
 
@@ -5286,6 +5624,7 @@ class BattleMode {
         if (this.subscriptionCheckTimer) clearInterval(this.subscriptionCheckTimer);
         if (this.initRetryTimer) clearTimeout(this.initRetryTimer);
         if (this.pollingInterval) clearInterval(this.pollingInterval);
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         
         this.leaveBattle();
         this.cleanupMatch();
