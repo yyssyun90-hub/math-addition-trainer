@@ -1034,38 +1034,10 @@ class BattleMode {
                 z-index: 4000;
                 display: none;
                 justify-content: center;
-                align-items: center;
+                align-items: flex-start;
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
-                padding: 20px 0;
-            }
-
-            #battle-active {
-                max-height: 95vh;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
-                padding: 5px;
-            }
-
-            #battle-active::-webkit-scrollbar {
-                width: 6px;
-            }
-
-            #battle-active::-webkit-scrollbar-track {
-                background: rgba(255, 240, 245, 0.5);
-                border-radius: 10px;
-            }
-
-            #battle-active::-webkit-scrollbar-thumb {
-                background: linear-gradient(135deg, var(--candy-pink), var(--lavender));
-                border-radius: 10px;
-                border: 1px solid rgba(255, 255, 255, 0.5);
-            }
-
-            @media (max-width: 480px) {
-                #battle-active {
-                    max-height: 90vh;
-                }
+                padding: 20px 10px;
             }
 
             .battle-card {
@@ -1076,9 +1048,7 @@ class BattleMode {
                 padding: 30px !important;
                 max-width: 500px;
                 width: 90%;
-                max-height: 95vh;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
+                margin: 10px auto;
                 border: 3px solid rgba(255,255,255,0.9) !important;
                 box-shadow: 
                     0 30px 50px rgba(255, 158, 181, 0.25),
@@ -1089,17 +1059,22 @@ class BattleMode {
                 animation: cardFloat 0.5s ease-out;
             }
 
+            #battle-active {
+                width: 100%;
+                display: block;
+            }
+
             /* 自定义滚动条样式 */
-            .battle-card::-webkit-scrollbar {
+            .battle-modal::-webkit-scrollbar {
                 width: 6px;
             }
 
-            .battle-card::-webkit-scrollbar-track {
+            .battle-modal::-webkit-scrollbar-track {
                 background: rgba(255, 240, 245, 0.5);
                 border-radius: 10px;
             }
 
-            .battle-card::-webkit-scrollbar-thumb {
+            .battle-modal::-webkit-scrollbar-thumb {
                 background: linear-gradient(135deg, var(--candy-pink), var(--lavender));
                 border-radius: 10px;
                 border: 1px solid rgba(255, 255, 255, 0.5);
@@ -1109,11 +1084,10 @@ class BattleMode {
             @media (max-width: 480px) {
                 .battle-card {
                     padding: 20px !important;
-                    max-height: 90vh;
                 }
                 
                 .battle-modal {
-                    padding: 10px 0;
+                    padding: 10px 5px;
                 }
             }
 
