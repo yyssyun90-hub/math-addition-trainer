@@ -1,18 +1,19 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本: 9.3.0 (完整修复版 - 卡片点击 + 界面关闭 + 再来一局 + 界面美化)
+ * 版本: 9.4.0 (完整修复版 - AI点击 + 资源清理 + 并发冲突 + 再来一局 + 界面美化)
  * 
  * 功能：
  * - 双人对战：使用 Supabase Realtime WebSocket，实时同步，无延迟
  * - AI对战：延迟答题（3-7秒），多种难度可选
- * - 再来一局：双方同意后自动重新开始
- * - 界面美化：糖果风格，与主界面一致
+ * - 再来一局：双方确认后自动重新开始
+ * - 界面美化：绚丽糖果风格，与主界面一致
  * 
  * 修复记录：
- * 2024-04-10 - 修复卡片无法点击问题（添加 rebindGridEvents）
- * 2024-04-10 - 修复关闭界面后AI仍在运行问题（增强 leaveBattle）
- * 2024-04-10 - 修复再来一局功能（双方确认机制）
- * 2024-04-10 - 界面美化（糖果风格）
+ * 2024-04-13 - 修复AI对战无法点击卡片问题（延迟事件绑定）
+ * 2024-04-13 - 修复关闭界面后AI仍在运行问题（增强资源清理）
+ * 2024-04-13 - 修复加入房间并发冲突问题（数据库条件更新）
+ * 2024-04-13 - 完善再来一局功能（双方确认机制）
+ * 2024-04-13 - 界面美化（绚丽糖果风格）
  * ============================================================
  */
 
@@ -59,7 +60,8 @@ class BattleMode {
             tournamentMode: false,
             tournamentId: null,
             tournamentMatchId: null,
-            tournamentChannel: null
+            tournamentChannel: null,
+            usingPolling: false
         };
         
         this.aiDelayConfig = {
@@ -180,7 +182,7 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '9.3.0',
+            STORAGE_VERSION: '9.4.0',
             STORAGE_EXPIRY: 3600000,
             MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
@@ -251,10 +253,14 @@ class BattleMode {
         }
     }
 
-    // ==================== 重新绑定网格事件 ====================
+    // ==================== 重新绑定网格事件（修复AI点击问题） ====================
     rebindGridEvents(grid) {
-        if (!grid) return;
+        if (!grid) {
+            console.error('❌ rebindGridEvents: grid 为空');
+            return;
+        }
         
+        // 移除所有旧的事件监听器
         if (this.gridClickHandler) {
             grid.removeEventListener('click', this.gridClickHandler);
         }
@@ -265,23 +271,38 @@ class BattleMode {
             grid.removeEventListener('contextmenu', this.gridContextHandler);
         }
         
-        this.gridClickHandler = (e) => this.handleBattleCardClick(e);
+        // 创建新的事件处理器
+        this.gridClickHandler = (e) => {
+            console.log('🖱️ 卡片点击事件触发');
+            this.handleBattleCardClick(e);
+        };
+        
         this.gridTouchHandler = (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (e.touches.length > 1) return;
+            console.log('👆 卡片触摸事件触发');
             this.handleBattleCardClick(e);
         };
+        
         this.gridContextHandler = (e) => e.preventDefault();
         
+        // 绑定新的事件
         grid.addEventListener('click', this.gridClickHandler);
         grid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
         grid.addEventListener('contextmenu', this.gridContextHandler);
         
-        console.log('✅ 网格事件已重新绑定');
+        // 确保所有卡片都是可点击的
+        const cards = grid.querySelectorAll('.number-card');
+        cards.forEach((card) => {
+            card.style.pointerEvents = 'auto';
+            card.style.cursor = 'pointer';
+        });
+        
+        console.log(`✅ 网格事件已重新绑定，共 ${cards.length} 张卡片`);
     }
 
-    // ==================== 修复关闭按钮 ====================
+    // ==================== 修复关闭按钮（增强版） ====================
     fixCloseButtons() {
         const closeBtn = document.getElementById('close-battle-btn');
         if (closeBtn) {
@@ -551,7 +572,7 @@ class BattleMode {
             return;
         }
         
-        console.log('BattleMode 9.3.0 初始化开始...');
+        console.log('BattleMode 9.4.0 初始化开始...');
         
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
@@ -955,6 +976,9 @@ class BattleMode {
         }
     }
 
+    // ==================== 第 1 部分结束 ====================
+    // ==================== 第 2 部分 / 共 8 部分 ====================
+
     injectCandyStyles() {
         const styleId = 'candy-battle-styles';
         if (document.getElementById(styleId)) return;
@@ -962,7 +986,7 @@ class BattleMode {
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
-            /* ===== 糖果对战界面 - 柔和多彩版 ===== */
+            /* ===== 糖果对战界面 - 绚丽多彩版 ===== */
             :root {
                 --soft-pink: #fce4e8;
                 --soft-peach: #ffe9e0;
@@ -975,6 +999,11 @@ class BattleMode {
                 --mint-green: #a3d8d8;
                 --sunshine-yellow: #ffe194;
                 --lavender: #d9c6e6;
+                --bubblegum: #ffb3c6;
+                --cotton-candy: #b8d4e3;
+                --lollipop-red: #ff6b6b;
+                --gummy-green: #4ecdc4;
+                --candy-corn: #ffe66d;
             }
 
             * {
@@ -1000,8 +1029,8 @@ class BattleMode {
                 width: 100%;
                 height: 100%;
                 background: rgba(0,0,0,0.2);
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
                 z-index: 4000;
                 display: none;
                 justify-content: center;
@@ -1009,43 +1038,62 @@ class BattleMode {
             }
 
             .battle-card {
-                background: rgba(255, 255, 255, 0.85) !important;
+                background: linear-gradient(145deg, rgba(255,255,255,0.9), rgba(255,250,252,0.85)) !important;
                 backdrop-filter: blur(20px) !important;
                 -webkit-backdrop-filter: blur(20px) !important;
                 border-radius: 60px !important;
                 padding: 30px !important;
                 max-width: 500px;
                 width: 90%;
-                border: 2px solid rgba(255, 255, 255, 0.8) !important;
+                border: 3px solid rgba(255,255,255,0.9) !important;
                 box-shadow: 
-                    0 30px 40px rgba(0, 0, 0, 0.1),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset !important;
+                    0 30px 50px rgba(255, 158, 181, 0.25),
+                    0 0 0 2px rgba(255, 255, 255, 0.5) inset,
+                    0 0 30px rgba(255, 218, 233, 0.4) !important;
                 text-align: center;
                 position: relative;
+                animation: cardFloat 0.5s ease-out;
+            }
+
+            @keyframes cardFloat {
+                0% { transform: translateY(20px); opacity: 0; }
+                100% { transform: translateY(0); opacity: 1; }
+            }
+
+            .battle-card::before {
+                content: '';
+                position: absolute;
+                top: -10px;
+                left: 20px;
+                right: 20px;
+                height: 20px;
+                background: radial-gradient(circle, rgba(255,225,148,0.3) 0%, transparent 70%);
+                border-radius: 50%;
+                filter: blur(5px);
             }
 
             .players-info {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                gap: 10px;
-                margin-bottom: 10px;
-                padding: 5px;
+                gap: 15px;
+                margin-bottom: 15px;
+                padding: 8px;
             }
 
             .player-card {
                 flex: 1;
                 min-width: 0;
-                background: rgba(255, 245, 250, 0.8);
-                backdrop-filter: blur(10px);
-                -webkit-backdrop-filter: blur(10px);
-                border: 2px solid rgba(255, 220, 230, 0.8);
-                border-radius: 30px;
-                padding: 12px 8px;
+                background: linear-gradient(145deg, rgba(255,245,250,0.9), rgba(255,240,245,0.8));
+                backdrop-filter: blur(15px);
+                -webkit-backdrop-filter: blur(15px);
+                border: 3px solid rgba(255,220,230,0.9);
+                border-radius: 40px;
+                padding: 15px 10px;
                 box-shadow: 
-                    0 10px 20px rgba(255, 200, 220, 0.2),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-                transition: all 0.3s ease;
+                    0 15px 25px rgba(255,200,220,0.25),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
+                transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
                 position: relative;
                 overflow: hidden;
             }
@@ -1056,87 +1104,108 @@ class BattleMode {
                 top: 0;
                 left: 0;
                 right: 0;
-                height: 3px;
-                background: linear-gradient(90deg, #feada6, #f5b0c5, #d9c6e6);
+                height: 5px;
+                background: linear-gradient(90deg, var(--lollipop-red), var(--candy-pink), var(--lavender));
+                opacity: 0.6;
+            }
+
+            .player-card::after {
+                content: '';
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 30px;
+                background: radial-gradient(ellipse at center, rgba(255,255,255,0.3) 0%, transparent 70%);
                 opacity: 0.5;
             }
 
             .player-card.active {
-                border-color: #b8d9c4;
+                border-color: var(--mint-green);
                 box-shadow: 
-                    0 15px 25px rgba(163, 216, 216, 0.3),
-                    0 0 0 2px rgba(255, 255, 255, 0.8) inset;
-                transform: translateY(-3px);
-                animation: cardGlow 2s ease-in-out infinite;
+                    0 20px 35px rgba(163,216,216,0.35),
+                    0 0 0 3px rgba(255,255,255,0.8) inset,
+                    0 0 20px rgba(163,216,216,0.3);
+                transform: translateY(-5px);
+                animation: activeCardGlow 2.5s ease-in-out infinite;
             }
 
             .player-card.active::before {
-                background: linear-gradient(90deg, #a3d8d8, #b8e2e2, #ffe194);
-                opacity: 0.8;
-                height: 4px;
+                background: linear-gradient(90deg, var(--gummy-green), var(--mint-green), var(--sunshine-yellow));
+                opacity: 1;
+                height: 6px;
             }
 
-            @keyframes cardGlow {
-                0%, 100% { box-shadow: 0 15px 25px rgba(163, 216, 216, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.8) inset; }
-                50% { box-shadow: 0 15px 30px rgba(255, 225, 148, 0.4), 0 0 0 3px rgba(255, 255, 255, 0.9) inset; }
+            @keyframes activeCardGlow {
+                0%, 100% { 
+                    box-shadow: 0 20px 35px rgba(163,216,216,0.35), 0 0 0 3px rgba(255,255,255,0.8) inset;
+                    border-color: var(--mint-green);
+                }
+                50% { 
+                    box-shadow: 0 25px 45px rgba(255,225,148,0.45), 0 0 0 4px rgba(255,255,255,0.9) inset, 0 0 25px rgba(255,225,148,0.4);
+                    border-color: var(--sunshine-yellow);
+                }
             }
 
             .player-avatar {
-                width: 50px;
-                height: 50px;
+                width: 60px;
+                height: 60px;
                 border-radius: 50%;
-                background: linear-gradient(145deg, #feada6, #f5b0c5);
-                border: 3px solid white;
+                background: linear-gradient(145deg, var(--coral-pink), var(--candy-pink), var(--lavender));
+                border: 4px solid white;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 1.8rem;
+                font-size: 2rem;
                 color: white;
-                box-shadow: 0 8px 15px rgba(254, 173, 166, 0.3);
-                margin: 0 auto 8px;
-                animation: avatarFloat 3s ease-in-out infinite;
+                box-shadow: 
+                    0 10px 20px rgba(254,173,166,0.4),
+                    0 0 0 2px rgba(255,255,255,0.5) inset;
+                margin: 0 auto 10px;
+                animation: avatarBounce 4s ease-in-out infinite;
             }
 
-            @keyframes avatarFloat {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-3px); }
+            @keyframes avatarBounce {
+                0%, 100% { transform: translateY(0) scale(1); }
+                50% { transform: translateY(-5px) scale(1.05); }
             }
 
             .player-name {
-                font-size: 1rem;
-                font-weight: 600;
+                font-size: 1.1rem;
+                font-weight: 700;
                 color: #d46b8d;
                 text-align: center;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                margin-bottom: 5px;
-                text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+                margin-bottom: 8px;
+                text-shadow: 2px 2px 4px rgba(255,255,255,0.8);
             }
 
             .player-score {
-                font-size: 1.8rem;
-                font-weight: 700;
+                font-size: 2.2rem;
+                font-weight: 800;
                 color: #a55174;
                 text-align: center;
                 font-family: 'Comic Sans MS', 'Chalkboard SE', cursive;
-                text-shadow: 2px 2px 4px rgba(255, 200, 220, 0.5);
+                text-shadow: 3px 3px 6px rgba(255,200,220,0.6);
+                letter-spacing: 2px;
             }
 
             .progress-bar {
-                background: rgba(255, 220, 230, 0.4);
-                border-radius: 20px;
-                height: 14px;
+                background: rgba(255,220,230,0.5);
+                border-radius: 30px;
+                height: 16px;
                 overflow: hidden;
-                margin: 8px 0 3px;
-                border: 1px solid rgba(255, 255, 255, 0.5);
-                box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+                margin: 10px 0 5px;
+                border: 2px solid rgba(255,255,255,0.6);
+                box-shadow: inset 0 3px 6px rgba(0,0,0,0.05);
             }
 
             .progress-fill {
                 height: 100%;
-                border-radius: 20px;
-                transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                border-radius: 30px;
+                transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
                 position: relative;
                 overflow: hidden;
             }
@@ -1148,8 +1217,18 @@ class BattleMode {
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
                 animation: shimmer 2s infinite;
+            }
+
+            .progress-fill::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 50%;
+                background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 100%);
             }
 
             @keyframes shimmer {
@@ -1158,101 +1237,116 @@ class BattleMode {
             }
 
             .progress-fill.player1 {
-                background: linear-gradient(90deg, #feada6, #f5b0c5, #c6a8d9);
+                background: linear-gradient(90deg, var(--lollipop-red), var(--coral-pink), var(--candy-pink), var(--lavender));
             }
 
             .progress-fill.player2 {
-                background: linear-gradient(90deg, #a3d8d8, #b8e2e2, #ffe194);
+                background: linear-gradient(90deg, var(--gummy-green), var(--mint-green), var(--cotton-candy), var(--sunshine-yellow));
             }
 
             .turn-indicator {
-                background: linear-gradient(135deg, rgba(254, 173, 166, 0.15), rgba(245, 176, 197, 0.15));
-                backdrop-filter: blur(10px);
-                -webkit-backdrop-filter: blur(10px);
-                border: 2px solid rgba(255, 220, 230, 0.8);
-                border-radius: 40px;
-                padding: 12px 20px;
-                margin: 15px 0;
+                background: linear-gradient(135deg, rgba(254,173,166,0.2), rgba(245,176,197,0.2), rgba(217,198,230,0.2));
+                backdrop-filter: blur(15px);
+                -webkit-backdrop-filter: blur(15px);
+                border: 3px solid rgba(255,220,230,0.9);
+                border-radius: 50px;
+                padding: 15px 25px;
+                margin: 20px 0;
                 box-shadow: 
-                    0 10px 20px rgba(255, 200, 220, 0.2),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 15px 25px rgba(255,200,220,0.25),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                animation: turnPulse 3s ease-in-out infinite;
+                animation: turnGlow 3s ease-in-out infinite;
             }
 
-            @keyframes turnPulse {
-                0%, 100% { border-color: rgba(255, 220, 230, 0.8); }
-                50% { border-color: rgba(255, 225, 148, 0.8); }
+            @keyframes turnGlow {
+                0%, 100% { 
+                    border-color: rgba(255,220,230,0.9);
+                    box-shadow: 0 15px 25px rgba(255,200,220,0.25), 0 0 0 2px rgba(255,255,255,0.6) inset;
+                }
+                50% { 
+                    border-color: rgba(255,225,148,0.9);
+                    box-shadow: 0 20px 35px rgba(255,225,148,0.35), 0 0 0 3px rgba(255,255,255,0.7) inset, 0 0 20px rgba(255,225,148,0.3);
+                }
             }
 
             .turn-indicator .turn-text {
-                font-size: 1.1rem;
-                font-weight: 600;
+                font-size: 1.2rem;
+                font-weight: 700;
                 color: #d46b8d;
-                text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+                text-shadow: 2px 2px 4px rgba(255,255,255,0.8);
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
             }
 
             .turn-indicator .turn-text::before {
                 content: '⚡';
-                font-size: 1.3rem;
+                font-size: 1.5rem;
+                filter: drop-shadow(0 0 5px rgba(255,225,148,0.8));
+                animation: lightningPulse 1.5s ease-in-out infinite;
+            }
+
+            @keyframes lightningPulse {
+                0%, 100% { opacity: 0.7; transform: scale(1); }
+                50% { opacity: 1; transform: scale(1.15); }
             }
 
             .turn-indicator .timer {
                 background: white;
-                border-radius: 30px;
-                padding: 6px 16px;
+                border-radius: 40px;
+                padding: 8px 20px;
                 color: #d46b8d;
-                font-size: 1.3rem;
-                font-weight: 700;
-                border: 2px solid rgba(255, 220, 230, 0.8);
-                box-shadow: 0 5px 10px rgba(0, 0, 0, 0.05);
+                font-size: 1.5rem;
+                font-weight: 800;
+                border: 3px solid rgba(255,220,230,0.9);
+                box-shadow: 0 8px 15px rgba(0,0,0,0.08), 0 0 0 2px rgba(255,255,255,0.5) inset;
                 font-family: monospace;
+                letter-spacing: 2px;
             }
 
             .timer.warning {
-                color: #fbb9c0 !important;
-                border-color: #fbb9c0 !important;
-                animation: timerWarning 1s ease-in-out infinite;
+                color: var(--lollipop-red) !important;
+                border-color: var(--lollipop-red) !important;
+                animation: timerWarning 0.8s ease-in-out infinite;
+                background: linear-gradient(145deg, #fff5f5, #ffe5e5);
             }
 
             @keyframes timerWarning {
-                0%, 100% { transform: scale(1); background: #fff5f5; }
-                50% { transform: scale(1.05); background: #ffe5e5; }
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.08); box-shadow: 0 8px 20px rgba(255,107,107,0.3), 0 0 0 2px rgba(255,255,255,0.5) inset; }
             }
 
             #battle-grid {
                 display: grid;
                 grid-template-columns: repeat(5, minmax(0, 1fr));
-                gap: 10px;
-                padding: 15px;
-                background: rgba(255, 240, 245, 0.6);
-                backdrop-filter: blur(10px);
-                -webkit-backdrop-filter: blur(10px);
-                border: 2px dashed rgba(255, 200, 220, 0.6);
-                border-radius: 40px;
+                gap: 12px;
+                padding: 20px;
+                background: linear-gradient(145deg, rgba(255,240,245,0.7), rgba(255,235,240,0.6));
+                backdrop-filter: blur(15px);
+                -webkit-backdrop-filter: blur(15px);
+                border: 3px dashed rgba(255,200,220,0.7);
+                border-radius: 50px;
                 box-shadow: 
-                    0 15px 25px rgba(255, 200, 220, 0.2),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-                margin: 15px 0;
+                    0 20px 35px rgba(255,200,220,0.3),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
+                margin: 20px 0;
                 width: 100%;
                 overflow: hidden;
             }
 
             #battle-grid .number-card {
-                background: radial-gradient(circle at 30% 30%, #ffffff, #fffafc);
-                border: 3px solid rgba(255, 220, 230, 0.9);
-                border-radius: 20px;
+                background: radial-gradient(circle at 30% 30%, #ffffff, #fff5f8);
+                border: 4px solid rgba(255,220,230,0.95);
+                border-radius: 25px;
                 box-shadow: 
-                    0 8px 15px rgba(0, 0, 0, 0.05),
-                    0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+                    0 12px 20px rgba(0,0,0,0.06),
+                    0 0 0 2px rgba(255,255,255,0.8) inset;
                 color: #b2869c;
-                font-size: clamp(1.8rem, 8vw, 3.2rem);
-                font-weight: 800;
+                font-size: clamp(2rem, 8vw, 3.5rem);
+                font-weight: 900;
                 aspect-ratio: 1 / 1;
                 width: 100%;
                 max-width: 100%;
@@ -1260,12 +1354,12 @@ class BattleMode {
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
                 position: relative;
-                animation: cardAppear 0.3s ease-out;
+                animation: cardAppear 0.4s ease-out;
                 -webkit-tap-highlight-color: transparent;
                 touch-action: manipulation;
-                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+                text-shadow: 3px 3px 6px rgba(0,0,0,0.1);
                 margin: 0;
                 padding: 0;
                 user-select: none;
@@ -1274,15 +1368,16 @@ class BattleMode {
             #battle-grid .number-card::before {
                 content: '';
                 position: absolute;
-                top: -2px;
-                left: -2px;
-                right: -2px;
-                bottom: -2px;
-                background: linear-gradient(135deg, #feada6, #f5b0c5, #d9c6e6);
-                border-radius: 20px;
+                top: -3px;
+                left: -3px;
+                right: -3px;
+                bottom: -3px;
+                background: linear-gradient(135deg, var(--lollipop-red), var(--candy-pink), var(--lavender), var(--mint-green));
+                border-radius: 25px;
                 opacity: 0;
                 transition: opacity 0.3s;
                 z-index: -1;
+                filter: blur(3px);
             }
 
             @keyframes cardAppear {
@@ -1297,43 +1392,55 @@ class BattleMode {
             }
 
             #battle-grid .number-card:hover {
-                transform: translateY(-3px) scale(1.02);
-                box-shadow: 0 15px 25px rgba(255, 200, 220, 0.3);
-                background: radial-gradient(circle at 30% 30%, #ffffff, #fff5f8);
+                transform: translateY(-5px) scale(1.03);
+                box-shadow: 
+                    0 20px 30px rgba(255,200,220,0.35),
+                    0 0 0 3px rgba(255,255,255,0.9) inset;
+                background: radial-gradient(circle at 30% 30%, #ffffff, #fff8fa);
             }
 
             #battle-grid .number-card:active {
                 transform: translateY(1px);
-                box-shadow: 0 5px 10px rgba(255, 200, 220, 0.2);
+                box-shadow: 
+                    0 8px 15px rgba(255,200,220,0.25),
+                    0 0 0 2px rgba(255,255,255,0.7) inset;
             }
 
             #battle-grid .number-card.selected {
-                background: linear-gradient(145deg, #e0f0e5, #d6eadc);
-                border-color: #b8d9c4;
+                background: linear-gradient(145deg, #e8f5e9, #d4edda);
+                border-color: var(--mint-green);
                 box-shadow: 
-                    0 10px 20px rgba(163, 216, 216, 0.3),
-                    0 0 0 2px rgba(255, 255, 255, 0.8) inset;
+                    0 15px 25px rgba(163,216,216,0.4),
+                    0 0 0 3px rgba(255,255,255,0.9) inset,
+                    0 0 20px rgba(163,216,216,0.3);
                 color: #2b6c6c;
-                transform: scale(1.05);
+                transform: scale(1.06);
                 animation: selectedPulse 2s ease-in-out infinite;
             }
 
             #battle-grid .number-card.selected::before {
                 opacity: 1;
-                background: linear-gradient(135deg, #a3d8d8, #b8e2e2, #ffe194);
+                background: linear-gradient(135deg, var(--gummy-green), var(--mint-green), var(--sunshine-yellow));
+                filter: blur(5px);
             }
 
             @keyframes selectedPulse {
-                0%, 100% { box-shadow: 0 10px 20px rgba(163, 216, 216, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.8) inset; }
-                50% { box-shadow: 0 15px 25px rgba(255, 225, 148, 0.4), 0 0 0 3px rgba(255, 255, 255, 0.9) inset; }
+                0%, 100% { 
+                    box-shadow: 0 15px 25px rgba(163,216,216,0.4), 0 0 0 3px rgba(255,255,255,0.9) inset;
+                    transform: scale(1.06);
+                }
+                50% { 
+                    box-shadow: 0 20px 35px rgba(255,225,148,0.5), 0 0 0 4px rgba(255,255,255,1) inset, 0 0 25px rgba(255,225,148,0.4);
+                    transform: scale(1.08);
+                }
             }
 
             #battle-grid .number-card.matched {
-                opacity: 0.3;
-                transform: scale(0.7);
+                opacity: 0.2;
+                transform: scale(0.6);
                 pointer-events: none;
-                filter: grayscale(0.4);
-                animation: vanish 0.3s ease-out;
+                filter: grayscale(0.5);
+                animation: vanish 0.35s ease-out;
             }
 
             @keyframes vanish {
@@ -1342,121 +1449,136 @@ class BattleMode {
             }
 
             .battle-target {
-                background: radial-gradient(circle at 30% 30%, #fede9e, #fdce7e, #febf8b);
-                border: 4px solid rgba(255, 255, 255, 0.9);
+                background: radial-gradient(circle at 35% 35%, #fede9e, #fdce7e, #febf8b);
+                border: 5px solid rgba(255,255,255,0.95);
                 border-radius: 50%;
                 box-shadow: 
-                    0 15px 25px rgba(254, 190, 120, 0.3),
-                    0 0 0 2px rgba(255, 255, 255, 0.5) inset;
+                    0 20px 35px rgba(254,190,120,0.4),
+                    0 0 0 3px rgba(255,255,255,0.6) inset,
+                    0 0 30px rgba(254,190,120,0.3);
                 color: #a55174;
-                font-size: clamp(2.5rem, 8vw, 4rem);
-                font-weight: 700;
-                width: min(100px, 25vw);
-                height: min(100px, 25vw);
-                max-width: 120px;
-                max-height: 120px;
+                font-size: clamp(3rem, 10vw, 4.5rem);
+                font-weight: 800;
+                width: min(120px, 28vw);
+                height: min(120px, 28vw);
+                max-width: 140px;
+                max-height: 140px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                margin: 10px auto;
+                margin: 15px auto;
                 animation: targetGlow 4s ease-in-out infinite;
-                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.05);
+                text-shadow: 3px 3px 6px rgba(0,0,0,0.08);
                 position: relative;
             }
 
             .battle-target::before {
                 content: '🎯';
                 position: absolute;
-                top: -25px;
-                left: -25px;
-                font-size: 2rem;
-                transform: rotate(-20deg);
-                filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.1));
+                top: -30px;
+                left: -30px;
+                font-size: 2.5rem;
+                transform: rotate(-25deg);
+                filter: drop-shadow(3px 6px 8px rgba(0,0,0,0.15));
+                animation: targetIconFloat 3s ease-in-out infinite;
             }
 
             .battle-target::after {
                 content: '🍬';
                 position: absolute;
-                bottom: -25px;
-                right: -25px;
-                font-size: 2rem;
-                transform: rotate(20deg);
-                filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.1));
+                bottom: -30px;
+                right: -30px;
+                font-size: 2.5rem;
+                transform: rotate(25deg);
+                filter: drop-shadow(3px 6px 8px rgba(0,0,0,0.15));
+                animation: targetIconFloat 3s ease-in-out infinite 0.5s;
+            }
+
+            @keyframes targetIconFloat {
+                0%, 100% { transform: rotate(-25deg) translateY(0); }
+                50% { transform: rotate(-25deg) translateY(-8px); }
+            }
+
+            .battle-target::after {
+                animation: targetIconFloat 3s ease-in-out infinite 0.5s;
+                transform: rotate(25deg);
             }
 
             .target-label {
                 color: white;
-                font-size: 0.9rem;
-                font-weight: 600;
-                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+                font-size: 1rem;
+                font-weight: 700;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.15);
+                letter-spacing: 1px;
             }
 
             @keyframes targetGlow {
                 0%, 100% { 
-                    box-shadow: 0 15px 25px rgba(254, 190, 120, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.5) inset;
+                    box-shadow: 0 20px 35px rgba(254,190,120,0.4), 0 0 0 3px rgba(255,255,255,0.6) inset;
                     transform: scale(1);
                 }
                 50% { 
-                    box-shadow: 0 20px 35px rgba(254, 190, 120, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.7) inset;
-                    transform: scale(1.02);
+                    box-shadow: 0 30px 50px rgba(254,190,120,0.6), 0 0 0 4px rgba(255,255,255,0.8) inset, 0 0 35px rgba(254,190,120,0.5);
+                    transform: scale(1.03);
                 }
             }
 
             .chat-container {
-                background: rgba(255, 245, 250, 0.7);
-                backdrop-filter: blur(10px);
-                -webkit-backdrop-filter: blur(10px);
-                border: 2px solid rgba(255, 220, 230, 0.6);
-                border-radius: 30px;
-                padding: 12px;
+                background: linear-gradient(145deg, rgba(255,245,250,0.8), rgba(255,240,245,0.7));
+                backdrop-filter: blur(15px);
+                -webkit-backdrop-filter: blur(15px);
+                border: 3px solid rgba(255,220,230,0.8);
+                border-radius: 40px;
+                padding: 15px;
                 box-shadow: 
-                    0 10px 20px rgba(255, 200, 220, 0.15),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-                margin-top: 15px;
+                    0 15px 25px rgba(255,200,220,0.2),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
+                margin-top: 20px;
             }
 
             .chat-messages {
-                background: rgba(255, 255, 255, 0.5);
-                border-radius: 20px;
-                padding: 10px;
-                min-height: 80px;
-                max-height: 150px;
+                background: rgba(255,255,255,0.6);
+                border-radius: 25px;
+                padding: 12px;
+                min-height: 100px;
+                max-height: 180px;
                 overflow-y: auto;
-                border: 1px solid rgba(255, 220, 230, 0.6);
-                margin-bottom: 10px;
+                border: 2px solid rgba(255,220,230,0.6);
+                margin-bottom: 12px;
                 -webkit-overflow-scrolling: touch;
             }
 
             .chat-messages::-webkit-scrollbar {
-                width: 6px;
+                width: 8px;
             }
 
             .chat-messages::-webkit-scrollbar-track {
-                background: #fef0f4;
+                background: linear-gradient(145deg, #fef0f4, #fce4e8);
                 border-radius: 10px;
             }
 
             .chat-messages::-webkit-scrollbar-thumb {
-                background: linear-gradient(135deg, #fba9c4, #d9c6e6);
+                background: linear-gradient(135deg, var(--candy-pink), var(--lavender));
                 border-radius: 10px;
+                border: 2px solid rgba(255,255,255,0.5);
             }
 
             .message {
-                margin: 5px 0;
-                padding: 6px 12px;
-                border-radius: 18px;
+                margin: 6px 0;
+                padding: 8px 15px;
+                border-radius: 20px;
                 max-width: 85%;
                 word-wrap: break-word;
-                font-size: 0.85rem;
-                line-height: 1.3;
-                animation: messageAppear 0.2s ease-out;
+                font-size: 0.9rem;
+                line-height: 1.4;
+                animation: messageAppear 0.25s ease-out;
             }
 
             @keyframes messageAppear {
                 from {
                     opacity: 0;
-                    transform: translateY(5px);
+                    transform: translateY(8px);
                 }
                 to {
                     opacity: 1;
@@ -1465,104 +1587,104 @@ class BattleMode {
             }
 
             .message.self {
-                background: linear-gradient(135deg, #feada6, #f5b0c5);
-                border-radius: 18px 18px 5px 18px;
+                background: linear-gradient(135deg, var(--coral-pink), var(--candy-pink), var(--lavender));
+                border-radius: 20px 20px 5px 20px;
                 margin-left: auto;
                 color: white;
-                border: 1px solid white;
-                box-shadow: 0 3px 8px rgba(254, 173, 166, 0.2);
+                border: 2px solid rgba(255,255,255,0.8);
+                box-shadow: 0 5px 12px rgba(254,173,166,0.3);
             }
 
             .message.opponent {
-                background: white;
-                border-radius: 18px 18px 18px 5px;
+                background: linear-gradient(145deg, white, #f8f8f8);
+                border-radius: 20px 20px 20px 5px;
                 margin-right: auto;
                 color: #b2869c;
-                border: 1px solid rgba(255, 200, 220, 0.6);
-                box-shadow: 0 3px 8px rgba(0, 0, 0, 0.03);
+                border: 2px solid rgba(255,200,220,0.6);
+                box-shadow: 0 5px 12px rgba(0,0,0,0.04);
             }
 
             .message.system {
-                background: linear-gradient(135deg, #ffe194, #ffd966);
-                border-radius: 20px;
-                margin: 5px auto;
+                background: linear-gradient(135deg, var(--sunshine-yellow), #ffd966);
+                border-radius: 25px;
+                margin: 6px auto;
                 text-align: center;
                 color: #946f2b;
                 font-style: italic;
                 max-width: 95%;
-                font-size: 0.8rem;
-                border: 1px solid white;
-                box-shadow: 0 3px 8px rgba(255, 225, 148, 0.2);
+                font-size: 0.85rem;
+                border: 2px solid white;
+                box-shadow: 0 5px 12px rgba(255,225,148,0.3);
             }
 
             .message-sender {
-                font-weight: 600;
-                margin-right: 5px;
+                font-weight: 700;
+                margin-right: 6px;
                 color: inherit;
             }
 
             .chat-input-area {
                 display: flex;
-                gap: 8px;
+                gap: 10px;
                 align-items: center;
             }
 
             .chat-input-area input {
                 flex: 1;
                 min-width: 0;
-                padding: 10px 15px;
-                border: 2px solid rgba(255, 200, 220, 0.6);
-                border-radius: 30px;
-                font-size: 0.9rem;
+                padding: 12px 18px;
+                border: 3px solid rgba(255,200,220,0.7);
+                border-radius: 35px;
+                font-size: 0.95rem;
                 background: white;
-                transition: all 0.2s ease;
+                transition: all 0.25s ease;
                 color: #b2869c;
             }
 
             .chat-input-area input:focus {
                 outline: none;
-                border-color: #fba9c4;
-                box-shadow: 0 0 0 4px rgba(255, 210, 225, 0.3);
+                border-color: var(--candy-pink);
+                box-shadow: 0 0 0 5px rgba(255,210,225,0.4);
             }
 
             .candy-btn {
-                background: rgba(255, 245, 250, 0.8);
-                backdrop-filter: blur(5px);
-                -webkit-backdrop-filter: blur(5px);
+                background: linear-gradient(145deg, rgba(255,245,250,0.9), rgba(255,240,245,0.8));
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
                 border: none;
-                border-radius: 40px;
-                padding: 10px 20px;
-                font-size: 0.95rem;
-                font-weight: 600;
+                border-radius: 50px;
+                padding: 12px 24px;
+                font-size: 1rem;
+                font-weight: 700;
                 color: #9b7b88;
                 cursor: pointer;
                 box-shadow: 
-                    0 8px 15px rgba(230, 200, 210, 0.2),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 10px 20px rgba(230,200,210,0.25),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
                 transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                border: 1px solid rgba(255, 255, 255, 0.8);
+                border: 2px solid rgba(255,255,255,0.9);
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                gap: 8px;
+                gap: 10px;
             }
 
             .candy-btn:hover {
-                transform: translateY(-3px);
+                transform: translateY(-4px);
                 box-shadow: 
-                    0 15px 25px rgba(230, 200, 210, 0.3),
-                    0 0 0 2px rgba(255, 255, 255, 0.7) inset;
+                    0 18px 30px rgba(230,200,210,0.35),
+                    0 0 0 3px rgba(255,255,255,0.8) inset;
             }
 
             .candy-btn:active {
                 transform: translateY(1px);
                 box-shadow: 
-                    0 5px 10px rgba(230, 200, 210, 0.15),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 8px 15px rgba(230,200,210,0.2),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
             }
 
             .candy-btn.primary {
-                background: linear-gradient(135deg, #feada6, #f5b0c5);
+                background: linear-gradient(135deg, var(--coral-pink), var(--candy-pink), var(--lavender));
                 color: white;
             }
 
@@ -1577,23 +1699,23 @@ class BattleMode {
             }
 
             .candy-btn.home {
-                background: linear-gradient(135deg, #d9c6e6, #cbafdf);
+                background: linear-gradient(135deg, var(--lavender), #cbafdf);
                 color: white;
             }
 
             .candy-btn.battle {
-                background: linear-gradient(135deg, #a3d8d8, #b8e2e2);
+                background: linear-gradient(135deg, var(--mint-green), #b8e2e2);
                 color: #2b6c6c;
             }
 
             .candy-btn.tournament {
-                background: linear-gradient(135deg, #ffe194, #ffd966);
+                background: linear-gradient(135deg, var(--sunshine-yellow), #ffd966);
                 color: #946f2b;
             }
 
             .candy-btn.small {
-                padding: 6px 12px;
-                font-size: 0.8rem;
+                padding: 7px 15px;
+                font-size: 0.85rem;
             }
 
             .candy-btn:disabled {
@@ -1603,77 +1725,77 @@ class BattleMode {
             }
 
             .send-btn {
-                background: linear-gradient(135deg, #a3d8d8, #b8e2e2);
+                background: linear-gradient(135deg, var(--mint-green), #b8e2e2);
                 border: none;
-                border-radius: 30px;
-                padding: 10px 20px;
+                border-radius: 35px;
+                padding: 12px 24px;
                 color: #2b6c6c;
-                font-weight: 600;
+                font-weight: 700;
                 box-shadow: 
-                    0 8px 15px rgba(163, 216, 216, 0.2),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 10px 20px rgba(163,216,216,0.25),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
                 transition: all 0.3s ease;
-                border: 1px solid white;
+                border: 2px solid white;
                 cursor: pointer;
             }
 
             .send-btn:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 15px 25px rgba(163, 216, 216, 0.3);
+                transform: translateY(-4px);
+                box-shadow: 0 18px 30px rgba(163,216,216,0.35);
             }
 
             .manual-refresh-btn {
-                background: linear-gradient(135deg, #ffe194, #ffd966);
+                background: linear-gradient(135deg, var(--sunshine-yellow), #ffd966);
                 color: #946f2b;
                 border: none;
-                border-radius: 40px;
-                padding: 10px 20px;
-                font-size: 0.95rem;
-                font-weight: 600;
+                border-radius: 50px;
+                padding: 12px 24px;
+                font-size: 1rem;
+                font-weight: 700;
                 cursor: pointer;
-                margin: 10px;
+                margin: 12px;
                 transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                border: 2px solid white;
+                border: 3px solid white;
                 box-shadow: 
-                    0 8px 15px rgba(255, 225, 148, 0.2),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 10px 20px rgba(255,225,148,0.25),
+                    0 0 0 2px rgba(255,255,255,0.6) inset;
             }
 
             .manual-refresh-btn:hover {
-                transform: translateY(-3px);
+                transform: translateY(-4px);
                 box-shadow: 
-                    0 15px 25px rgba(255, 225, 148, 0.3),
-                    0 0 0 2px rgba(255, 255, 255, 0.7) inset;
+                    0 18px 30px rgba(255,225,148,0.35),
+                    0 0 0 3px rgba(255,255,255,0.8) inset;
             }
 
             .battle-waiting {
                 text-align: center;
-                padding: 20px;
+                padding: 25px;
             }
 
             .waiting-spinner {
                 display: inline-block;
-                width: 50px;
-                height: 50px;
-                border: 4px solid rgba(255, 200, 220, 0.3);
-                border-top-color: #fba9c4;
-                border-right-color: #d9c6e6;
-                border-bottom-color: #a3d8d8;
-                border-left-color: #ffe194;
+                width: 60px;
+                height: 60px;
+                border: 5px solid rgba(255,200,220,0.3);
+                border-top-color: var(--candy-pink);
+                border-right-color: var(--lavender);
+                border-bottom-color: var(--mint-green);
+                border-left-color: var(--sunshine-yellow);
                 border-radius: 50%;
                 animation: spin 1.2s linear infinite;
-                margin: 15px auto;
+                margin: 20px auto;
             }
 
             .waiting-spinner-small {
                 display: inline-block;
-                width: 16px;
-                height: 16px;
-                border: 3px solid rgba(255, 200, 220, 0.3);
-                border-top-color: #fba9c4;
+                width: 18px;
+                height: 18px;
+                border: 3px solid rgba(255,200,220,0.3);
+                border-top-color: var(--candy-pink);
                 border-radius: 50%;
                 animation: spin 1s linear infinite;
-                margin-right: 6px;
+                margin-right: 8px;
             }
 
             @keyframes spin {
@@ -1682,92 +1804,98 @@ class BattleMode {
             }
 
             .room-code-display {
-                background: rgba(255, 245, 250, 0.8);
-                backdrop-filter: blur(10px);
-                padding: 15px 20px;
-                border-radius: 40px;
-                font-size: 1.5rem;
-                margin: 20px 0;
-                border: 2px solid rgba(255, 200, 220, 0.8);
+                background: linear-gradient(145deg, rgba(255,245,250,0.9), rgba(255,240,245,0.8));
+                backdrop-filter: blur(15px);
+                padding: 18px 25px;
+                border-radius: 50px;
+                font-size: 1.8rem;
+                margin: 25px 0;
+                border: 3px solid rgba(255,200,220,0.9);
                 box-shadow: 
-                    0 10px 20px rgba(255, 200, 220, 0.15),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 15px 25px rgba(255,200,220,0.2),
+                    0 0 0 2px rgba(255,255,255,0.7) inset;
             }
 
             .room-code-display span {
-                font-weight: bold;
+                font-weight: 800;
                 color: #d46b8d;
-                letter-spacing: 5px;
-                text-shadow: 2px 2px 4px rgba(255, 200, 220, 0.3);
+                letter-spacing: 8px;
+                text-shadow: 3px 3px 6px rgba(255,200,220,0.4);
             }
 
             .copy-btn {
                 background: none;
                 border: none;
-                font-size: 1.5rem;
+                font-size: 1.8rem;
                 cursor: pointer;
-                margin-left: 10px;
+                margin-left: 12px;
                 color: #d46b8d;
                 transition: all 0.3s ease;
             }
 
             .copy-btn:hover {
-                transform: scale(1.1);
-                color: #fba9c4;
+                transform: scale(1.15);
+                color: var(--candy-pink);
             }
 
             .waiting-players {
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                gap: 30px;
-                margin: 30px 0;
+                gap: 40px;
+                margin: 35px 0;
             }
 
             .vs-divider {
-                font-size: 2.5rem;
-                font-weight: bold;
-                color: #d46b8d;
-                text-shadow: 2px 2px 4px rgba(255, 200, 220, 0.5);
+                font-size: 3rem;
+                font-weight: 900;
+                background: linear-gradient(135deg, #d46b8d, #b2869c);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+                text-shadow: 3px 3px 8px rgba(255,200,220,0.6);
                 animation: vsPulse 2s ease-in-out infinite;
             }
 
             @keyframes vsPulse {
                 0%, 100% { transform: scale(1); }
-                50% { transform: scale(1.1); }
+                50% { transform: scale(1.12); }
             }
 
             .cancel-btn {
-                padding: 10px 30px;
+                padding: 12px 35px;
                 background: linear-gradient(135deg, #e0d0d8, #d0c0c8);
                 border: none;
-                border-radius: 40px;
+                border-radius: 50px;
                 color: white;
-                font-weight: 600;
+                font-weight: 700;
                 cursor: pointer;
                 transition: all 0.3s ease;
-                border: 2px solid white;
-                box-shadow: 0 8px 15px rgba(0, 0, 0, 0.05);
+                border: 3px solid white;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.08);
             }
 
             .battle-result {
                 text-align: center;
-                padding: 20px;
-                background: rgba(255, 245, 250, 0.8);
-                backdrop-filter: blur(10px);
-                border-radius: 50px;
-                border: 2px solid white;
+                padding: 25px;
+                background: linear-gradient(145deg, rgba(255,245,250,0.9), rgba(255,240,245,0.85));
+                backdrop-filter: blur(15px);
+                border-radius: 60px;
+                border: 3px solid white;
                 box-shadow: 
-                    0 20px 30px rgba(0, 0, 0, 0.1),
-                    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+                    0 25px 40px rgba(0,0,0,0.12),
+                    0 0 0 2px rgba(255,255,255,0.7) inset;
             }
 
             .result-title {
-                font-size: 2.5rem;
-                margin-bottom: 20px;
+                font-size: 3rem;
+                margin-bottom: 25px;
                 animation: resultPop 0.5s ease-out;
-                color: #d46b8d;
-                text-shadow: 2px 2px 8px rgba(255, 200, 220, 0.5);
+                background: linear-gradient(135deg, #d46b8d, #a55174);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+                text-shadow: 3px 3px 10px rgba(255,200,220,0.6);
             }
 
             @keyframes resultPop {
@@ -1779,28 +1907,28 @@ class BattleMode {
             .result-scores {
                 display: flex;
                 justify-content: center;
-                gap: 20px;
-                margin: 20px 0;
+                gap: 25px;
+                margin: 25px 0;
             }
 
             .result-score-card {
                 background: white;
-                border-radius: 30px;
-                padding: 15px 25px;
-                min-width: 100px;
-                border: 2px solid rgba(255, 200, 220, 0.6);
-                box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+                border-radius: 35px;
+                padding: 20px 30px;
+                min-width: 120px;
+                border: 3px solid rgba(255,200,220,0.7);
+                box-shadow: 0 15px 25px rgba(0,0,0,0.06);
             }
 
             .result-score-card.winner {
-                border-color: #b8d9c4;
+                border-color: var(--mint-green);
                 background: linear-gradient(145deg, #f0f9f2, #e8f2ea);
-                box-shadow: 0 15px 25px rgba(163, 216, 216, 0.3);
+                box-shadow: 0 20px 35px rgba(163,216,216,0.35);
             }
 
             .result-score {
-                font-size: 2.5rem;
-                font-weight: 700;
+                font-size: 3rem;
+                font-weight: 800;
                 color: #d46b8d;
             }
 
@@ -1809,54 +1937,54 @@ class BattleMode {
             }
 
             .result-details {
-                background: rgba(255, 240, 245, 0.7);
-                padding: 15px 20px;
-                border-radius: 30px;
-                margin: 20px 0;
-                border: 1px solid rgba(255, 200, 220, 0.6);
+                background: rgba(255,240,245,0.8);
+                padding: 18px 25px;
+                border-radius: 35px;
+                margin: 25px 0;
+                border: 2px solid rgba(255,200,220,0.6);
             }
 
             .detail-item {
-                margin: 8px 0;
-                font-size: 1.1rem;
+                margin: 10px 0;
+                font-size: 1.2rem;
                 color: #b2869c;
             }
 
             .result-actions {
                 display: flex;
-                gap: 15px;
+                gap: 20px;
                 justify-content: center;
-                margin-top: 20px;
+                margin-top: 25px;
             }
 
             .offline-hint {
                 position: fixed;
-                top: 8px;
-                right: 8px;
-                background: #fbb9c0;
+                top: 10px;
+                right: 10px;
+                background: linear-gradient(135deg, #fbb9c0, #faa7b0);
                 color: white;
-                padding: 6px 12px;
-                border-radius: 16px;
+                padding: 10px 18px;
+                border-radius: 25px;
                 z-index: 10001;
-                box-shadow: 0 5px 15px rgba(251, 185, 192, 0.3);
+                box-shadow: 0 10px 20px rgba(251,185,192,0.4);
                 animation: slideIn 0.3s ease-out;
-                font-size: 0.8rem;
-                border: 1px solid white;
+                font-size: 0.9rem;
+                border: 2px solid white;
             }
 
             #zoom-warning {
                 position: fixed;
-                top: 8px;
+                top: 10px;
                 left: 50%;
                 transform: translateX(-50%);
-                background: #fbb9c0;
+                background: linear-gradient(135deg, #fbb9c0, #faa7b0);
                 color: white;
-                padding: 6px 12px;
-                border-radius: 20px;
+                padding: 10px 20px;
+                border-radius: 30px;
                 z-index: 10000;
-                font-size: 0.8rem;
-                box-shadow: 0 5px 15px rgba(251, 185, 192, 0.3);
-                border: 1px solid white;
+                font-size: 0.9rem;
+                box-shadow: 0 10px 20px rgba(251,185,192,0.4);
+                border: 2px solid white;
                 white-space: nowrap;
             }
 
@@ -1872,25 +2000,47 @@ class BattleMode {
             }
 
             #match-waiting-hint {
-                margin-top: 8px;
-                padding: 10px;
-                background: rgba(255, 245, 250, 0.7);
-                backdrop-filter: blur(5px);
-                -webkit-backdrop-filter: blur(5px);
-                border-radius: 16px;
-                border: 1px solid rgba(255, 220, 230, 0.6);
-                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
+                margin-top: 10px;
+                padding: 15px;
+                background: linear-gradient(145deg, rgba(255,245,250,0.9), rgba(255,240,245,0.8));
+                backdrop-filter: blur(8px);
+                border-radius: 25px;
+                border: 2px solid rgba(255,220,230,0.7);
+                box-shadow: 0 10px 20px rgba(255,200,220,0.15);
             }
 
             #ai-option {
-                margin-top: 10px;
-                padding: 12px;
-                background: rgba(255, 245, 250, 0.7);
-                backdrop-filter: blur(5px);
-                -webkit-backdrop-filter: blur(5px);
-                border-radius: 20px;
-                border: 1px solid rgba(255, 200, 220, 0.6);
-                box-shadow: 0 5px 15px rgba(255, 200, 220, 0.1);
+                margin-top: 15px;
+                padding: 18px;
+                background: linear-gradient(145deg, rgba(255,245,250,0.9), rgba(255,240,245,0.8));
+                backdrop-filter: blur(8px);
+                border-radius: 30px;
+                border: 2px solid rgba(255,200,220,0.7);
+                box-shadow: 0 10px 20px rgba(255,200,220,0.15);
+            }
+
+            .room-code-hint {
+                display: block;
+                font-size: 0.7rem;
+                color: #b2869c;
+                margin-top: 4px;
+                cursor: pointer;
+                transition: color 0.2s;
+            }
+
+            .room-code-hint:hover {
+                color: var(--candy-pink);
+            }
+
+            .sync-indicator {
+                display: inline-block;
+                width: 14px;
+                height: 14px;
+                border: 3px solid rgba(255,200,220,0.3);
+                border-top-color: var(--candy-pink);
+                border-radius: 50%;
+                animation: spin 0.6s linear infinite;
+                margin-left: 6px;
             }
         `;
 
@@ -2066,8 +2216,9 @@ class BattleMode {
         }
     }
 
-    // ==================== 由于长度限制，第 1 部分到此结束 ====================
-    // ==================== 请继续复制第 2 部分 ====================
+    // ==================== 第 2 部分结束 ====================
+    // ==================== 第 3 部分 / 共 8 部分 ====================
+
     handleKeydown(e) {
         if (e.key === 'Escape') {
             if (this.game?.ui) {
@@ -2515,7 +2666,7 @@ class BattleMode {
             modeModal.className = 'battle-modal';
             modeModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); backdrop-filter: blur(8px); z-index: 6000; display: none; justify-content: center; align-items: center;';
             modeModal.innerHTML = `
-                <div class="battle-card" style="max-width: 400px; background: white; border-radius: 60px; padding: 30px; text-align: center;">
+                <div class="battle-card" style="max-width: 400px;">
                     <h3 style="color: #d46b8d; margin-bottom: 25px;">${I18n.t('selectBattleMode') || '选择对战模式'}</h3>
                     <div style="display: flex; flex-direction: column; gap: 15px;">
                         <button id="multiplayer-mode-select-btn" class="candy-btn primary" style="padding: 15px; font-size: 1.1rem;">
@@ -2566,7 +2717,7 @@ class BattleMode {
             difficultyModal.className = 'battle-modal';
             difficultyModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); backdrop-filter: blur(8px); z-index: 6000; display: none; justify-content: center; align-items: center;';
             difficultyModal.innerHTML = `
-                <div class="battle-card" style="max-width: 400px; background: white; border-radius: 60px; padding: 30px; text-align: center;">
+                <div class="battle-card" style="max-width: 400px;">
                     <h3 style="color: #d46b8d; margin-bottom: 20px;">${I18n.t('selectAIDifficulty') || '选择 AI 难度'}</h3>
                     <div style="display: flex; flex-direction: column; gap: 12px;">
                         <button id="ai-easy-btn" class="candy-btn" style="background: linear-gradient(145deg, #c3e6cb, #a7d8b5); color: #2d6a4f;">
@@ -2629,7 +2780,7 @@ class BattleMode {
             multiplayerModal.className = 'battle-modal';
             multiplayerModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); backdrop-filter: blur(8px); z-index: 6000; display: none; justify-content: center; align-items: center;';
             multiplayerModal.innerHTML = `
-                <div class="battle-card" style="max-width: 400px; background: white; border-radius: 60px; padding: 30px; text-align: center;">
+                <div class="battle-card" style="max-width: 400px;">
                     <h3 style="color: #d46b8d; margin-bottom: 20px;">👥 ${I18n.t('multiplayerBattle') || '双人对战'}</h3>
                     <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 20px;">
                         <button id="create-room-btn" class="candy-btn primary" style="padding: 12px 25px;">🏠 ${I18n.t('createRoom') || '创建房间'}</button>
@@ -2771,10 +2922,13 @@ class BattleMode {
             this.showRoomCode();
             this.addManualRefreshButton();
             
-            const grid = document.getElementById('battle-grid');
-            if (grid) {
-                this.rebindGridEvents(grid);
-            }
+            setTimeout(() => {
+                const grid = document.getElementById('battle-grid');
+                if (grid) {
+                    this.rebindGridEvents(grid);
+                    console.log('✅ AI对战网格事件已绑定');
+                }
+            }, 150);
             
             this.fixCloseButtons();
 
@@ -3102,6 +3256,9 @@ class BattleMode {
         }
     }
 
+    // ==================== 第 3 部分结束 ====================
+    // ==================== 第 4 部分 / 共 8 部分 ====================
+
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
             this.showFeedback('网络未连接，请检查网络', '#ff4444');
@@ -3155,7 +3312,8 @@ class BattleMode {
                 return;
             }
 
-            const { error: updateError } = await this.game.state.supabase
+            // ✅ 修复并发冲突：使用条件更新，确保只有第一个玩家能成功加入
+            const { error: updateError, data: updatedBattle } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .update({
                     player2_id: user.id,
@@ -3164,16 +3322,20 @@ class BattleMode {
                     started_at: new Date().toISOString(),
                     current_turn: battle.player1_id
                 })
-                .eq('id', battle.id);
+                .eq('id', battle.id)
+                .eq('player2_id', null)  // ✅ 关键：只有当 player2_id 仍为空时才更新
+                .select()
+                .single();
 
             if (updateError) {
                 console.error('更新房间失败:', updateError);
-                
-                if (updateError.code === '23505' || updateError.message.includes('duplicate')) {
-                    this.showFeedback('房间刚被其他人加入', '#ffa500');
-                } else {
-                    this.showFeedback('加入房间失败，请重试', '#ff4444');
-                }
+                this.showFeedback('加入房间失败，请重试', '#ff4444');
+                return;
+            }
+
+            // ✅ 如果没有返回数据，说明房间已被其他人抢先加入
+            if (!updatedBattle) {
+                this.showFeedback('房间刚被其他人加入', '#ffa500');
                 return;
             }
 
@@ -3391,7 +3553,7 @@ class BattleMode {
                     this.updateProgressUI('player2-progress', battle.player1_progress);
                 }
                 
-                // 监听再来一局请求
+                // ✅ 监听再来一局请求
                 if (battle.rematch_request && battle.rematch_request !== this.game.state.currentUser.id) {
                     if (!oldBattle?.rematch_request) {
                         this.addSystemMessage(`🔄 ${this.room.opponentName} 请求再来一局！`);
@@ -3399,7 +3561,7 @@ class BattleMode {
                         
                         const rematchBtn = document.getElementById('rematch-btn');
                         if (rematchBtn) {
-                            rematchBtn.style.animation = 'softPulse 1s ease-in-out infinite';
+                            rematchBtn.style.animation = 'selectedPulse 1s ease-in-out infinite';
                             rematchBtn.style.background = 'linear-gradient(135deg, #ffe194, #ffd966)';
                         }
                     }
@@ -3450,9 +3612,13 @@ class BattleMode {
                 if (status === 'SUBSCRIBED') {
                     console.log('✅ WebSocket 实时连接已建立');
                     this.addSystemMessage('📡 实时连接已建立');
+                    this.room.usingPolling = false;
                 } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                     console.error('❌ WebSocket 连接失败，切换到轮询模式');
-                    this.startBattlePolling();
+                    if (!this.room.usingPolling) {
+                        this.room.usingPolling = true;
+                        this.startBattlePolling();
+                    }
                 } else if (status === 'CLOSED') {
                     console.log('🔌 WebSocket 连接关闭，尝试重连...');
                     setTimeout(() => {
@@ -4037,7 +4203,11 @@ class BattleMode {
             this.game.ui.closeModal('battle-modal');
         }
     }
-        // ==================== 通用对战逻辑 ====================
+
+    // ==================== 第 4 部分结束 ====================
+    // ==================== 第 5 部分 / 共 8 部分 ====================
+
+    // ==================== 通用对战逻辑 ====================
 
     initializeBattleUI(player1, player2, firstPlayerId) {
         const waitingDiv = document.getElementById('battle-waiting');
@@ -4068,12 +4238,16 @@ class BattleMode {
         this.fixCloseButtons();
         this.addManualRefreshButton();
         
-        const grid = document.getElementById('battle-grid');
-        if (grid) {
-            this.rebindGridEvents(grid);
-        } else {
-            console.error('battle-grid 元素未找到！');
-        }
+        // ✅ 关键修复：延迟绑定网格事件，确保 DOM 完全渲染
+        setTimeout(() => {
+            const grid = document.getElementById('battle-grid');
+            if (grid) {
+                this.rebindGridEvents(grid);
+                console.log('✅ 网格事件已绑定，共', grid.children.length, '张卡片');
+            } else {
+                console.error('❌ battle-grid 元素未找到！');
+            }
+        }, 100);
         
         this.addSystemMessage('⚔️ 对战开始！');
         if (this.room.myTurn) {
@@ -4149,6 +4323,8 @@ class BattleMode {
             const card = this.cardTemplate.cloneNode(false);
             card.dataset.value = num;
             card.textContent = num;
+            card.style.pointerEvents = 'auto';
+            card.style.cursor = 'pointer';
             fragment.appendChild(card);
         });
         
@@ -4202,6 +4378,8 @@ class BattleMode {
             const card = this.cardTemplate.cloneNode(false);
             card.dataset.value = num;
             card.textContent = num;
+            card.style.pointerEvents = 'auto';
+            card.style.cursor = 'pointer';
             fragment.appendChild(card);
         });
         
@@ -4220,7 +4398,16 @@ class BattleMode {
     }
 
     async handleBattleCardClick(e) {
-        if (!this.room.gameActive || !this.room.myTurn) return;
+        console.log('🎯 handleBattleCardClick 被调用', {
+            gameActive: this.room.gameActive,
+            myTurn: this.room.myTurn,
+            card: e.target?.className
+        });
+        
+        if (!this.room.gameActive || !this.room.myTurn) {
+            console.log('❌ 无法点击：gameActive=', this.room.gameActive, 'myTurn=', this.room.myTurn);
+            return;
+        }
         
         const card = e.target.closest('.number-card');
         if (!card || card.classList.contains('matched')) return;
@@ -4852,7 +5039,7 @@ class BattleMode {
             '8.2.5': (s) => ({ ...s, version: '8.2.6' }),
             '8.2.6': (s) => ({ ...s, version: '9.0.0', tournamentMode: false }),
             '9.0.0': (s) => ({ ...s, version: '9.2.0' }),
-            '9.2.0': (s) => ({ ...s, version: '9.3.0' })
+            '9.2.0': (s) => ({ ...s, version: '9.4.0' })
         };
 
         let current = oldState;
@@ -5219,6 +5406,9 @@ class BattleMode {
         const message = payload.new;
         this.addChatMessage(message);
     }
+
+    // ==================== 第 5 部分结束 ====================
+    // ==================== 第 6 部分 / 共 8 部分 ====================
 
     // ==================== 结束对战 ====================
 
@@ -5658,7 +5848,8 @@ class BattleMode {
             opponentName: null, opponentIsAI: false, aiDifficulty: 'medium',
             status: 'waiting', myTurn: false, roundTimer: null, channel: null,
             subscriptionId: null, gameActive: false, selectedCards: [], timeLeft: 30,
-            tournamentMode: false, tournamentId: null, tournamentMatchId: null, tournamentChannel: null
+            tournamentMode: false, tournamentId: null, tournamentMatchId: null, tournamentChannel: null,
+            usingPolling: false
         };
         
         this.matchQueue = [];
@@ -6042,3 +6233,1154 @@ class BattleMode {
 }
 
 window.BattleMode = BattleMode;
+
+// ==================== 第 6 部分结束 ====================
+    // ==================== 第 7 部分 / 共 8 部分 ====================
+
+    restoreFullUIFromState(state) {
+        const player1Score = document.getElementById('player1-score');
+        const player2Score = document.getElementById('player2-score');
+        if (player1Score) player1Score.textContent = state.player1Score || '0';
+        if (player2Score) player2Score.textContent = state.player2Score || '0';
+
+        const player1Progress = document.getElementById('player1-progress');
+        const player2Progress = document.getElementById('player2-progress');
+        if (player1Progress) player1Progress.style.width = state.player1Progress || '0%';
+        if (player2Progress) player2Progress.style.width = state.player2Progress || '0%';
+
+        const targetNumber = document.getElementById('battle-target-number');
+        if (targetNumber) targetNumber.textContent = state.targetNumber || '10';
+
+        this.loadGridState(state.gridCards);
+        this.loadChatState(state.chatMessages);
+        this.updateTurnIndicator();
+
+        if (this.room.gameActive && !this.room.opponentIsAI) {
+            this.subscribeToBattleRealtime(this.room.battleId);
+        } else if (this.room.gameActive && this.room.opponentIsAI) {
+            if (!this.room.myTurn) {
+                this.scheduleAIMove();
+            } else {
+                this.startTurnTimer();
+            }
+        }
+    }
+
+    async attemptReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            this.showFeedback('重连失败，请重新开始对战', '#fbb9c0');
+            this.leaveBattle();
+            return;
+        }
+
+        this.reconnectAttempts++;
+        
+        try {
+            if (!this.isSupabaseAvailable()) {
+                throw new Error('Supabase未连接');
+            }
+
+            const { data: battle, error } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('*')
+                .eq('id', this.room.battleId)
+                .single();
+
+            if (error || !battle) throw new Error('对战不存在');
+
+            if (battle.status === 'finished') {
+                this.showBattleResult(battle);
+            } else {
+                this.subscribeToBattleRealtime(this.room.battleId);
+                await this.syncScores();
+                if (this.room.myTurn) this.autoRefreshGridIfNeeded();
+                this.showFeedback('重连成功', '#a3d8d8');
+                this.reconnectAttempts = 0;
+                this.offlineMode = false;
+            }
+        } catch (error) {
+            console.error('重连失败:', error);
+            setTimeout(() => this.attemptReconnect(), 2000);
+        }
+    }
+
+    switchToOfflineMode() {
+        if (this.room.channel) {
+            this.room.channel.unsubscribe();
+            this.room.channel = null;
+        }
+        this.room.opponentIsAI = false;
+        this.offlineMode = true;
+        this.room.battleId = 'offline_' + (this.room.battleId || Date.now());
+        this.addSystemMessage('📴 网络断开，切换到离线模式');
+        this.addSystemMessage('您的进度将在网络恢复后同步');
+        this.startLocalPolling();
+    }
+
+    startLocalPolling() {
+        if (!this.room.myTurn && !this.room.opponentIsAI && this.offlineMode) {
+            if (this.localPollingTimer) clearTimeout(this.localPollingTimer);
+            this.localPollingTimer = setTimeout(() => {
+                this.localPollingTimer = null;
+                this.simulateOpponentMove();
+            }, 2000 + Math.random() * 3000);
+        }
+    }
+
+    simulateOpponentMove() {
+        if (!this.room.gameActive || this.room.myTurn || !this.offlineMode) return;
+
+        const grid = document.getElementById('battle-grid');
+        if (!grid) return;
+
+        const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
+        if (!cards || cards.length < 2) {
+            this.refreshBattleGrid();
+            this.startLocalPolling();
+            return;
+        }
+
+        const targetEl = document.getElementById('battle-target-number');
+        if (!targetEl) {
+            this.startLocalPolling();
+            return;
+        }
+        
+        const target = parseInt(targetEl.textContent) || 0;
+        
+        const index1 = Math.floor(Math.random() * cards.length);
+        let index2;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        do {
+            index2 = Math.floor(Math.random() * cards.length);
+            attempts++;
+        } while (index2 === index1 && cards.length > 1 && attempts < maxAttempts);
+        
+        if (index1 === index2 || !cards[index1] || !cards[index2]) {
+            this.startLocalPolling();
+            return;
+        }
+
+        const card1 = cards[index1];
+        const card2 = cards[index2];
+        const num1 = parseInt(card1.dataset.value);
+        const num2 = parseInt(card2.dataset.value);
+        const sum = num1 + num2;
+        const isCorrect = sum === target;
+
+        card1.classList.add('selected');
+        card2.classList.add('selected');
+
+        setTimeout(() => {
+            if (isCorrect) {
+                card1.classList.add('matched');
+                card2.classList.add('matched');
+                setTimeout(() => {
+                    if (card1.isConnected) card1.remove();
+                    if (card2.isConnected) card2.remove();
+                }, 300);
+                this.updateLocalOpponentScore();
+                this.generateBattleTarget();
+            } else {
+                this.generateBattleTarget();
+                card1.classList.remove('selected');
+                card2.classList.remove('selected');
+            }
+
+            this.room.myTurn = true;
+            this.updateTurnIndicator();
+            this.addSystemMessage('你的回合');
+        }, 500);
+    }
+
+    updateLocalOpponentScore() {
+        const opponentScoreEl = this.getOpponentScoreElement();
+        if (opponentScoreEl) {
+            const currentScore = parseInt(opponentScoreEl.textContent) || 0;
+            opponentScoreEl.textContent = currentScore + 10;
+        }
+
+        const opponentProgress = this.room.playerRole === 'player1' ?
+            document.getElementById('player2-progress') :
+            document.getElementById('player1-progress');
+        if (opponentProgress) {
+            const currentProgress = parseInt(opponentProgress.style.width) || 0;
+            const newProgress = Math.min(100, currentProgress + 10);
+            opponentProgress.style.width = newProgress + '%';
+        }
+    }
+
+    // ==================== 订阅对战 ====================
+
+    subscribeToBattle(battleId) {
+        if (!this.isSupabaseAvailable()) return;
+
+        const subscriptionKey = `battle-${battleId}`;
+        if (this.activeSubscriptions.has(subscriptionKey)) {
+            console.log('已有活跃订阅，跳过');
+            return;
+        }
+
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
+        if (this.room.channel) {
+            try {
+                this.room.channel.unsubscribe();
+            } catch (e) {
+                console.warn('取消订阅失败:', e);
+            }
+            this.room.channel = null;
+            this.room.subscriptionId = null;
+        }
+
+        this.activeSubscriptions.set(subscriptionKey, true);
+
+        try {
+            this.room.channel = this.game.state.supabase
+                .channel(`battle-${battleId}`)
+                .on('presence', { event: 'sync' }, () => {
+                    console.log('Presence sync');
+                })
+                .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+                    console.log('Player joined:', newPresences);
+                })
+                .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+                    console.log('Player left:', leftPresences);
+                    this.showOfflineHint();
+                })
+                .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'candy_math_battles',
+                    filter: `id=eq.${battleId}`
+                }, (payload) => {
+                    requestAnimationFrame(() => this.handleBattleUpdate(payload));
+                })
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'candy_math_battle_rounds',
+                    filter: `battle_id=eq.${battleId}`
+                }, (payload) => {
+                    requestAnimationFrame(() => this.handleRoundUpdate(payload));
+                })
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'candy_math_battle_messages',
+                    filter: `battle_id=eq.${battleId}`
+                }, (payload) => {
+                    requestAnimationFrame(() => this.handleNewMessage(payload));
+                })
+                .subscribe(async (status, err) => {
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                        console.error('订阅失败:', err);
+                        this.activeSubscriptions.delete(subscriptionKey);
+                        this.reconnectTimer = setTimeout(() => {
+                            this.reconnectTimer = null;
+                            this.attemptReconnect();
+                        }, 5000);
+                    } else if (status === 'CLOSED') {
+                        console.log('通道已关闭');
+                        this.activeSubscriptions.delete(subscriptionKey);
+                        this.reconnectTimer = setTimeout(() => {
+                            this.reconnectTimer = null;
+                            if (this.room.gameActive && this.room.battleId) {
+                                this.subscribeToBattle(this.room.battleId);
+                            }
+                        }, 3000);
+                    } else if (status === 'SUBSCRIBED') {
+                        console.log('成功订阅对战:', battleId);
+                        await this.room.channel.track({
+                            user_id: this.game.state.currentUser.id,
+                            user_name: this.game.state.currentUser.name,
+                            status: 'playing',
+                            battle_id: battleId
+                        });
+                        this.reconnectAttempts = 0;
+                    }
+                });
+                
+            this.room.subscriptionId = `battle-${battleId}-${Date.now()}`;
+            
+        } catch (error) {
+            console.error('订阅对战失败:', error);
+            this.activeSubscriptions.delete(subscriptionKey);
+        }
+    }
+
+    showOfflineHint() {
+        const offlineHint = document.createElement('div');
+        offlineHint.className = 'offline-hint';
+        offlineHint.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span>👋</span>
+                <span>对手已离线，等待重连...</span>
+                <button style="background: none; border: none; color: white; font-size: 1rem; cursor: pointer; padding: 0 3px;">×</button>
+            </div>
+        `;
+        const closeBtn = offlineHint.querySelector('button');
+        closeBtn.onclick = () => offlineHint.remove();
+        document.body.appendChild(offlineHint);
+        setTimeout(() => {
+            if (offlineHint.isConnected) offlineHint.remove();
+        }, 3000);
+        this.showFeedback('对手已断开连接', '#fbb9c0');
+    }
+
+    handleBattleUpdate(payload) {
+        const battle = payload.new;
+        this.updateScoresFromServer(battle);
+        this.room.myTurn = battle.current_turn === this.game.state.currentUser.id;
+        this.updateTurnIndicator();
+        if (battle.status === 'finished') {
+            this.showBattleResult(battle);
+        }
+    }
+
+    handleRoundUpdate(payload) {
+        const round = payload.new;
+        if (round.player_id !== this.game.state.currentUser.id) {
+            this.addOpponentMove(round);
+        }
+    }
+
+    handleNewMessage(payload) {
+        const message = payload.new;
+        this.addChatMessage(message);
+    }
+
+    // ==================== 第 7 部分结束 ====================
+    // ==================== 第 8 部分 / 共 8 部分 ====================
+
+    // ==================== 结束对战 ====================
+
+    async endBattle(winnerId) {
+        this.room.gameActive = false;
+        this.stopTurnTimer();
+        this.refreshCount = 0;
+        this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
+
+        // 清除再来一局请求
+        if (this.room.battleId && this.isSupabaseAvailable()) {
+            await this.game.state.supabase
+                .from('candy_math_battles')
+                .update({ rematch_request: null })
+                .eq('id', this.room.battleId);
+        }
+
+        if (this.room.opponentIsAI) {
+            this.endAIBattle(winnerId);
+            return;
+        }
+
+        if (!navigator.onLine || this.offlineMode) {
+            this.endBattleCommon(winnerId);
+            return;
+        }
+
+        if (!this.isSupabaseAvailable()) {
+            this.endBattleCommon(winnerId);
+            return;
+        }
+
+        try {
+            const { data: battle, error: fetchError } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('*')
+                .eq('id', this.room.battleId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            if (battle.status === 'finished') {
+                this.showBattleResult(battle);
+                return;
+            }
+
+            const { error: updateError } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .update({
+                    status: 'finished',
+                    winner_id: winnerId,
+                    finished_at: new Date().toISOString()
+                })
+                .eq('id', this.room.battleId);
+
+            if (updateError) throw updateError;
+
+            const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
+            await this.sendSystemMessage(`🏆 ${winner} 获胜！`);
+            
+            await this.updateELOAfterBattle(battle, winnerId);
+            
+            const { data: updatedBattle } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .select('*')
+                .eq('id', this.room.battleId)
+                .single();
+                
+            this.showBattleResult(updatedBattle || battle);
+            
+        } catch (error) {
+            console.error('结束对战失败:', error);
+            this.endBattleCommon(winnerId);
+        }
+        
+        this.disableChatInput(true);
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+    }
+
+    endAIBattle(winnerId) {
+        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
+        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
+        this.displayBattleResult(winnerId, myScore, opponentScore);
+        
+        const winner = winnerId === this.game.state.currentUser.id ? '你' : this.room.opponentName;
+        this.addSystemMessage(`🏆 对战结束，${winner} 获胜！`);
+        this.disableChatInput(true);
+        this.cleanupAIResources();
+    }
+
+    endBattleCommon(winnerId) {
+        const myScore = parseInt(document.getElementById('player1-score')?.textContent) || 0;
+        const opponentScore = parseInt(document.getElementById('player2-score')?.textContent) || 0;
+        this.displayBattleResult(winnerId, myScore, opponentScore);
+        this.disableChatInput(true);
+    }
+
+    displayBattleResult(winnerId, player1Score, player2Score) {
+        const activeDiv = document.getElementById('battle-active');
+        const resultDiv = document.getElementById('battle-result');
+        
+        if (activeDiv) activeDiv.style.display = 'none';
+        if (resultDiv) resultDiv.style.display = 'block';
+
+        const iWon = winnerId === this.game.state.currentUser.id;
+        
+        const resultTitle = document.getElementById('result-title');
+        if (resultTitle) resultTitle.textContent = iWon ? `🏆 ${this.t('win')}` : `😢 ${this.t('lose')}`;
+
+        const finalPlayerScore = document.getElementById('final-player-score');
+        const finalOpponentScore = document.getElementById('final-opponent-score');
+        
+        if (finalPlayerScore) finalPlayerScore.textContent = player1Score || 0;
+        if (finalOpponentScore) finalOpponentScore.textContent = player2Score || 0;
+
+        const myResultCard = document.querySelector('.result-score-card:first-child');
+        const opponentResultCard = document.querySelector('.result-score-card:last-child');
+        
+        if (myResultCard && opponentResultCard) {
+            if (iWon) {
+                myResultCard.classList.add('winner');
+                opponentResultCard.classList.remove('winner');
+            } else {
+                opponentResultCard.classList.add('winner');
+                myResultCard.classList.remove('winner');
+            }
+        }
+
+        this.playSound(iWon ? 'achievement' : 'wrong');
+    }
+
+    showBattleResult(battle) {
+        const myScore = this.room.playerRole === 'player1' ? battle.player1_score : battle.player2_score;
+        const opponentScore = this.room.playerRole === 'player1' ? battle.player2_score : battle.player1_score;
+        this.displayBattleResult(battle.winner_id, myScore, opponentScore);
+    }
+
+    // ==================== 聊天功能 ====================
+
+    async sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        if (!input || !input.value.trim()) return;
+
+        let text = input.value.trim();
+        text = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        
+        if (text.length > 200) {
+            text = text.substring(0, 200) + '...';
+        }
+        
+        if (text.length === 0) return;
+        
+        input.value = '';
+
+        if (this.room.opponentIsAI) {
+            this.addChatMessage({
+                player_id: this.game.state.currentUser.id,
+                player_name: this.game.state.currentUser.name,
+                message: text
+            });
+            this.handleAIResponse(text);
+            this.saveLocalBattleState();
+            return;
+        }
+
+        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
+
+        try {
+            await this.game.state.supabase
+                .from('candy_math_battle_messages')
+                .insert([{
+                    battle_id: this.room.battleId,
+                    player_id: this.game.state.currentUser.id,
+                    player_name: this.game.state.currentUser.name,
+                    message: text
+                }]);
+        } catch (error) {
+            console.error('发送消息失败:', error);
+        }
+    }
+
+    handleAIResponse(userMessage) {
+        if (this.aiResponseTimer) {
+            clearTimeout(this.aiResponseTimer);
+            this.aiResponseTimer = null;
+        }
+        
+        if (this.aiResponsePending) {
+            this.aiResponsePending = false;
+        }
+        
+        this.aiResponsePending = true;
+        
+        this.aiResponseTimer = setTimeout(() => {
+            this.aiResponseTimer = null;
+            this.aiResponsePending = false;
+            
+            if (!this.room.gameActive) return;
+            
+            const aiResponses = [
+                '好的！', '继续加油！', '你太厉害了！', '再来一局？',
+                '🤖 正在计算...', '这个选择不错', '我学会了！', '轮到我了！',
+                '看我的！', '😊', '👍', '🎯 好准！', '⚡ 快速！'
+            ];
+            const response = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+            this.addChatMessage({
+                player_id: this.room.opponentId,
+                player_name: this.room.opponentName,
+                message: response
+            });
+        }, 1000);
+    }
+
+    async sendSystemMessage(text) {
+        if (this.room.opponentIsAI) {
+            this.addSystemMessage(text);
+            return;
+        }
+
+        if (!this.isSupabaseAvailable() || !this.room.battleId) return;
+
+        try {
+            await this.game.state.supabase
+                .from('candy_math_battle_messages')
+                .insert([{
+                    battle_id: this.room.battleId,
+                    player_id: 'system',
+                    player_name: '系统',
+                    message: text,
+                    message_type: 'system'
+                }]);
+        } catch (error) {
+            console.error('发送系统消息失败:', error);
+        }
+    }
+
+    addSystemMessage(text) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return;
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message system';
+        msgDiv.textContent = text;
+        chat.appendChild(msgDiv);
+        
+        this.limitChatMessages(chat);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    addChatMessage(message) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return;
+
+        const msgDiv = document.createElement('div');
+        const displayMessage = message.message.length > 100 
+            ? message.message.substring(0, 100) + '...' 
+            : message.message;
+        const safeMessage = this.escapeHtml(displayMessage || '');
+        
+        if (message.player_id === 'system') {
+            msgDiv.className = 'message system';
+            msgDiv.textContent = safeMessage;
+        } else if (message.player_id === this.game.state?.currentUser?.id) {
+            msgDiv.className = 'message self';
+            msgDiv.innerHTML = `<span class="message-sender">你:</span> ${safeMessage}`;
+        } else {
+            msgDiv.className = 'message opponent';
+            const senderName = (message.player_name || '对手');
+            msgDiv.innerHTML = `<span class="message-sender">${this.escapeHtml(senderName)}:</span> ${safeMessage}`;
+        }
+
+        chat.appendChild(msgDiv);
+        this.limitChatMessages(chat);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    addOpponentMove(round) {
+        const chat = document.getElementById('chat-messages');
+        if (!chat) return;
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message system';
+        const result = round.is_correct ? '✓ 正确' : '✗ 错误';
+        msgDiv.textContent = `${this.room.opponentName} 选择了 ${round.num1} + ${round.num2} = ${round.num1 + round.num2} ${result}`;
+        
+        chat.appendChild(msgDiv);
+        this.limitChatMessages(chat);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    limitChatMessages(chat) {
+        while (chat.children.length > this.constants.MAX_CHAT_MESSAGES) {
+            chat.removeChild(chat.firstChild);
+        }
+    }
+
+    // ==================== 清理和销毁 ====================
+
+    leaveBattle() {
+        if (this.isLeaving) return;
+        this.isLeaving = true;
+        
+        console.log('🚪 离开对战，清理所有资源...');
+        
+        try {
+            // 立即停止 AI 相关定时器
+            this.cleanupAIResources();
+            
+            // 设置游戏状态为非活跃
+            this.room.gameActive = false;
+            this.room.myTurn = false;
+            
+            this.clearSoundQueue();
+            this.stopAllSounds();
+            this.cleanupMatch();
+            this.stopTurnTimer();
+            this.stopAllTimers();
+            
+            if (this.pollingInterval) {
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+            }
+            
+            if (this.rematchCheckInterval) {
+                clearInterval(this.rematchCheckInterval);
+                this.rematchCheckInterval = null;
+            }
+            
+            if (this.room.tournamentChannel) {
+                this.room.tournamentChannel.unsubscribe();
+                this.room.tournamentChannel = null;
+            }
+            
+            if (this.room.channel) {
+                try {
+                    this.room.channel.untrack();
+                    this.room.channel.unsubscribe();
+                } catch (e) {}
+                this.room.channel = null;
+            }
+            
+            if (this.game.state.currentUser) {
+                this.leaveQueue(this.game.state.currentUser.id);
+            }
+            
+            if (this.observers) {
+                Object.values(this.observers).forEach(observer => {
+                    if (observer) {
+                        if (observer.unobserve) {
+                            const battleContainer = document.querySelector('.battle-container');
+                            if (battleContainer) observer.unobserve(battleContainer);
+                        }
+                        observer.disconnect();
+                    }
+                });
+            }
+            
+            this.hideBattleUI();
+            this.resetAllState();
+            this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+        } finally {
+            setTimeout(() => { this.isLeaving = false; }, 500);
+        }
+    }
+
+    hideBattleUI() {
+        const battleModal = document.querySelector('.battle-modal');
+        if (battleModal) battleModal.style.display = 'none';
+        
+        const battleActive = document.getElementById('battle-active');
+        const battleWaiting = document.getElementById('battle-waiting');
+        const battleResult = document.getElementById('battle-result');
+        
+        if (battleActive) battleActive.style.display = 'none';
+        if (battleWaiting) battleWaiting.style.display = 'none';
+        if (battleResult) battleResult.style.display = 'none';
+        
+        const tempElements = ['match-waiting-hint', 'ai-option', 'long-wait-suggestion', 'offline-hint', 'zoom-warning'];
+        tempElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
+        document.querySelectorAll('.offline-hint, .room-code-hint').forEach(el => el.remove());
+    }
+
+    stopAllTimers() {
+        const timers = [
+            this.aiMoveTimer, this.aiResponseTimer, this.aiCooldownTimer,
+            this.localPollingTimer, this.matchTimeoutId, this.longWaitTimer,
+            this.reconnectTimer, this.broadcastReconnectTimer, this.cardClickTimer,
+            this.zoomTimer, this.refreshTimer, this.heartbeatInterval,
+            this.scoreSyncInterval, this.queueStatusInterval, this.broadcastHeartbeatTimer,
+            this.room.roundTimer, this.soundProcessTimer, this.zoomCheckThrottle,
+            this.subscriptionCheckTimer, this.initRetryTimer, this.pollingInterval,
+            this.rematchCheckInterval
+        ];
+        
+        timers.forEach(timer => {
+            if (timer) {
+                clearTimeout(timer);
+                clearInterval(timer);
+            }
+        });
+        
+        this.aiMoveTimer = null;
+        this.aiResponseTimer = null;
+        this.aiCooldownTimer = null;
+        this.localPollingTimer = null;
+        this.matchTimeoutId = null;
+        this.longWaitTimer = null;
+        this.reconnectTimer = null;
+        this.broadcastReconnectTimer = null;
+        this.cardClickTimer = null;
+        this.zoomTimer = null;
+        this.refreshTimer = null;
+        this.heartbeatInterval = null;
+        this.scoreSyncInterval = null;
+        this.queueStatusInterval = null;
+        this.broadcastHeartbeatTimer = null;
+        this.room.roundTimer = null;
+        this.soundProcessTimer = null;
+        this.zoomCheckThrottle = null;
+        this.subscriptionCheckTimer = null;
+        this.initRetryTimer = null;
+        this.pollingInterval = null;
+        this.rematchCheckInterval = null;
+    }
+
+    resetAllState() {
+        this.room = {
+            roomCode: null, battleId: null, playerRole: null, opponentId: null,
+            opponentName: null, opponentIsAI: false, aiDifficulty: 'medium',
+            status: 'waiting', myTurn: false, roundTimer: null, channel: null,
+            subscriptionId: null, gameActive: false, selectedCards: [], timeLeft: 30,
+            tournamentMode: false, tournamentId: null, tournamentMatchId: null, tournamentChannel: null,
+            usingPolling: false
+        };
+        
+        this.matchQueue = [];
+        this.pendingClicks = [];
+        this.reconnectAttempts = 0;
+        this.aiMoveRetryCount = 0;
+        this.aiGlobalRetryCount = 0;
+        this.cardClickProcessing = false;
+        this.endTurnInProgress = false;
+        this.rematchInProgress = false;
+        this.scoreUpdateInProgress = false;
+        this.aiResponsePending = false;
+        this.refreshCount = 0;
+        this.isRefreshing = false;
+        this.offlineMode = false;
+        this._lastCacheVersion = 0;
+        this.matchRetryCount = 0;
+        this.isMatching = false;
+        
+        Object.keys(this.semaphores).forEach(key => {
+            this.semaphores[key] = { locked: false, queue: [], maxLength: this.semaphores[key].maxLength };
+        });
+        
+        if (this.activeSubscriptions) {
+            this.activeSubscriptions.forEach((value, subKey) => {
+                const channel = this.game?.state?.supabase?.getChannel(subKey);
+                if (channel) channel.unsubscribe().catch(() => {});
+            });
+            this.activeSubscriptions.clear();
+        }
+        
+        this.cachedElements = null;
+        this.cacheVersion = 0;
+        this.clearSoundQueue();
+        this._wrappedMethods = new WeakMap();
+    }
+
+    async rematch() {
+        if (this.rematchInProgress) return;
+        this.rematchInProgress = true;
+        
+        console.log('🔄 再来一局...');
+        
+        try {
+            const resultDiv = document.getElementById('battle-result');
+            if (resultDiv) resultDiv.style.display = 'none';
+            
+            const wasAIBattle = this.room.opponentIsAI;
+            const opponentId = this.room.opponentId;
+            const opponentName = this.room.opponentName;
+            const aiDifficulty = this.room.aiDifficulty;
+            const battleId = this.room.battleId;
+            
+            if (wasAIBattle) {
+                this.leaveBattle();
+                this.showAIDifficultySelect();
+                setTimeout(() => { this.rematchInProgress = false; }, 1000);
+                return;
+            }
+            
+            if (battleId && this.isSupabaseAvailable()) {
+                const { data: battle } = await this.game.state.supabase
+                    .from('candy_math_battles')
+                    .select('rematch_request, status')
+                    .eq('id', battleId)
+                    .single();
+                
+                if (battle) {
+                    if (battle.rematch_request && battle.rematch_request !== this.game.state.currentUser.id) {
+                        console.log('对方已请求再来一局，开始新对局');
+                        this.addSystemMessage('🔄 双方都同意再来一局，开始新对局！');
+                        
+                        await this.game.state.supabase
+                            .from('candy_math_battles')
+                            .update({ rematch_request: null })
+                            .eq('id', battleId);
+                        
+                        this.leaveBattle();
+                        await this.createRematchRoom(opponentId, opponentName);
+                    } else {
+                        console.log('发送再来一局请求');
+                        await this.game.state.supabase
+                            .from('candy_math_battles')
+                            .update({ rematch_request: this.game.state.currentUser.id })
+                            .eq('id', battleId);
+                        
+                        this.showFeedback('已发送再来一局请求，等待对方确认...', '#a3d8d8');
+                        this.addSystemMessage(`🔄 ${this.game.state.currentUser.name} 请求再来一局`);
+                        
+                        this.waitForRematchResponse(battleId, opponentId, opponentName);
+                    }
+                    return;
+                }
+            }
+            
+            this.leaveBattle();
+            this.showModeSelect();
+            
+        } catch (error) {
+            console.error('再来一局失败:', error);
+            this.leaveBattle();
+            this.showModeSelect();
+        } finally {
+            setTimeout(() => { this.rematchInProgress = false; }, 1000);
+        }
+    }
+
+    waitForRematchResponse(battleId, opponentId, opponentName) {
+        let waitCount = 0;
+        const maxWait = 30;
+        
+        this.rematchCheckInterval = setInterval(async () => {
+            waitCount++;
+            
+            try {
+                const { data: battle } = await this.game.state.supabase
+                    .from('candy_math_battles')
+                    .select('rematch_request, status')
+                    .eq('id', battleId)
+                    .single();
+                
+                if (!battle) {
+                    clearInterval(this.rematchCheckInterval);
+                    this.rematchCheckInterval = null;
+                    this.showFeedback('房间已失效', '#ff4444');
+                    this.leaveBattle();
+                    this.showModeSelect();
+                    return;
+                }
+                
+                if (battle.rematch_request && battle.rematch_request !== this.game.state.currentUser.id) {
+                    clearInterval(this.rematchCheckInterval);
+                    this.rematchCheckInterval = null;
+                    this.addSystemMessage('🎉 对方同意了再来一局！');
+                    
+                    await this.game.state.supabase
+                        .from('candy_math_battles')
+                        .update({ rematch_request: null })
+                        .eq('id', battleId);
+                    
+                    this.leaveBattle();
+                    await this.createRematchRoom(opponentId, opponentName);
+                    return;
+                }
+                
+                if (battle.status === 'finished' && !battle.rematch_request) {
+                    clearInterval(this.rematchCheckInterval);
+                    this.rematchCheckInterval = null;
+                    this.showFeedback('对方拒绝了再来一局', '#fbb9c0');
+                    this.leaveBattle();
+                    this.showModeSelect();
+                    return;
+                }
+                
+                if (waitCount >= maxWait) {
+                    clearInterval(this.rematchCheckInterval);
+                    this.rematchCheckInterval = null;
+                    this.showFeedback('等待超时，对方未响应', '#ffa500');
+                    
+                    await this.game.state.supabase
+                        .from('candy_math_battles')
+                        .update({ rematch_request: null })
+                        .eq('id', battleId);
+                    
+                    this.leaveBattle();
+                    this.showModeSelect();
+                }
+            } catch (error) {
+                console.error('检查再来一局状态失败:', error);
+                if (waitCount >= maxWait) {
+                    clearInterval(this.rematchCheckInterval);
+                    this.rematchCheckInterval = null;
+                    this.leaveBattle();
+                    this.showModeSelect();
+                }
+            }
+        }, 1000);
+    }
+
+    async createRematchRoom(opponentId, opponentName) {
+        if (!this.isSupabaseAvailable()) {
+            this.showFeedback('网络未连接，无法创建房间', '#ff4444');
+            this.showModeSelect();
+            return;
+        }
+
+        const user = this.game.state.currentUser;
+        if (!user) {
+            this.showFeedback('请先登录', '#ff4444');
+            return;
+        }
+
+        try {
+            const roomCode = this.generateRoomCode();
+            const firstPlayer = Math.random() < 0.5 ? user.id : opponentId;
+            
+            const { data: battle, error } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .insert([{
+                    room_code: roomCode,
+                    player1_id: user.id,
+                    player1_name: user.name,
+                    player2_id: opponentId,
+                    player2_name: opponentName,
+                    status: 'playing',
+                    mode: 'challenge',
+                    difficulty: 'medium',
+                    started_at: new Date().toISOString(),
+                    current_turn: firstPlayer,
+                    player1_score: 0,
+                    player2_score: 0,
+                    player1_progress: 0,
+                    player2_progress: 0
+                }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            this.room.battleId = battle.id;
+            this.room.roomCode = roomCode;
+            this.room.playerRole = 'player1';
+            this.room.opponentId = opponentId;
+            this.room.opponentName = opponentName;
+            this.room.status = 'playing';
+            this.room.gameActive = true;
+            this.room.myTurn = firstPlayer === user.id;
+            this.room.opponentIsAI = false;
+            this.room.timeLeft = 30;
+            
+            this.showFeedback('新对局开始！', '#a3d8d8');
+            this.startBattleAfterJoin();
+            
+        } catch (error) {
+            console.error('创建再来一局房间失败:', error);
+            this.showFeedback('创建房间失败，请重试', '#ff4444');
+            this.showModeSelect();
+        }
+    }
+
+    closeBattle() {
+        this.leaveBattle();
+        if (this.game.ui) this.game.ui.closeModal('battle-modal');
+    }
+
+    showJoinModal() {
+        if (this.game.ui) {
+            this.game.ui.openModal('join-modal');
+        } else {
+            const modal = document.getElementById('join-modal');
+            if (modal) modal.style.display = 'flex';
+        }
+        
+        const input = document.getElementById('room-code-input');
+        if (input) {
+            input.value = '';
+            input.focus();
+            
+            input.addEventListener('input', function(e) {
+                e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            });
+            
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    this.confirmJoin();
+                }
+            };
+        }
+        
+        const modal = document.getElementById('join-modal');
+        if (modal) {
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    this.closeJoinModal();
+                }
+            };
+        }
+    }
+
+    closeJoinModal() {
+        if (this.game.ui) this.game.ui.closeModal('join-modal');
+    }
+
+    confirmJoin() {
+        const roomCodeInput = document.getElementById('room-code-input');
+        const roomCode = roomCodeInput?.value?.toUpperCase();
+        if (roomCode && roomCode.length === 6) {
+            this.closeJoinModal();
+            this.joinBattleRoom(roomCode);
+        } else {
+            this.showFeedback('请输入6位房间码', '#ff4444');
+        }
+    }
+
+    joinQueue(player) {
+        const existing = this.matchQueue.find(p => p.id === player.id);
+        if (existing) return;
+        this.matchQueue.push({ ...player, joinTime: Date.now() });
+        this.matchQueue.sort((a, b) => a.elo - b.elo);
+    }
+
+    leaveQueue(playerId) {
+        this.matchQueue = this.matchQueue.filter(p => p.id !== playerId);
+    }
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async destroy() {
+        if (this._isDestroying) return;
+        this._isDestroying = true;
+        
+        console.log('开始销毁 BattleMode 实例...');
+        
+        if (this.subscriptionCheckTimer) clearInterval(this.subscriptionCheckTimer);
+        if (this.initRetryTimer) clearTimeout(this.initRetryTimer);
+        if (this.pollingInterval) clearInterval(this.pollingInterval);
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+        if (this.rematchCheckInterval) clearInterval(this.rematchCheckInterval);
+        
+        this.leaveBattle();
+        this.cleanupMatch();
+        this.cleanupAIResources();
+        this.stopAllTimers();
+        
+        if (this.room.tournamentChannel) {
+            this.room.tournamentChannel.unsubscribe();
+            this.room.tournamentChannel = null;
+        }
+        
+        if (this.room.channel) {
+            try {
+                await this.room.channel.untrack();
+                this.room.channel.unsubscribe();
+            } catch (e) {}
+            this.room.channel = null;
+        }
+        
+        this.removeAllEventListeners();
+        
+        const eventHandlers = [
+            { target: window, event: 'online', handler: this.onlineHandler },
+            { target: window, event: 'offline', handler: this.offlineHandler },
+            { target: window, event: 'popstate', handler: this.popStateHandler },
+            { target: document, event: 'visibilitychange', handler: this.visibilityHandler },
+            { target: window, event: 'beforeunload', handler: this.beforeUnloadHandler }
+        ];
+        
+        eventHandlers.forEach(({ target, event, handler }) => {
+            if (handler) target.removeEventListener(event, handler);
+        });
+        
+        if (this.broadcastChannel) {
+            this.broadcastChannel.close();
+            this.broadcastChannel = null;
+        }
+        
+        const tempElements = ['match-waiting-hint', 'ai-option', 'candy-battle-styles', 'zoom-warning', 'long-wait-suggestion'];
+        tempElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
+        
+        this.cachedElements = null;
+        this.cardTemplate = null;
+        this.safeStorage().removeItem(this.constants.LOCAL_STORAGE_KEY);
+        this.clearSoundQueue();
+        
+        this.game = null;
+        this.memoryStorage = null;
+        this._wrappedMethods = new WeakMap();
+        this._initialized = false;
+        this._isDestroying = false;
+        
+        console.log('BattleMode 实例销毁完成');
+    }
+}
+
+window.BattleMode = BattleMode;
+
+// ==================== 第 8 部分结束 ====================
+// ==================== 文件结束 ====================
