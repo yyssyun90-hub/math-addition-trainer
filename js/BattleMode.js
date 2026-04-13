@@ -7168,8 +7168,10 @@ class BattleMode {
             
             if (wasAIBattle) {
                 this.leaveBattle();
-                this.showAIDifficultySelect();
-                setTimeout(() => { this.rematchInProgress = false; }, 1000);
+                setTimeout(() => {
+                    this.showAIDifficultySelect();
+                    this.rematchInProgress = false;
+                }, 200);
                 return;
             }
             
