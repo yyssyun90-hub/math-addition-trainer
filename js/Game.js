@@ -267,8 +267,7 @@ class CandyMathGame {
         if (!this.battle) {
             console.log('初始化对战模式...');
             this.battle = new BattleMode(this);
-            // BattleMode 会在自己的 init() 方法中完成初始化
-            // 不需要在这里额外调用，避免重复初始化
+            this.battle.init();
             console.log('对战模式实例已创建');
         }
         return this.battle;
