@@ -6230,12 +6230,9 @@ class BattleMode {
         
         console.log('BattleMode 实例销毁完成');
     }
-}
-
-window.BattleMode = BattleMode;
 
 // ==================== 第 6 部分结束 ====================
-    // ==================== 第 7 部分 / 共 8 部分 ====================
+// ==================== 第 7 部分 / 共 8 部分 ====================
 
     restoreFullUIFromState(state) {
         const player1Score = document.getElementById('player1-score');
