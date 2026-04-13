@@ -1035,6 +1035,9 @@ class BattleMode {
                 display: none;
                 justify-content: center;
                 align-items: center;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                padding: 20px 0;
             }
 
             .battle-card {
@@ -1045,6 +1048,9 @@ class BattleMode {
                 padding: 30px !important;
                 max-width: 500px;
                 width: 90%;
+                max-height: 95vh;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
                 border: 3px solid rgba(255,255,255,0.9) !important;
                 box-shadow: 
                     0 30px 50px rgba(255, 158, 181, 0.25),
@@ -1053,6 +1059,34 @@ class BattleMode {
                 text-align: center;
                 position: relative;
                 animation: cardFloat 0.5s ease-out;
+            }
+
+            /* 自定义滚动条样式 */
+            .battle-card::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .battle-card::-webkit-scrollbar-track {
+                background: rgba(255, 240, 245, 0.5);
+                border-radius: 10px;
+            }
+
+            .battle-card::-webkit-scrollbar-thumb {
+                background: linear-gradient(135deg, var(--candy-pink), var(--lavender));
+                border-radius: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+            }
+
+            /* 移动端优化 */
+            @media (max-width: 480px) {
+                .battle-card {
+                    padding: 20px !important;
+                    max-height: 90vh;
+                }
+                
+                .battle-modal {
+                    padding: 10px 0;
+                }
             }
 
             @keyframes cardFloat {
@@ -2121,101 +2155,135 @@ class BattleMode {
     }
 
     bindEvents() {
-        this.removeAllEventListeners();
+    this.removeAllEventListeners();
 
-        const quickMatchBtn = document.getElementById('quick-match-btn');
-        if (quickMatchBtn) {
-            this.quickMatchHandler = () => this.showModeSelect();
-            quickMatchBtn.addEventListener('click', this.quickMatchHandler);
-        }
+    console.log('🔗 开始绑定事件...');
 
-        const joinRoomBtn = document.getElementById('join-room-btn');
-        if (joinRoomBtn) {
-            this.joinRoomHandler = () => this.showJoinModal();
-            joinRoomBtn.addEventListener('click', this.joinRoomHandler);
-        }
-
-        const copyBtn = document.getElementById('copy-room-code');
-        if (copyBtn) {
-            this.copyHandler = () => this.copyRoomCode();
-            copyBtn.addEventListener('click', this.copyHandler);
-        }
-
-        const cancelMatch = document.getElementById('cancel-match');
-        if (cancelMatch) {
-            this.cancelHandler = () => this.cancelMatch();
-            cancelMatch.addEventListener('click', this.cancelHandler);
-        }
-
-        const sendMessage = document.getElementById('send-message');
-        if (sendMessage) {
-            this.sendHandler = () => this.sendChatMessage();
-            sendMessage.addEventListener('click', this.sendHandler);
-        }
-
-        const chatInput = document.getElementById('chat-input');
-        if (chatInput) {
-            this.chatKeyHandler = (e) => {
-                if (e.key === 'Enter') {
-                    this.sendChatMessage();
-                }
-            };
-            chatInput.addEventListener('keypress', this.chatKeyHandler);
-        }
-
-        const rematchBtn = document.getElementById('rematch-btn');
-        if (rematchBtn) {
-            this.rematchHandler = () => this.rematch();
-            rematchBtn.addEventListener('click', this.rematchHandler);
-        }
-
-        const closeBattleBtn = document.getElementById('close-battle-btn');
-        if (closeBattleBtn) {
-            this.closeHandler = () => this.closeBattle();
-            closeBattleBtn.addEventListener('click', this.closeHandler);
-        }
-
-        const confirmJoin = document.getElementById('confirm-join');
-        if (confirmJoin) {
-            this.confirmJoinHandler = () => this.confirmJoin();
-            confirmJoin.addEventListener('click', this.confirmJoinHandler);
-        }
-
-        const cancelJoin = document.getElementById('cancel-join');
-        if (cancelJoin) {
-            this.cancelJoinHandler = () => this.closeJoinModal();
-            cancelJoin.addEventListener('click', this.cancelJoinHandler);
-        }
-
-        const continueWaitingBtn = document.getElementById('continue-waiting-btn');
-        if (continueWaitingBtn) {
-            this.continueWaitingHandler = () => this.continueWaiting();
-            continueWaitingBtn.addEventListener('click', this.continueWaitingHandler);
-        }
-
-        const playWithAIBtn = document.getElementById('play-with-ai-btn');
-        if (playWithAIBtn) {
-            this.playWithAIHandler = () => this.startAIBattle();
-            playWithAIBtn.addEventListener('click', this.playWithAIHandler);
-        }
-
-        const battleGrid = document.getElementById('battle-grid');
-        if (battleGrid) {
-            this.gridClickHandler = (e) => this.handleBattleCardClick(e);
-            this.gridTouchHandler = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.touches.length > 1) return;
-                this.handleBattleCardClick(e);
-            };
-            this.gridContextHandler = (e) => e.preventDefault();
-            
-            battleGrid.addEventListener('click', this.gridClickHandler);
-            battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
-            battleGrid.addEventListener('contextmenu', this.gridContextHandler);
-        }
+    const quickMatchBtn = document.getElementById('quick-match-btn');
+    if (quickMatchBtn) {
+        this.quickMatchHandler = () => this.showModeSelect();
+        quickMatchBtn.addEventListener('click', this.quickMatchHandler);
+        console.log('✅ quick-match-btn 事件已绑定');
     }
 
+    const joinRoomBtn = document.getElementById('join-room-btn');
+    if (joinRoomBtn) {
+        // 移除可能存在的旧事件
+        const newBtn = joinRoomBtn.cloneNode(true);
+        joinRoomBtn.parentNode.replaceChild(newBtn, joinRoomBtn);
+        
+        this.joinRoomHandler = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🔑 加入房间按钮被点击');
+            this.showJoinModal();
+        };
+        newBtn.addEventListener('click', this.joinRoomHandler);
+        console.log('✅ join-room-btn 事件已绑定');
+    } else {
+        console.warn('⚠️ join-room-btn 未找到，延迟绑定...');
+        setTimeout(() => {
+            const retryBtn = document.getElementById('join-room-btn');
+            if (retryBtn) {
+                const newBtn = retryBtn.cloneNode(true);
+                retryBtn.parentNode.replaceChild(newBtn, retryBtn);
+                
+                this.joinRoomHandler = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔑 加入房间按钮被点击（延迟绑定）');
+                    this.showJoinModal();
+                };
+                newBtn.addEventListener('click', this.joinRoomHandler);
+                console.log('✅ join-room-btn 延迟绑定成功');
+            }
+        }, 1000);
+    }
+
+    // 其余事件绑定保持不变...
+    const copyBtn = document.getElementById('copy-room-code');
+    if (copyBtn) {
+        this.copyHandler = () => this.copyRoomCode();
+        copyBtn.addEventListener('click', this.copyHandler);
+    }
+
+    const cancelMatch = document.getElementById('cancel-match');
+    if (cancelMatch) {
+        this.cancelHandler = () => this.cancelMatch();
+        cancelMatch.addEventListener('click', this.cancelHandler);
+    }
+
+    const sendMessage = document.getElementById('send-message');
+    if (sendMessage) {
+        this.sendHandler = () => this.sendChatMessage();
+        sendMessage.addEventListener('click', this.sendHandler);
+    }
+
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        this.chatKeyHandler = (e) => {
+            if (e.key === 'Enter') {
+                this.sendChatMessage();
+            }
+        };
+        chatInput.addEventListener('keypress', this.chatKeyHandler);
+    }
+
+    const rematchBtn = document.getElementById('rematch-btn');
+    if (rematchBtn) {
+        this.rematchHandler = () => this.rematch();
+        rematchBtn.addEventListener('click', this.rematchHandler);
+    }
+
+    const closeBattleBtn = document.getElementById('close-battle-btn');
+    if (closeBattleBtn) {
+        this.closeHandler = () => this.closeBattle();
+        closeBattleBtn.addEventListener('click', this.closeHandler);
+    }
+
+    const confirmJoin = document.getElementById('confirm-join');
+    if (confirmJoin) {
+        this.confirmJoinHandler = () => this.confirmJoin();
+        confirmJoin.addEventListener('click', this.confirmJoinHandler);
+    }
+
+    const cancelJoin = document.getElementById('cancel-join');
+    if (cancelJoin) {
+        this.cancelJoinHandler = () => this.closeJoinModal();
+        cancelJoin.addEventListener('click', this.cancelJoinHandler);
+    }
+
+    const continueWaitingBtn = document.getElementById('continue-waiting-btn');
+    if (continueWaitingBtn) {
+        this.continueWaitingHandler = () => this.continueWaiting();
+        continueWaitingBtn.addEventListener('click', this.continueWaitingHandler);
+    }
+
+    const playWithAIBtn = document.getElementById('play-with-ai-btn');
+    if (playWithAIBtn) {
+        this.playWithAIHandler = () => this.startAIBattle();
+        playWithAIBtn.addEventListener('click', this.playWithAIHandler);
+    }
+
+    const battleGrid = document.getElementById('battle-grid');
+    if (battleGrid) {
+        this.gridClickHandler = (e) => this.handleBattleCardClick(e);
+        this.gridTouchHandler = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.touches.length > 1) return;
+            this.handleBattleCardClick(e);
+        };
+        this.gridContextHandler = (e) => e.preventDefault();
+        
+        battleGrid.addEventListener('click', this.gridClickHandler);
+        battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
+        battleGrid.addEventListener('contextmenu', this.gridContextHandler);
+    }
+    
+    console.log('🔗 事件绑定完成');
+}
+    
     // ==================== 第 2 部分结束 ====================
     // ==================== 第 3 部分 / 共 8 部分 ====================
 
@@ -6232,7 +6300,7 @@ class BattleMode {
     }
 
 // ==================== 第 6 部分结束 ====================
-// ==================== 第 7 部分 / 共 8 部分 ====================
+    // ==================== 第 7 部分 / 共 8 部分 ====================
 
     restoreFullUIFromState(state) {
         const player1Score = document.getElementById('player1-score');
