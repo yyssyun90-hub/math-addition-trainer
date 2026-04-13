@@ -977,7 +977,7 @@ class BattleMode {
     }
 
     // ==================== 第 1 部分结束 ====================
-    // ==================== 第 2 部分 / 共 8 部分 ====================
+        // ==================== 第 2 部分 / 共 8 部分 ====================
 
     injectCandyStyles() {
         const styleId = 'candy-battle-styles';
@@ -1038,6 +1038,34 @@ class BattleMode {
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
                 padding: 20px 0;
+            }
+
+            #battle-active {
+                max-height: 95vh;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                padding: 5px;
+            }
+
+            #battle-active::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            #battle-active::-webkit-scrollbar-track {
+                background: rgba(255, 240, 245, 0.5);
+                border-radius: 10px;
+            }
+
+            #battle-active::-webkit-scrollbar-thumb {
+                background: linear-gradient(135deg, var(--candy-pink), var(--lavender));
+                border-radius: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+            }
+
+            @media (max-width: 480px) {
+                #battle-active {
+                    max-height: 90vh;
+                }
             }
 
             .battle-card {
@@ -2155,135 +2183,134 @@ class BattleMode {
     }
 
     bindEvents() {
-    this.removeAllEventListeners();
+        this.removeAllEventListeners();
 
-    console.log('🔗 开始绑定事件...');
+        console.log('🔗 开始绑定事件...');
 
-    const quickMatchBtn = document.getElementById('quick-match-btn');
-    if (quickMatchBtn) {
-        this.quickMatchHandler = () => this.showModeSelect();
-        quickMatchBtn.addEventListener('click', this.quickMatchHandler);
-        console.log('✅ quick-match-btn 事件已绑定');
-    }
+        const quickMatchBtn = document.getElementById('quick-match-btn');
+        if (quickMatchBtn) {
+            this.quickMatchHandler = () => this.showModeSelect();
+            quickMatchBtn.addEventListener('click', this.quickMatchHandler);
+            console.log('✅ quick-match-btn 事件已绑定');
+        }
 
-    const joinRoomBtn = document.getElementById('join-room-btn');
-    if (joinRoomBtn) {
-        // 移除可能存在的旧事件
-        const newBtn = joinRoomBtn.cloneNode(true);
-        joinRoomBtn.parentNode.replaceChild(newBtn, joinRoomBtn);
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        if (joinRoomBtn) {
+            // 移除可能存在的旧事件
+            const newBtn = joinRoomBtn.cloneNode(true);
+            joinRoomBtn.parentNode.replaceChild(newBtn, joinRoomBtn);
+            
+            this.joinRoomHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔑 加入房间按钮被点击');
+                this.showJoinModal();
+            };
+            newBtn.addEventListener('click', this.joinRoomHandler);
+            console.log('✅ join-room-btn 事件已绑定');
+        } else {
+            console.warn('⚠️ join-room-btn 未找到，延迟绑定...');
+            setTimeout(() => {
+                const retryBtn = document.getElementById('join-room-btn');
+                if (retryBtn) {
+                    const newBtn = retryBtn.cloneNode(true);
+                    retryBtn.parentNode.replaceChild(newBtn, retryBtn);
+                    
+                    this.joinRoomHandler = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🔑 加入房间按钮被点击（延迟绑定）');
+                        this.showJoinModal();
+                    };
+                    newBtn.addEventListener('click', this.joinRoomHandler);
+                    console.log('✅ join-room-btn 延迟绑定成功');
+                }
+            }, 1000);
+        }
+
+        const copyBtn = document.getElementById('copy-room-code');
+        if (copyBtn) {
+            this.copyHandler = () => this.copyRoomCode();
+            copyBtn.addEventListener('click', this.copyHandler);
+        }
+
+        const cancelMatch = document.getElementById('cancel-match');
+        if (cancelMatch) {
+            this.cancelHandler = () => this.cancelMatch();
+            cancelMatch.addEventListener('click', this.cancelHandler);
+        }
+
+        const sendMessage = document.getElementById('send-message');
+        if (sendMessage) {
+            this.sendHandler = () => this.sendChatMessage();
+            sendMessage.addEventListener('click', this.sendHandler);
+        }
+
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            this.chatKeyHandler = (e) => {
+                if (e.key === 'Enter') {
+                    this.sendChatMessage();
+                }
+            };
+            chatInput.addEventListener('keypress', this.chatKeyHandler);
+        }
+
+        const rematchBtn = document.getElementById('rematch-btn');
+        if (rematchBtn) {
+            this.rematchHandler = () => this.rematch();
+            rematchBtn.addEventListener('click', this.rematchHandler);
+        }
+
+        const closeBattleBtn = document.getElementById('close-battle-btn');
+        if (closeBattleBtn) {
+            this.closeHandler = () => this.closeBattle();
+            closeBattleBtn.addEventListener('click', this.closeHandler);
+        }
+
+        const confirmJoin = document.getElementById('confirm-join');
+        if (confirmJoin) {
+            this.confirmJoinHandler = () => this.confirmJoin();
+            confirmJoin.addEventListener('click', this.confirmJoinHandler);
+        }
+
+        const cancelJoin = document.getElementById('cancel-join');
+        if (cancelJoin) {
+            this.cancelJoinHandler = () => this.closeJoinModal();
+            cancelJoin.addEventListener('click', this.cancelJoinHandler);
+        }
+
+        const continueWaitingBtn = document.getElementById('continue-waiting-btn');
+        if (continueWaitingBtn) {
+            this.continueWaitingHandler = () => this.continueWaiting();
+            continueWaitingBtn.addEventListener('click', this.continueWaitingHandler);
+        }
+
+        const playWithAIBtn = document.getElementById('play-with-ai-btn');
+        if (playWithAIBtn) {
+            this.playWithAIHandler = () => this.startAIBattle();
+            playWithAIBtn.addEventListener('click', this.playWithAIHandler);
+        }
+
+        const battleGrid = document.getElementById('battle-grid');
+        if (battleGrid) {
+            this.gridClickHandler = (e) => this.handleBattleCardClick(e);
+            this.gridTouchHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.touches.length > 1) return;
+                this.handleBattleCardClick(e);
+            };
+            this.gridContextHandler = (e) => e.preventDefault();
+            
+            battleGrid.addEventListener('click', this.gridClickHandler);
+            battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
+            battleGrid.addEventListener('contextmenu', this.gridContextHandler);
+        }
         
-        this.joinRoomHandler = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🔑 加入房间按钮被点击');
-            this.showJoinModal();
-        };
-        newBtn.addEventListener('click', this.joinRoomHandler);
-        console.log('✅ join-room-btn 事件已绑定');
-    } else {
-        console.warn('⚠️ join-room-btn 未找到，延迟绑定...');
-        setTimeout(() => {
-            const retryBtn = document.getElementById('join-room-btn');
-            if (retryBtn) {
-                const newBtn = retryBtn.cloneNode(true);
-                retryBtn.parentNode.replaceChild(newBtn, retryBtn);
-                
-                this.joinRoomHandler = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🔑 加入房间按钮被点击（延迟绑定）');
-                    this.showJoinModal();
-                };
-                newBtn.addEventListener('click', this.joinRoomHandler);
-                console.log('✅ join-room-btn 延迟绑定成功');
-            }
-        }, 1000);
+        console.log('🔗 事件绑定完成');
     }
 
-    // 其余事件绑定保持不变...
-    const copyBtn = document.getElementById('copy-room-code');
-    if (copyBtn) {
-        this.copyHandler = () => this.copyRoomCode();
-        copyBtn.addEventListener('click', this.copyHandler);
-    }
-
-    const cancelMatch = document.getElementById('cancel-match');
-    if (cancelMatch) {
-        this.cancelHandler = () => this.cancelMatch();
-        cancelMatch.addEventListener('click', this.cancelHandler);
-    }
-
-    const sendMessage = document.getElementById('send-message');
-    if (sendMessage) {
-        this.sendHandler = () => this.sendChatMessage();
-        sendMessage.addEventListener('click', this.sendHandler);
-    }
-
-    const chatInput = document.getElementById('chat-input');
-    if (chatInput) {
-        this.chatKeyHandler = (e) => {
-            if (e.key === 'Enter') {
-                this.sendChatMessage();
-            }
-        };
-        chatInput.addEventListener('keypress', this.chatKeyHandler);
-    }
-
-    const rematchBtn = document.getElementById('rematch-btn');
-    if (rematchBtn) {
-        this.rematchHandler = () => this.rematch();
-        rematchBtn.addEventListener('click', this.rematchHandler);
-    }
-
-    const closeBattleBtn = document.getElementById('close-battle-btn');
-    if (closeBattleBtn) {
-        this.closeHandler = () => this.closeBattle();
-        closeBattleBtn.addEventListener('click', this.closeHandler);
-    }
-
-    const confirmJoin = document.getElementById('confirm-join');
-    if (confirmJoin) {
-        this.confirmJoinHandler = () => this.confirmJoin();
-        confirmJoin.addEventListener('click', this.confirmJoinHandler);
-    }
-
-    const cancelJoin = document.getElementById('cancel-join');
-    if (cancelJoin) {
-        this.cancelJoinHandler = () => this.closeJoinModal();
-        cancelJoin.addEventListener('click', this.cancelJoinHandler);
-    }
-
-    const continueWaitingBtn = document.getElementById('continue-waiting-btn');
-    if (continueWaitingBtn) {
-        this.continueWaitingHandler = () => this.continueWaiting();
-        continueWaitingBtn.addEventListener('click', this.continueWaitingHandler);
-    }
-
-    const playWithAIBtn = document.getElementById('play-with-ai-btn');
-    if (playWithAIBtn) {
-        this.playWithAIHandler = () => this.startAIBattle();
-        playWithAIBtn.addEventListener('click', this.playWithAIHandler);
-    }
-
-    const battleGrid = document.getElementById('battle-grid');
-    if (battleGrid) {
-        this.gridClickHandler = (e) => this.handleBattleCardClick(e);
-        this.gridTouchHandler = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.touches.length > 1) return;
-            this.handleBattleCardClick(e);
-        };
-        this.gridContextHandler = (e) => e.preventDefault();
-        
-        battleGrid.addEventListener('click', this.gridClickHandler);
-        battleGrid.addEventListener('touchstart', this.gridTouchHandler, { passive: false });
-        battleGrid.addEventListener('contextmenu', this.gridContextHandler);
-    }
-    
-    console.log('🔗 事件绑定完成');
-}
-    
     // ==================== 第 2 部分结束 ====================
     // ==================== 第 3 部分 / 共 8 部分 ====================
 
@@ -6164,11 +6191,19 @@ class BattleMode {
     }
 
     showJoinModal() {
+        console.log('📌 showJoinModal 被调用');
+        
         if (this.game.ui) {
             this.game.ui.openModal('join-modal');
         } else {
             const modal = document.getElementById('join-modal');
-            if (modal) modal.style.display = 'flex';
+            if (modal) {
+                modal.style.display = 'flex';
+                console.log('✅ 加入房间模态框已打开');
+            } else {
+                console.error('❌ 找不到 join-modal 元素');
+                return;
+            }
         }
         
         const input = document.getElementById('room-code-input');
@@ -6176,17 +6211,47 @@ class BattleMode {
             input.value = '';
             input.focus();
             
-            input.addEventListener('input', function(e) {
+            // 移除旧的监听器
+            const newInput = input.cloneNode(true);
+            input.parentNode.replaceChild(newInput, input);
+            
+            newInput.addEventListener('input', function(e) {
                 e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
             });
             
-            input.onkeypress = (e) => {
+            newInput.onkeypress = (e) => {
                 if (e.key === 'Enter') {
                     this.confirmJoin();
                 }
             };
         }
         
+        // ✅ 关键修复：重新绑定"加入"和"取消"按钮的事件
+        const confirmBtn = document.getElementById('confirm-join');
+        if (confirmBtn) {
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            newConfirmBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('✅ 确认加入按钮被点击');
+                this.confirmJoin();
+            };
+        }
+        
+        const cancelBtn = document.getElementById('cancel-join');
+        if (cancelBtn) {
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            newCancelBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('❌ 取消按钮被点击');
+                this.closeJoinModal();
+            };
+        }
+        
+        // 点击模态框外部关闭
         const modal = document.getElementById('join-modal');
         if (modal) {
             modal.onclick = (e) => {
@@ -6198,12 +6263,23 @@ class BattleMode {
     }
 
     closeJoinModal() {
-        if (this.game.ui) this.game.ui.closeModal('join-modal');
+        console.log('📌 closeJoinModal 被调用');
+        if (this.game.ui) {
+            this.game.ui.closeModal('join-modal');
+        } else {
+            const modal = document.getElementById('join-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
     }
 
     confirmJoin() {
+        console.log('📌 confirmJoin 被调用');
         const roomCodeInput = document.getElementById('room-code-input');
         const roomCode = roomCodeInput?.value?.toUpperCase();
+        console.log('输入的房间码:', roomCode);
+        
         if (roomCode && roomCode.length === 6) {
             this.closeJoinModal();
             this.joinBattleRoom(roomCode);
@@ -6299,7 +6375,7 @@ class BattleMode {
         console.log('BattleMode 实例销毁完成');
     }
 
-// ==================== 第 6 部分结束 ====================
+    // ==================== 第 6 部分结束 ====================
     // ==================== 第 7 部分 / 共 8 部分 ====================
 
     restoreFullUIFromState(state) {
