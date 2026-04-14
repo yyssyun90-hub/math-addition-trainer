@@ -184,7 +184,7 @@ class BattleMode {
             LOCAL_STORAGE_KEY: 'candy_battle_local',
             STORAGE_VERSION: '9.4.0',
             STORAGE_EXPIRY: 3600000,
-            MAX_REFRESH_COUNT: 3,
+            MAX_REFRESH_COUNT: 5,
             REFRESH_DEBOUNCE: 300,
             SOUND_QUEUE_MAX: 10,
             WRONG_SOUND_COOLDOWN: 200,
@@ -4408,7 +4408,7 @@ class BattleMode {
         
         let numbers;
         let attempts = 0;
-        const maxAttempts = 20;
+        const maxAttempts = 30;  // ✅ 增加最大尝试次数
         let hasValidPair = false;
         
         do {
@@ -4432,12 +4432,19 @@ class BattleMode {
         } while (!hasValidPair && attempts < maxAttempts);
         
         if (!hasValidPair) {
+            // ✅ 改进：确保生成有效的组合
             const num1 = Math.floor(Math.random() * Math.min(target + 1, 10));
             const num2 = target - num1;
             if (num2 >= 0 && num2 <= 9) {
+                // 将这对数字放到数组前两个位置
                 numbers[0] = num1;
                 numbers[1] = num2;
+            } else {
+                // 如果计算失败，使用默认值
+                numbers[0] = Math.min(target, 9);
+                numbers[1] = Math.max(0, target - 9);
             }
+            console.log(`✅ 强制添加有效组合: ${numbers[0]} + ${numbers[1]} = ${target}`);
         }
 
         const fragment = document.createDocumentFragment();
@@ -4463,7 +4470,7 @@ class BattleMode {
         
         let numbers;
         let attempts = 0;
-        const maxAttempts = 20;
+        const maxAttempts = 30;  // ✅ 增加最大尝试次数
         let hasValidPair = false;
         
         do {
@@ -4487,12 +4494,17 @@ class BattleMode {
         } while (!hasValidPair && attempts < maxAttempts);
         
         if (!hasValidPair) {
+            // ✅ 改进：确保生成有效的组合
             const num1 = Math.floor(Math.random() * Math.min(target + 1, 10));
             const num2 = target - num1;
             if (num2 >= 0 && num2 <= 9) {
                 numbers[0] = num1;
                 numbers[1] = num2;
+            } else {
+                numbers[0] = Math.min(target, 9);
+                numbers[1] = Math.max(0, target - 9);
             }
+            console.log(`✅ 强制添加有效组合: ${numbers[0]} + ${numbers[1]} = ${target}`);
         }
         
         const fragment = document.createDocumentFragment();
@@ -4514,9 +4526,13 @@ class BattleMode {
     }
 
     generateBattleTarget() {
-        const target = Math.floor(Math.random() * 10) + 5;
+        // ✅ 生成合理范围的目标数字（5-15之间）
+        const target = Math.floor(Math.random() * 11) + 5;  // 5-15
         const targetEl = document.getElementById('battle-target-number');
         if (targetEl) targetEl.textContent = target;
+        
+        // ✅ 生成新目标时重置刷新计数
+        this.refreshCount = 0;
     }
 
     async handleBattleCardClick(e) {
@@ -4623,6 +4639,9 @@ class BattleMode {
     }
 
     async handleCorrectMatch(card1, card2) {
+        // ✅ 重置刷新计数
+        this.refreshCount = 0;
+        
         this.playSound('correct');
         
         card1.classList.add('matched');
@@ -4662,18 +4681,22 @@ class BattleMode {
         this.refreshTimer = setTimeout(() => {
             this.refreshTimer = null;
             
-            if (this.refreshCount > this.constants.MAX_REFRESH_COUNT) {
+            // ✅ 增加最大刷新次数检查
+            if (this.refreshCount >= this.constants.MAX_REFRESH_COUNT) {
+                console.log(`⚠️ 刷新次数达到上限 (${this.refreshCount}/${this.constants.MAX_REFRESH_COUNT})，强制结束回合`);
                 this.refreshCount = 0;
                 this.endTurn();
                 return;
             }
             
             if (!this.checkGridHasValidCombination()) {
+                console.log(`🔄 没有有效组合，刷新网格 (${this.refreshCount + 1}/${this.constants.MAX_REFRESH_COUNT})`);
                 this.refreshBattleGrid();
                 this.generateBattleTarget();
                 this.refreshCount++;
                 this.showFeedback('✨ 重新生成数字组合', '#fba9c4');
             } else {
+                // ✅ 有有效组合时重置计数
                 this.refreshCount = 0;
             }
         }, this.constants.REFRESH_DEBOUNCE);
@@ -4684,13 +4707,22 @@ class BattleMode {
         if (!grid) return true;
 
         const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
-        if (cards.length < 2) return false;
+        if (cards.length < 2) {
+            console.log('⚠️ 卡片数量不足 2 张');
+            return false;
+        }
 
         const targetEl = document.getElementById('battle-target-number');
         if (!targetEl) return true;
         
         const target = parseInt(targetEl.textContent);
         if (isNaN(target)) return true;
+        
+        // ✅ 检查目标数字是否在合理范围内
+        if (target < 0 || target > 18) {
+            console.log('⚠️ 目标数字超出合理范围:', target);
+            return false;
+        }
 
         for (let i = 0; i < cards.length; i++) {
             for (let j = i + 1; j < cards.length; j++) {
@@ -4701,6 +4733,8 @@ class BattleMode {
                 }
             }
         }
+        
+        console.log('❌ 没有找到有效组合，目标:', target, '卡片:', cards.map(c => c.dataset.value));
         return false;
     }
 
@@ -4758,7 +4792,8 @@ class BattleMode {
         if (player2Card) player2Card.classList.toggle('active', !this.room.myTurn);
 
         if (this.room.opponentIsAI && !this.room.myTurn) {
-            if (turnText) turnText.textContent = 'AI思考中...';
+            // ✅ 使用翻译
+            if (turnText) turnText.textContent = I18n?.t?.('aiThinking') || 'AI 思考中...';
             if (timerEl) {
                 timerEl.textContent = `${this.room.timeLeft || 30}s`;
                 timerEl.classList.remove('warning');
