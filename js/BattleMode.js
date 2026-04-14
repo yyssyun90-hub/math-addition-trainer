@@ -2286,7 +2286,7 @@ class BattleMode {
     }
 
     // ==================== 第 2 部分结束 ====================
-    // ==================== 第 3 部分 / 共 8 部分 ====================
+        // ==================== 第 3 部分 / 共 8 部分 ====================
 
     handleKeydown(e) {
         if (e.key === 'Escape') {
@@ -2878,24 +2878,41 @@ class BattleMode {
         const joinInputArea = document.getElementById('join-room-input-area');
         const roomInput = document.getElementById('room-code-join-input');
         
+        // ✅ 修复：创建房间按钮 - 使用 cloneNode 确保事件绑定
         if (createRoomBtn) {
-            createRoomBtn.onclick = () => {
+            const newCreateBtn = createRoomBtn.cloneNode(true);
+            createRoomBtn.parentNode.replaceChild(newCreateBtn, createRoomBtn);
+            newCreateBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🏠 创建房间按钮被点击');
                 multiplayerModal.style.display = 'none';
                 this.createBattleRoom();
             };
         }
+        
+        // ✅ 修复：显示加入房间输入框按钮
         if (joinRoomBtn) {
-            joinRoomBtn.onclick = () => {
-                if (joinInputArea) joinInputArea.style.display = 'block';
-                if (roomInput) {
-                    roomInput.value = '';
-                    roomInput.focus();
-                    roomInput.addEventListener('input', function(e) {
+            const newJoinBtn = joinRoomBtn.cloneNode(true);
+            joinRoomBtn.parentNode.replaceChild(newJoinBtn, joinRoomBtn);
+            newJoinBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔑 加入房间按钮被点击');
+                const area = document.getElementById('join-room-input-area');
+                if (area) area.style.display = 'block';
+                const input = document.getElementById('room-code-join-input');
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                    // 自动转大写
+                    input.addEventListener('input', function(e) {
                         e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
                     });
-                    roomInput.onkeypress = (e) => {
+                    // 按回车加入
+                    input.onkeypress = (e) => {
                         if (e.key === 'Enter') {
-                            const code = roomInput.value.toUpperCase();
+                            const code = input.value.toUpperCase();
                             if (code && code.length === 6) {
                                 multiplayerModal.style.display = 'none';
                                 this.joinBattleRoom(code);
@@ -2907,9 +2924,17 @@ class BattleMode {
                 }
             };
         }
+        
+        // ✅ 修复：确认加入房间按钮
         if (confirmJoinRoom) {
-            confirmJoinRoom.onclick = () => {
-                const roomCode = roomInput?.value?.toUpperCase();
+            const newConfirmBtn = confirmJoinRoom.cloneNode(true);
+            confirmJoinRoom.parentNode.replaceChild(newConfirmBtn, confirmJoinRoom);
+            newConfirmBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('✅ 确认加入房间按钮被点击');
+                const input = document.getElementById('room-code-join-input');
+                const roomCode = input?.value?.toUpperCase();
                 if (roomCode && roomCode.length === 6) {
                     multiplayerModal.style.display = 'none';
                     this.joinBattleRoom(roomCode);
@@ -2918,14 +2943,30 @@ class BattleMode {
                 }
             };
         }
+        
+        // ✅ 修复：取消加入房间按钮
         if (cancelJoinRoom) {
-            cancelJoinRoom.onclick = () => {
-                if (joinInputArea) joinInputArea.style.display = 'none';
-                if (roomInput) roomInput.value = '';
+            const newCancelBtn = cancelJoinRoom.cloneNode(true);
+            cancelJoinRoom.parentNode.replaceChild(newCancelBtn, cancelJoinRoom);
+            newCancelBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('❌ 取消加入房间按钮被点击');
+                const area = document.getElementById('join-room-input-area');
+                if (area) area.style.display = 'none';
+                const input = document.getElementById('room-code-join-input');
+                if (input) input.value = '';
             };
         }
+        
+        // ✅ 修复：返回模式选择按钮
         if (backBtn) {
-            backBtn.onclick = () => {
+            const newBackBtn = backBtn.cloneNode(true);
+            backBtn.parentNode.replaceChild(newBackBtn, backBtn);
+            newBackBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔙 返回模式选择按钮被点击');
                 multiplayerModal.style.display = 'none';
                 this.showModeSelect();
             };
@@ -3042,7 +3083,8 @@ class BattleMode {
         const config = this.aiDelayConfig[this.room.aiDifficulty];
         const delay = Math.floor(Math.random() * (config.maxDelay - config.minDelay + 1)) + config.minDelay;
         
-        this.addSystemMessage(`🤖 AI 思考中... (约 ${Math.round(delay/1000)} 秒后作答)`);
+        const aiThinkingText = I18n?.t?.('aiThinking') || 'AI 思考中...';
+        this.addSystemMessage(`🤖 ${aiThinkingText} (约 ${Math.round(delay/1000)} 秒后作答)`);
         
         this.aiMoveTimer = setTimeout(() => {
             this.aiMoveTimer = null;
