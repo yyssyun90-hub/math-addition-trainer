@@ -5665,6 +5665,69 @@ class BattleMode {
         }
 
         this.playSound(iWon ? 'achievement' : 'wrong');
+        
+        // ✅ 关键修复：确保结果界面的按钮事件已绑定
+        setTimeout(() => {
+            // 修复再战一局按钮
+            const rematchBtn = document.getElementById('rematch-btn');
+            if (rematchBtn) {
+                const newBtn = rematchBtn.cloneNode(true);
+                rematchBtn.parentNode?.replaceChild(newBtn, rematchBtn);
+                newBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔄 再战一局按钮被点击');
+                    this.rematch();
+                };
+                console.log('✅ 再战一局按钮事件已绑定');
+            }
+            
+            // 修复结果界面的再战一局按钮（如果有）
+            const rematchResultBtn = document.getElementById('rematch-result-btn');
+            if (rematchResultBtn) {
+                const newResultBtn = rematchResultBtn.cloneNode(true);
+                rematchResultBtn.parentNode?.replaceChild(newResultBtn, rematchResultBtn);
+                newResultBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔄 结果界面再战一局按钮被点击');
+                    this.rematch();
+                };
+            }
+            
+            // 修复关闭按钮
+            const closeBtn = document.getElementById('close-battle-btn');
+            if (closeBtn) {
+                const newCloseBtn = closeBtn.cloneNode(true);
+                closeBtn.parentNode?.replaceChild(newCloseBtn, closeBtn);
+                newCloseBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🚪 关闭按钮被点击');
+                    this.leaveBattle();
+                    if (this.game?.ui) this.game.ui.closeModal('battle-modal');
+                    const modal = document.getElementById('battle-modal');
+                    if (modal) modal.style.display = 'none';
+                };
+                console.log('✅ 关闭按钮事件已绑定');
+            }
+            
+            // 修复结果界面的关闭按钮（如果有）
+            const closeResultBtn = document.getElementById('close-result-btn');
+            if (closeResultBtn) {
+                const newCloseResultBtn = closeResultBtn.cloneNode(true);
+                closeResultBtn.parentNode?.replaceChild(newCloseResultBtn, closeResultBtn);
+                newCloseResultBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🚪 结果界面关闭按钮被点击');
+                    this.leaveBattle();
+                    if (this.game?.ui) this.game.ui.closeModal('battle-modal');
+                    const modal = document.getElementById('battle-modal');
+                    if (modal) modal.style.display = 'none';
+                };
+            }
+        }, 100);
     }
 
     showBattleResult(battle) {
@@ -6027,8 +6090,11 @@ class BattleMode {
             
             if (wasAIBattle) {
                 this.leaveBattle();
-                this.showAIDifficultySelect();
-                setTimeout(() => { this.rematchInProgress = false; }, 1000);
+                // ✅ 增加延迟，确保 leaveBattle 完成后再显示难度选择
+                setTimeout(() => {
+                    this.showAIDifficultySelect();
+                    this.rematchInProgress = false;
+                }, 300);
                 return;
             }
             
