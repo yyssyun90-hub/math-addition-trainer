@@ -3368,7 +3368,7 @@ class BattleMode {
     }
 
     // ==================== 第 3 部分结束 ====================
-    // ==================== 第 4 部分 / 共 8 部分 ====================
+        // ==================== 第 4 部分 / 共 8 部分 ====================
 
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
@@ -3423,8 +3423,8 @@ class BattleMode {
                 return;
             }
 
-            // ✅ 修复：先更新，再单独查询
-            const { error: updateError } = await this.game.state.supabase
+            // ✅ 修复：使用 .is() 方法正确处理 NULL
+            const { error: updateError, data: updatedBattle } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .update({
                     player2_id: user.id,
@@ -3434,7 +3434,9 @@ class BattleMode {
                     current_turn: battle.player1_id
                 })
                 .eq('id', battle.id)
-                .eq('player2_id', null);  // 条件更新，防止并发冲突
+                .is('player2_id', null)
+                .select()
+                .single();
 
             if (updateError) {
                 console.error('更新房间失败:', updateError);
@@ -3442,21 +3444,8 @@ class BattleMode {
                 return;
             }
 
-            // ✅ 重新查询更新后的房间，检查是否真的更新成功
-            const { data: updatedBattle, error: fetchError } = await this.game.state.supabase
-                .from('candy_math_battles')
-                .select('*')
-                .eq('id', battle.id)
-                .single();
-
-            if (fetchError) {
-                console.error('查询更新后的房间失败:', fetchError);
-                this.showFeedback('加入房间失败，请重试', '#ff4444');
-                return;
-            }
-
-            // ✅ 检查是否真的加入了（防止并发冲突）
-            if (updatedBattle.player2_id !== user.id) {
+            // ✅ 如果没有返回数据，说明房间已被其他人抢先加入
+            if (!updatedBattle) {
                 this.showFeedback('房间刚被其他人加入', '#ffa500');
                 return;
             }
