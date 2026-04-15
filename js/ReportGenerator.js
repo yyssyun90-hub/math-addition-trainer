@@ -1,7 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - 学习报告生成器 ====================
- * 版本: 2.0.0 (增强版 - 诊断分析 + 薄弱点 + 趋势 + 中英文双语)
- * 功能：生成 PDF/Excel 格式的学习报告，包含诊断分析和改进建议
+ * 版本: 2.1.0 (PDF英文版 + Excel修复)
+ * 功能：生成 PDF/Excel 格式的学习报告，PDF 使用英文避免乱码
  * 依赖：jsPDF, jspdf-autotable, XLSX
  * ====================================================================
  */
@@ -29,26 +29,26 @@ class ReportGenerator {
     getDiagnosisByAccuracy(accuracy) {
         if (accuracy >= 90) {
             return {
-                level: this.t('excellent', '优秀'),
-                comment: this.t('excellentComment', '表现非常出色！计算能力强，继续保持！'),
+                level: 'Excellent',
+                comment: 'Outstanding performance! Strong calculation skills, keep it up!',
                 color: '#2ecc71'
             };
         } else if (accuracy >= 75) {
             return {
-                level: this.t('good', '良好'),
-                comment: this.t('goodComment', '表现良好，有扎实的基础，继续努力会更上一层楼！'),
+                level: 'Good',
+                comment: 'Good performance with solid foundation. Keep working hard!',
                 color: '#3498db'
             };
         } else if (accuracy >= 60) {
             return {
-                level: this.t('fair', '中等'),
-                comment: this.t('fairComment', '处于中等水平，需要加强练习，特别是容易出错的题目。'),
+                level: 'Fair',
+                comment: 'At an average level. Need more practice, especially on difficult problems.',
                 color: '#f39c12'
             };
         } else {
             return {
-                level: this.t('needsImprovement', '需要加强'),
-                comment: this.t('needsImprovementComment', '基础较弱，建议从简单难度开始，多练习基础加减法。'),
+                level: 'Needs Improvement',
+                comment: 'Foundation is weak. Start with easy difficulty and practice basic addition/subtraction.',
                 color: '#e74c3c'
             };
         }
@@ -61,25 +61,25 @@ class ReportGenerator {
         if (avgTime === 0) {
             return {
                 level: '-',
-                comment: this.t('noSpeedData', '暂无答题数据'),
+                comment: 'No answer data',
                 color: '#95a5a6'
             };
         } else if (avgTime < 5) {
             return {
-                level: this.t('fast', '快速'),
-                comment: this.t('fastComment', '计算速度很快，反应敏捷！'),
+                level: 'Fast',
+                comment: 'Very quick calculation speed!',
                 color: '#2ecc71'
             };
         } else if (avgTime < 10) {
             return {
-                level: this.t('normal', '正常'),
-                comment: this.t('normalComment', '计算速度正常，继续练习可以提高速度。'),
+                level: 'Normal',
+                comment: 'Normal calculation speed. Practice can improve speed.',
                 color: '#3498db'
             };
         } else {
             return {
-                level: this.t('slow', '较慢'),
-                comment: this.t('slowComment', '计算速度较慢，建议多练习基础口算。'),
+                level: 'Slow',
+                comment: 'Calculation speed is slow. Practice basic mental math more.',
                 color: '#e74c3c'
             };
         }
@@ -92,23 +92,23 @@ class ReportGenerator {
         const recommendations = [];
         
         if (stats.accuracy < 60) {
-            recommendations.push(this.t('recBasicPractice', '• 建议从简单难度开始，每天练习10-15分钟基础加减法'));
+            recommendations.push('• Start with easy difficulty, practice 10-15 minutes daily');
         }
         if (stats.avgTime > 10) {
-            recommendations.push(this.t('recSpeedDrill', '• 建议进行限时练习，提高计算速度'));
+            recommendations.push('• Do timed practice to improve calculation speed');
         }
         if (stats.difficultyStats?.hard?.accuracy < 50) {
-            recommendations.push(this.t('recChallengeHard', '• 困难难度正确率较低，建议先巩固中等难度'));
+            recommendations.push('• Low accuracy on hard difficulty, focus on medium first');
         }
         if (stats.wrongQuestions > stats.correctQuestions) {
-            recommendations.push(this.t('recReviewMistakes', '• 建议复习错题，找出薄弱点针对性练习'));
+            recommendations.push('• Review wrong answers to identify weaknesses');
         }
         if (stats.totalQuestions < 20) {
-            recommendations.push(this.t('recMorePractice', '• 答题数量较少，建议增加练习频率'));
+            recommendations.push('• Low question count, increase practice frequency');
         }
         
         if (recommendations.length === 0) {
-            recommendations.push(this.t('recKeepUp', '• 表现优秀，继续保持！可以尝试挑战更高难度'));
+            recommendations.push('• Excellent performance! Try challenging harder difficulties');
         }
         
         return recommendations;
@@ -132,19 +132,58 @@ class ReportGenerator {
     }
 
     /**
-     * 生成学生个人报告 (PDF) - 增强版
+     * 获取班级综合诊断
+     */
+    getClassDiagnosis(classStats) {
+        const avgAccuracy = classStats.classAccuracy || 0;
+        
+        if (avgAccuracy >= 85) {
+            return {
+                level: 'Excellent',
+                comment: 'Class performance is excellent, calculation skills are solid!',
+                color: '#2ecc71'
+            };
+        } else if (avgAccuracy >= 70) {
+            return {
+                level: 'Good',
+                comment: 'Class performance is good. Pay attention to students with lower accuracy.',
+                color: '#3498db'
+            };
+        } else if (avgAccuracy >= 55) {
+            return {
+                level: 'Fair',
+                comment: 'Class is at an average level. Strengthen basic practice and review mistakes.',
+                color: '#f39c12'
+            };
+        } else {
+            return {
+                level: 'Needs Improvement',
+                comment: 'Class foundation is weak. Start with easy difficulty and gradually improve.',
+                color: '#e74c3c'
+            };
+        }
+    }
+
+    /**
+     * 生成学生个人报告 (PDF) - 英文版
      */
     async generateStudentReport(studentId) {
         try {
             const stats = this.studentRecord.getStudentStats(studentId);
             if (!stats) {
-                alert(this.t('noStudentData', '没有找到该学生的数据'));
+                alert('No student data found');
                 return;
             }
 
             if (typeof window.jspdf === 'undefined') {
-                alert(this.t('pdfNotLoaded', 'PDF库未加载，请刷新页面重试'));
+                alert('PDF library not loaded, please refresh');
                 return;
+            }
+
+            // 保存当前语言，临时切换到英文
+            const currentLang = I18n?.getLang?.() || 'zh';
+            if (I18n?.setLang) {
+                I18n.setLang('en');
             }
 
             const { jsPDF } = window.jspdf;
@@ -154,15 +193,15 @@ class ReportGenerator {
 
             // 标题
             doc.setFontSize(24);
-            doc.setTextColor(212, 107, 141); // #d46b8d
-            doc.text(this.t('studentLearningReport', '学生学习报告'), 105, y, { align: 'center' });
+            doc.setTextColor(212, 107, 141);
+            doc.text('Student Learning Report', 105, y, { align: 'center' });
             
             y += 12;
             
             // 副标题
             doc.setFontSize(12);
             doc.setTextColor(150, 150, 150);
-            doc.text(this.t('generatedBy', '由糖果数学消消乐自动生成'), 105, y, { align: 'center' });
+            doc.text('Generated by Candy Math Match', 105, y, { align: 'center' });
             
             y += 10;
 
@@ -176,16 +215,16 @@ class ReportGenerator {
             // 学生信息
             doc.setFontSize(14);
             doc.setTextColor(0, 0, 0);
-            doc.text(`${this.t('studentName', '学生姓名')}: ${stats.studentName || '-'}`, 20, y);
-            doc.text(`${this.t('studentId', '学生ID')}: ${stats.studentId}`, 120, y);
+            doc.text(`Student Name: ${stats.studentName || '-'}`, 20, y);
+            doc.text(`Student ID: ${stats.studentId}`, 120, y);
             
             y += 8;
-            doc.text(`${this.t('reportTime', '报告生成时间')}: ${new Date().toLocaleString('zh-CN')}`, 20, y);
-            doc.text(`${this.t('lastActive', '最后活动')}: ${stats.lastActive ? new Date(stats.lastActive).toLocaleString('zh-CN') : this.t('none', '无')}`, 120, y);
+            doc.text(`Report Generated: ${new Date().toLocaleString('en-US')}`, 20, y);
+            doc.text(`Last Active: ${stats.lastActive ? new Date(stats.lastActive).toLocaleString('en-US') : 'None'}`, 120, y);
 
             y += 15;
 
-            // ========== 诊断评语 ==========
+            // 诊断评语
             const diagnosis = this.getDiagnosisByAccuracy(stats.accuracy || 0);
             const speedDiagnosis = this.getSpeedDiagnosis(stats.avgTime || 0);
             
@@ -194,19 +233,19 @@ class ReportGenerator {
             
             doc.setFontSize(13);
             doc.setTextColor(diagnosis.color);
-            doc.text(`${this.t('overallRating', '综合评级')}: ${diagnosis.level}`, 20, y + 10);
+            doc.text(`Overall Rating: ${diagnosis.level}`, 20, y + 10);
             
             doc.setFontSize(11);
             doc.setTextColor(80, 80, 80);
             doc.text(diagnosis.comment, 20, y + 22);
-            doc.text(`${this.t('speedRating', '速度评级')}: ${speedDiagnosis.level} | ${speedDiagnosis.comment}`, 20, y + 30);
+            doc.text(`Speed Rating: ${speedDiagnosis.level} | ${speedDiagnosis.comment}`, 20, y + 30);
 
             y += 45;
 
             // 学习统计标题
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
-            doc.text('📊 ' + this.t('learningStats', '学习统计'), 20, y);
+            doc.text('📊 Learning Statistics', 20, y);
             
             y += 10;
 
@@ -216,47 +255,47 @@ class ReportGenerator {
             const cardSpacing = 8;
             
             this.drawStatCard(doc, 20, y, cardWidth, cardHeight, 
-                this.t('totalQuestions', '总答题数'), stats.totalQuestions || 0, '#e74c3c');
+                'Total Questions', stats.totalQuestions || 0, '#e74c3c');
             this.drawStatCard(doc, 20 + cardWidth + cardSpacing, y, cardWidth, cardHeight, 
-                this.t('correctAnswers', '正确题数'), stats.correctQuestions || 0, '#2ecc71');
+                'Correct', stats.correctQuestions || 0, '#2ecc71');
             this.drawStatCard(doc, 20 + (cardWidth + cardSpacing) * 2, y, cardWidth, cardHeight, 
-                this.t('accuracy', '正确率'), (stats.accuracy || 0) + '%', '#3498db');
+                'Accuracy', (stats.accuracy || 0) + '%', '#3498db');
             
             y += cardHeight + 8;
 
             // 统计卡片 - 第二行
             this.drawStatCard(doc, 20, y, cardWidth, cardHeight, 
-                this.t('totalSessions', '练习次数'), stats.totalSessions || 0, '#f39c12');
+                'Sessions', stats.totalSessions || 0, '#f39c12');
             this.drawStatCard(doc, 20 + cardWidth + cardSpacing, y, cardWidth, cardHeight, 
-                this.t('avgTime', '平均用时'), (stats.avgTime || 0) + this.t('seconds', '秒'), '#9b59b6');
+                'Avg Time', (stats.avgTime || 0) + 's', '#9b59b6');
             this.drawStatCard(doc, 20 + (cardWidth + cardSpacing) * 2, y, cardWidth, cardHeight, 
-                this.t('wrongAnswers', '错误题数'), stats.wrongQuestions || 0, '#e67e22');
+                'Wrong', stats.wrongQuestions || 0, '#e67e22');
 
             y += cardHeight + 15;
 
             // 各难度正确率
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
-            doc.text('🎯 ' + this.t('difficultyAccuracy', '各难度正确率'), 20, y);
+            doc.text('🎯 Accuracy by Difficulty', 20, y);
             
             y += 10;
 
             const difficultyData = [
-                [this.t('difficulty', '难度'), this.t('questions', '答题数'), this.t('correct', '正确'), this.t('accuracy', '正确率')],
+                ['Difficulty', 'Questions', 'Correct', 'Accuracy'],
                 [
-                    this.t('easy', '简单'), 
+                    'Easy', 
                     stats.difficultyStats?.easy?.total || 0, 
                     stats.difficultyStats?.easy?.correct || 0, 
                     (stats.difficultyStats?.easy?.accuracy || 0) + '%'
                 ],
                 [
-                    this.t('medium', '中等'), 
+                    'Medium', 
                     stats.difficultyStats?.medium?.total || 0, 
                     stats.difficultyStats?.medium?.correct || 0, 
                     (stats.difficultyStats?.medium?.accuracy || 0) + '%'
                 ],
                 [
-                    this.t('hard', '困难'), 
+                    'Hard', 
                     stats.difficultyStats?.hard?.total || 0, 
                     stats.difficultyStats?.hard?.correct || 0, 
                     (stats.difficultyStats?.hard?.accuracy || 0) + '%'
@@ -280,18 +319,18 @@ class ReportGenerator {
                 y = 20;
             }
 
-            // ========== 薄弱点分析 ==========
+            // 薄弱点分析
             const weaknesses = this.analyzeWeaknesses(stats.errorStats, stats.wrongQuestions || 0);
             
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
-            doc.text('❌ ' + this.t('weaknessAnalysis', '薄弱点分析'), 20, y);
+            doc.text('❌ Weakness Analysis', 20, y);
             
             y += 10;
 
             if (weaknesses.length > 0) {
                 const weaknessData = [
-                    [this.t('rank', '排名'), this.t('combination', '题目组合'), this.t('errorCount', '错误次数'), this.t('percentage', '占比')],
+                    ['Rank', 'Combination', 'Errors', 'Percentage'],
                     ...weaknesses.map((w, i) => [i + 1, w.combination, w.count, w.percentage + '%'])
                 ];
 
@@ -308,7 +347,7 @@ class ReportGenerator {
             } else {
                 doc.setFontSize(11);
                 doc.setTextColor(100, 100, 100);
-                doc.text(this.t('noWeaknessData', '暂无错误记录，表现很好！'), 30, y);
+                doc.text('No error records, great job!', 30, y);
                 y += 15;
             }
 
@@ -318,10 +357,10 @@ class ReportGenerator {
                 y = 20;
             }
 
-            // ========== 改进建议 ==========
+            // 改进建议
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
-            doc.text('💡 ' + this.t('recommendations', '改进建议'), 20, y);
+            doc.text('💡 Recommendations', 20, y);
             
             y += 12;
             
@@ -334,13 +373,18 @@ class ReportGenerator {
                 y += 8;
             });
 
+            // 恢复语言
+            if (I18n?.setLang) {
+                I18n.setLang(currentLang);
+            }
+
             // 保存PDF
-            const fileName = `${stats.studentName || 'student'}_${this.t('learningReport', '学习报告')}_${new Date().toISOString().slice(0,10)}.pdf`;
+            const fileName = `${stats.studentName || 'student'}_Learning_Report_${new Date().toISOString().slice(0,10)}.pdf`;
             doc.save(fileName);
             
         } catch (error) {
-            console.error('生成PDF报告失败:', error);
-            alert(this.t('generateReportFailed', '生成报告失败') + '：' + error.message);
+            console.error('Failed to generate PDF report:', error);
+            alert('Failed to generate report: ' + error.message);
         }
     }
 
@@ -349,77 +393,44 @@ class ReportGenerator {
      */
     drawStatCard(doc, x, y, width, height, label, value, color) {
         try {
-            // 卡片背景
             doc.setFillColor(250, 250, 252);
             doc.setDrawColor(230, 230, 235);
             doc.setLineWidth(0.3);
             doc.roundedRect(x, y, width, height, 4, 4, 'FD');
 
-            // 标签
             doc.setFontSize(9);
             doc.setTextColor(120, 120, 130);
             doc.text(label, x + width/2, y + 10, { align: 'center' });
 
-            // 数值
             doc.setFontSize(14);
             doc.setTextColor(color);
             doc.text(String(value), x + width/2, y + 26, { align: 'center' });
         } catch (error) {
-            console.error('绘制统计卡片失败:', error);
-        }
-    }
-
-    // ==================== 第 1 部分结束 ====================
-    // ==================== 第 2 部分 / 共 2 部分 ====================
-
-    /**
-     * 获取班级综合诊断
-     */
-    getClassDiagnosis(classStats) {
-        const avgAccuracy = classStats.classAccuracy || 0;
-        
-        if (avgAccuracy >= 85) {
-            return {
-                level: this.t('excellent', '优秀'),
-                comment: this.t('classExcellentComment', '班级整体表现优秀，计算能力扎实，继续保持！'),
-                color: '#2ecc71'
-            };
-        } else if (avgAccuracy >= 70) {
-            return {
-                level: this.t('good', '良好'),
-                comment: this.t('classGoodComment', '班级整体表现良好，建议关注正确率较低的学生。'),
-                color: '#3498db'
-            };
-        } else if (avgAccuracy >= 55) {
-            return {
-                level: this.t('fair', '中等'),
-                comment: this.t('classFairComment', '班级处于中等水平，建议加强基础练习和错题复习。'),
-                color: '#f39c12'
-            };
-        } else {
-            return {
-                level: this.t('needsImprovement', '需要加强'),
-                comment: this.t('classNeedsImprovementComment', '班级整体基础较弱，建议从简单难度开始，逐步提升。'),
-                color: '#e74c3c'
-            };
+            console.error('Failed to draw stat card:', error);
         }
     }
 
     /**
-     * 生成全班报告 (PDF) - 增强版
+     * 生成全班报告 (PDF) - 英文版
      */
     async generateClassReport() {
         try {
             const classStats = this.studentRecord.getClassStats();
             
             if (classStats.totalStudents === 0) {
-                alert(this.t('noStudentData', '暂无学生数据'));
+                alert('No student data');
                 return;
             }
 
             if (typeof window.jspdf === 'undefined') {
-                alert(this.t('pdfNotLoaded', 'PDF库未加载，请刷新页面重试'));
+                alert('PDF library not loaded, please refresh');
                 return;
+            }
+
+            // 保存当前语言，临时切换到英文
+            const currentLang = I18n?.getLang?.() || 'zh';
+            if (I18n?.setLang) {
+                I18n.setLang('en');
             }
 
             const { jsPDF } = window.jspdf;
@@ -430,13 +441,13 @@ class ReportGenerator {
             // 标题
             doc.setFontSize(24);
             doc.setTextColor(212, 107, 141);
-            doc.text(this.t('classLearningReport', '全班学习报告'), 105, y, { align: 'center' });
+            doc.text('Class Learning Report', 105, y, { align: 'center' });
             
             y += 12;
             
             doc.setFontSize(12);
             doc.setTextColor(150, 150, 150);
-            doc.text(this.t('generatedBy', '由糖果数学消消乐自动生成'), 105, y, { align: 'center' });
+            doc.text('Generated by Candy Math Match', 105, y, { align: 'center' });
             
             y += 10;
 
@@ -450,18 +461,18 @@ class ReportGenerator {
             // 班级概况
             doc.setFontSize(14);
             doc.setTextColor(0, 0, 0);
-            doc.text(`${this.t('reportTime', '报告生成时间')}: ${new Date().toLocaleString('zh-CN')}`, 20, y);
+            doc.text(`Report Generated: ${new Date().toLocaleString('en-US')}`, 20, y);
             
             y += 8;
-            doc.text(`${this.t('totalStudents', '学生人数')}: ${classStats.totalStudents} ${this.t('studentsUnit', '人')}`, 20, y);
-            doc.text(`${this.t('totalQuestions', '总答题数')}: ${classStats.totalQuestions} ${this.t('questionsUnit', '题')}`, 120, y);
+            doc.text(`Total Students: ${classStats.totalStudents}`, 20, y);
+            doc.text(`Total Questions: ${classStats.totalQuestions}`, 120, y);
             
             y += 8;
-            doc.text(`${this.t('totalSessions', '总练习次数')}: ${classStats.totalSessions || 0} ${this.t('sessionsUnit', '次')}`, 20, y);
-            doc.text(`${this.t('classAvgAccuracy', '班级平均正确率')}: ${classStats.classAccuracy || 0}%`, 120, y);
+            doc.text(`Total Sessions: ${classStats.totalSessions || 0}`, 20, y);
+            doc.text(`Class Avg Accuracy: ${classStats.classAccuracy || 0}%`, 120, y);
             
             y += 8;
-            doc.text(`${this.t('classAvgTime', '班级平均用时')}: ${classStats.avgClassTime || 0} ${this.t('seconds', '秒')}`, 20, y);
+            doc.text(`Class Avg Time: ${classStats.avgClassTime || 0}s`, 20, y);
 
             y += 15;
 
@@ -473,7 +484,7 @@ class ReportGenerator {
             
             doc.setFontSize(13);
             doc.setTextColor(diagnosis.color);
-            doc.text(`${this.t('classOverallRating', '班级综合评级')}: ${diagnosis.level}`, 20, y + 10);
+            doc.text(`Class Overall Rating: ${diagnosis.level}`, 20, y + 10);
             
             doc.setFontSize(11);
             doc.setTextColor(80, 80, 80);
@@ -484,26 +495,26 @@ class ReportGenerator {
             // 各难度班级正确率
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
-            doc.text('📊 ' + this.t('difficultyClassAccuracy', '各难度班级正确率'), 20, y);
+            doc.text('📊 Class Accuracy by Difficulty', 20, y);
             
             y += 10;
 
             const difficultyData = [
-                [this.t('difficulty', '难度'), this.t('totalQuestions', '答题数'), this.t('correctAnswers', '正确数'), this.t('accuracy', '正确率')],
+                ['Difficulty', 'Questions', 'Correct', 'Accuracy'],
                 [
-                    this.t('easy', '简单'),
+                    'Easy',
                     classStats.difficultyStats?.easy?.total || 0,
                     classStats.difficultyStats?.easy?.correct || 0,
                     (classStats.difficultyStats?.easy?.accuracy || 0) + '%'
                 ],
                 [
-                    this.t('medium', '中等'),
+                    'Medium',
                     classStats.difficultyStats?.medium?.total || 0,
                     classStats.difficultyStats?.medium?.correct || 0,
                     (classStats.difficultyStats?.medium?.accuracy || 0) + '%'
                 ],
                 [
-                    this.t('hard', '困难'),
+                    'Hard',
                     classStats.difficultyStats?.hard?.total || 0,
                     classStats.difficultyStats?.hard?.correct || 0,
                     (classStats.difficultyStats?.hard?.accuracy || 0) + '%'
@@ -529,13 +540,13 @@ class ReportGenerator {
 
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
-            doc.text('🏆 ' + this.t('topStudents', '优秀学生（前5名）'), 20, y);
+            doc.text('🏆 Top Students (Top 5)', 20, y);
             
             y += 10;
 
             if (classStats.topStudents && classStats.topStudents.length > 0) {
                 const topData = [
-                    [this.t('rank', '排名'), this.t('studentName', '学生姓名'), this.t('questions', '答题数'), this.t('accuracy', '正确率')],
+                    ['Rank', 'Student Name', 'Questions', 'Accuracy'],
                     ...classStats.topStudents.slice(0, 5).map((s, i) => [i + 1, s.name, s.totalQuestions, (s.accuracy || 0) + '%'])
                 ];
 
@@ -562,17 +573,17 @@ class ReportGenerator {
             if (lowPerformingStudents.length > 0) {
                 doc.setFontSize(16);
                 doc.setTextColor(231, 76, 60);
-                doc.text('⚠️ ' + this.t('needsAttention', '需要关注的学生（正确率低于60%）'), 20, y);
+                doc.text('⚠️ Students Needing Attention (Accuracy < 60%)', 20, y);
                 
                 y += 10;
 
                 const lowData = [
-                    [this.t('studentName', '学生姓名'), this.t('questions', '答题数'), this.t('accuracy', '正确率'), this.t('avgTime', '平均用时')],
+                    ['Student Name', 'Questions', 'Accuracy', 'Avg Time'],
                     ...lowPerformingStudents.slice(0, 10).map(s => [
                         s.name, 
                         s.totalQuestions, 
                         (s.accuracy || 0) + '%', 
-                        (s.avgTime || 0) + this.t('seconds', '秒')
+                        (s.avgTime || 0) + 's'
                     ])
                 ];
 
@@ -586,24 +597,29 @@ class ReportGenerator {
                 });
             }
 
+            // 恢复语言
+            if (I18n?.setLang) {
+                I18n.setLang(currentLang);
+            }
+
             // 保存PDF
-            const fileName = `${this.t('classReport', '全班学习报告')}_${new Date().toISOString().slice(0,10)}.pdf`;
+            const fileName = `Class_Learning_Report_${new Date().toISOString().slice(0,10)}.pdf`;
             doc.save(fileName);
             
         } catch (error) {
-            console.error('生成全班报告失败:', error);
-            alert(this.t('generateReportFailed', '生成报告失败') + '：' + error.message);
+            console.error('Failed to generate class report:', error);
+            alert('Failed to generate report: ' + error.message);
         }
     }
 
     /**
-     * 导出为 Excel (用于教师进一步分析) - 增强版
+     * 导出为 Excel (用于教师进一步分析) - 修复版
      */
     exportToExcel() {
         try {
             const classStats = this.studentRecord.getClassStats();
             
-            if (classStats.totalStudents === 0) {
+            if (!classStats || classStats.totalStudents === 0) {
                 alert(this.t('noStudentData', '暂无学生数据'));
                 return;
             }
@@ -615,57 +631,44 @@ class ReportGenerator {
 
             const wb = XLSX.utils.book_new();
 
-            // 1. 学生学习数据表
-            const studentData = classStats.students.map(s => {
-                const diagnosis = this.getDiagnosisByAccuracy(s.accuracy || 0);
-                const speedDiagnosis = this.getSpeedDiagnosis(s.avgTime || 0);
+            // 1. 学生学习数据表（安全处理，防止 undefined）
+            const studentData = (classStats.students || []).map(s => {
+                // 安全获取嵌套属性
+                const easyAccuracy = s.difficultyStats?.easy?.accuracy || 0;
+                const mediumAccuracy = s.difficultyStats?.medium?.accuracy || 0;
+                const hardAccuracy = s.difficultyStats?.hard?.accuracy || 0;
                 
                 return {
-                    [this.t('studentName', '学生姓名')]: s.studentName,
-                    [this.t('studentId', '学生ID')]: s.studentId,
+                    [this.t('studentName', '学生姓名')]: s.studentName || '-',
+                    [this.t('studentId', '学生ID')]: s.studentId || '-',
                     [this.t('totalSessions', '练习次数')]: s.totalSessions || 0,
                     [this.t('totalQuestions', '总答题数')]: s.totalQuestions || 0,
                     [this.t('correctAnswers', '正确题数')]: s.correctQuestions || 0,
                     [this.t('wrongAnswers', '错误题数')]: s.wrongQuestions || 0,
                     [this.t('accuracy', '正确率')]: (s.accuracy || 0) + '%',
                     [this.t('avgTime', '平均用时')]: (s.avgTime || 0) + this.t('seconds', '秒'),
-                    [this.t('easyAccuracy', '简单正确率')]: (s.difficultyStats?.easy?.accuracy || 0) + '%',
-                    [this.t('mediumAccuracy', '中等正确率')]: (s.difficultyStats?.medium?.accuracy || 0) + '%',
-                    [this.t('hardAccuracy', '困难正确率')]: (s.difficultyStats?.hard?.accuracy || 0) + '%',
-                    [this.t('overallRating', '综合评级')]: diagnosis.level,
-                    [this.t('speedRating', '速度评级')]: speedDiagnosis.level,
+                    [this.t('easyAccuracy', '简单正确率')]: easyAccuracy + '%',
+                    [this.t('mediumAccuracy', '中等正确率')]: mediumAccuracy + '%',
+                    [this.t('hardAccuracy', '困难正确率')]: hardAccuracy + '%',
                     [this.t('lastActive', '最后活动')]: s.lastActive ? new Date(s.lastActive).toLocaleString('zh-CN') : this.t('none', '无')
                 };
             });
 
-            const ws1 = XLSX.utils.json_to_sheet(studentData);
-            XLSX.utils.book_append_sheet(wb, ws1, this.t('studentData', '学生学习数据'));
-
-            // 2. 薄弱点分析表
-            const weaknesses = this.analyzeWeaknesses(classStats.commonMistakes, classStats.totalQuestions || 0);
-            
-            if (weaknesses.length > 0) {
-                const weaknessData = weaknesses.map((w, i) => ({
-                    [this.t('rank', '排名')]: i + 1,
-                    [this.t('combination', '题目组合')]: w.combination,
-                    [this.t('errorCount', '错误次数')]: w.count,
-                    [this.t('percentage', '占比')]: w.percentage + '%'
-                }));
-
-                const ws2 = XLSX.utils.json_to_sheet(weaknessData);
-                XLSX.utils.book_append_sheet(wb, ws2, this.t('weaknessAnalysis', '薄弱点分析'));
+            if (studentData.length > 0) {
+                const ws1 = XLSX.utils.json_to_sheet(studentData);
+                XLSX.utils.book_append_sheet(wb, ws1, this.t('studentData', '学生学习数据'));
             }
 
-            // 3. 班级统计摘要
+            // 2. 班级统计摘要
             const summaryData = [{
                 [this.t('statItem', '统计项目')]: this.t('totalStudents', '学生人数'),
-                [this.t('value', '数值')]: classStats.totalStudents
+                [this.t('value', '数值')]: classStats.totalStudents || 0
             }, {
                 [this.t('statItem', '统计项目')]: this.t('totalSessions', '总练习次数'),
                 [this.t('value', '数值')]: classStats.totalSessions || 0
             }, {
                 [this.t('statItem', '统计项目')]: this.t('totalQuestions', '总答题数'),
-                [this.t('value', '数值')]: classStats.totalQuestions
+                [this.t('value', '数值')]: classStats.totalQuestions || 0
             }, {
                 [this.t('statItem', '统计项目')]: this.t('correctAnswers', '总正确题数'),
                 [this.t('value', '数值')]: classStats.totalCorrect || 0
@@ -675,39 +678,28 @@ class ReportGenerator {
             }, {
                 [this.t('statItem', '统计项目')]: this.t('classAvgTime', '班级平均用时'),
                 [this.t('value', '数值')]: (classStats.avgClassTime || 0) + this.t('seconds', '秒')
-            }, {
-                [this.t('statItem', '统计项目')]: this.t('easyAccuracy', '简单题正确率'),
-                [this.t('value', '数值')]: (classStats.difficultyStats?.easy?.accuracy || 0) + '%'
-            }, {
-                [this.t('statItem', '统计项目')]: this.t('mediumAccuracy', '中等题正确率'),
-                [this.t('value', '数值')]: (classStats.difficultyStats?.medium?.accuracy || 0) + '%'
-            }, {
-                [this.t('statItem', '统计项目')]: this.t('hardAccuracy', '困难题正确率'),
-                [this.t('value', '数值')]: (classStats.difficultyStats?.hard?.accuracy || 0) + '%'
             }];
 
-            const ws3 = XLSX.utils.json_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(wb, ws3, this.t('classSummary', '班级统计'));
+            const ws2 = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, ws2, this.t('classSummary', '班级统计'));
 
-            // 4. 需要关注的学生
-            const lowPerformingStudents = classStats.students?.filter(s => (s.accuracy || 0) < 60) || [];
-            
-            if (lowPerformingStudents.length > 0) {
-                const lowData = lowPerformingStudents.map(s => ({
-                    [this.t('studentName', '学生姓名')]: s.studentName,
-                    [this.t('studentId', '学生ID')]: s.studentId,
-                    [this.t('totalQuestions', '答题数')]: s.totalQuestions || 0,
-                    [this.t('accuracy', '正确率')]: (s.accuracy || 0) + '%',
-                    [this.t('avgTime', '平均用时')]: (s.avgTime || 0) + this.t('seconds', '秒')
-                }));
-
-                const ws4 = XLSX.utils.json_to_sheet(lowData);
-                XLSX.utils.book_append_sheet(wb, ws4, this.t('needsAttention', '需要关注'));
-            }
-
-            // 保存Excel
+            // 保存Excel（添加 BOM 头避免中文乱码）
             const fileName = `${this.t('studentLearningData', '学生学习数据')}_${new Date().toISOString().slice(0,10)}.xlsx`;
-            XLSX.writeFile(wb, fileName);
+            
+            // 使用 XLSX.write 并添加 BOM
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
+            const buf = new ArrayBuffer(wbout.length);
+            const view = new Uint8Array(buf);
+            for (let i = 0; i < wbout.length; i++) {
+                view[i] = wbout.charCodeAt(i) & 0xFF;
+            }
+            const blob = new Blob([buf], { type: 'application/octet-stream' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            link.click();
+            URL.revokeObjectURL(link.href);
             
         } catch (error) {
             console.error('导出Excel失败:', error);
@@ -716,20 +708,26 @@ class ReportGenerator {
     }
 
     /**
-     * 生成比赛用报告（包含所有比赛要求的信息）
+     * 生成比赛用报告 - 英文版
      */
     generateCompetitionReport() {
         try {
             const classStats = this.studentRecord.getClassStats();
             
             if (classStats.totalStudents === 0) {
-                alert(this.t('noStudentData', '暂无学生数据'));
+                alert('No student data');
                 return;
             }
 
             if (typeof window.jspdf === 'undefined') {
-                alert(this.t('pdfNotLoaded', 'PDF库未加载，请刷新页面重试'));
+                alert('PDF library not loaded, please refresh');
                 return;
+            }
+
+            // 保存当前语言，临时切换到英文
+            const currentLang = I18n?.getLang?.() || 'zh';
+            if (I18n?.setLang) {
+                I18n.setLang('en');
             }
 
             const { jsPDF } = window.jspdf;
@@ -740,40 +738,40 @@ class ReportGenerator {
             // 封面
             doc.setFontSize(28);
             doc.setTextColor(212, 107, 141);
-            doc.text(this.t('candyMathMatch', '糖果数学消消乐'), 105, 60, { align: 'center' });
+            doc.text('Candy Math Match', 105, 60, { align: 'center' });
             
             doc.setFontSize(20);
-            doc.text(this.t('teachingEffectivenessReport', '教学效果评估报告'), 105, 80, { align: 'center' });
+            doc.text('Teaching Effectiveness Report', 105, 80, { align: 'center' });
             
             doc.setFontSize(14);
             doc.setTextColor(100, 100, 100);
-            doc.text(this.t('competitionTitle', 'Pertandingan Inovasi Digital dalam PdP Guru'), 105, 100, { align: 'center' });
-            doc.text(this.t('symposiumTitle', 'Simposium Duta Guru 2026'), 105, 110, { align: 'center' });
+            doc.text('Pertandingan Inovasi Digital dalam PdP Guru', 105, 100, { align: 'center' });
+            doc.text('Simposium Duta Guru 2026', 105, 110, { align: 'center' });
             
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
-            doc.text(`${this.t('reportDate', '报告生成日期')}: ${new Date().toLocaleDateString('zh-CN')}`, 105, 140, { align: 'center' });
-            doc.text(`${this.t('teacherName', '教师姓名')}: ${this.game.state.currentUser?.name || '______'}`, 105, 150, { align: 'center' });
-            doc.text(`${this.t('schoolName', '学校名称')}: ____________________`, 105, 160, { align: 'center' });
+            doc.text(`Report Date: ${new Date().toLocaleDateString('en-US')}`, 105, 140, { align: 'center' });
+            doc.text(`Teacher Name: ${this.game.state.currentUser?.name || '______'}`, 105, 150, { align: 'center' });
+            doc.text(`School Name: ____________________`, 105, 160, { align: 'center' });
 
             doc.addPage();
             y = 20;
 
-            // 1. 创新点说明
+            // 1. Innovation
             doc.setFontSize(18);
             doc.setTextColor(212, 107, 141);
-            doc.text('1. ' + this.t('innovation', '创新点说明'), 20, y);
+            doc.text('1. Innovation', 20, y);
             
             y += 15;
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
             const innovations = [
-                this.t('innovation1', '• 实时多人对战匹配系统，支持在线对战'),
-                this.t('innovation2', '• AI自适应难度调节，根据学生水平自动调整'),
-                this.t('innovation3', '• 完整的学生学习记录系统，追踪每个学生的学习进度'),
-                this.t('innovation4', '• 自动生成诊断性学习报告，提供薄弱点分析和改进建议'),
-                this.t('innovation5', '• 柔和多彩的糖果主题界面，提高学生学习兴趣'),
-                this.t('innovation6', '• 双语支持（中文/英文），适用于多语言环境')
+                '• Real-time multiplayer matching system for online battles',
+                '• AI adaptive difficulty adjustment based on student performance',
+                '• Complete student learning record system tracking individual progress',
+                '• Automatic diagnostic learning reports with weakness analysis',
+                '• Soft and colorful candy-themed interface to increase engagement',
+                '• Bilingual support (Chinese/English) for multilingual environments'
             ];
             innovations.forEach(text => {
                 doc.text(text, 25, y);
@@ -782,27 +780,27 @@ class ReportGenerator {
 
             y += 10;
 
-            // 2. 教学效果
+            // 2. Teaching Effectiveness
             doc.setFontSize(18);
             doc.setTextColor(212, 107, 141);
-            doc.text('2. ' + this.t('teachingEffectiveness', '教学效果'), 20, y);
+            doc.text('2. Teaching Effectiveness', 20, y);
             
             y += 15;
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
-            doc.text(`${this.t('participatingStudents', '参与学生人数')}: ${classStats.totalStudents} ${this.t('studentsUnit', '人')}`, 25, y);
-            doc.text(`${this.t('totalPracticeSessions', '总练习次数')}: ${classStats.totalSessions || 0} ${this.t('sessionsUnit', '次')}`, 25, y + 8);
-            doc.text(`${this.t('totalQuestionsAnswered', '总答题数')}: ${classStats.totalQuestions} ${this.t('questionsUnit', '题')}`, 25, y + 16);
-            doc.text(`${this.t('classAverageAccuracy', '班级平均正确率')}: ${classStats.classAccuracy || 0}%`, 25, y + 24);
-            doc.text(`${this.t('averageResponseTime', '平均答题时间')}: ${classStats.avgClassTime || 0} ${this.t('secondsPerQuestion', '秒/题')}`, 25, y + 32);
+            doc.text(`Participating Students: ${classStats.totalStudents}`, 25, y);
+            doc.text(`Total Practice Sessions: ${classStats.totalSessions || 0}`, 25, y + 8);
+            doc.text(`Total Questions Answered: ${classStats.totalQuestions}`, 25, y + 16);
+            doc.text(`Class Average Accuracy: ${classStats.classAccuracy || 0}%`, 25, y + 24);
+            doc.text(`Average Response Time: ${classStats.avgClassTime || 0} sec/question`, 25, y + 32);
 
             y += 45;
 
             const difficultyData = [
-                [this.t('difficulty', '难度'), this.t('questions', '答题数'), this.t('correct', '正确数'), this.t('accuracy', '正确率')],
-                [this.t('easy', '简单'), classStats.difficultyStats?.easy?.total || 0, classStats.difficultyStats?.easy?.correct || 0, (classStats.difficultyStats?.easy?.accuracy || 0) + '%'],
-                [this.t('medium', '中等'), classStats.difficultyStats?.medium?.total || 0, classStats.difficultyStats?.medium?.correct || 0, (classStats.difficultyStats?.medium?.accuracy || 0) + '%'],
-                [this.t('hard', '困难'), classStats.difficultyStats?.hard?.total || 0, classStats.difficultyStats?.hard?.correct || 0, (classStats.difficultyStats?.hard?.accuracy || 0) + '%']
+                ['Difficulty', 'Questions', 'Correct', 'Accuracy'],
+                ['Easy', classStats.difficultyStats?.easy?.total || 0, classStats.difficultyStats?.easy?.correct || 0, (classStats.difficultyStats?.easy?.accuracy || 0) + '%'],
+                ['Medium', classStats.difficultyStats?.medium?.total || 0, classStats.difficultyStats?.medium?.correct || 0, (classStats.difficultyStats?.medium?.accuracy || 0) + '%'],
+                ['Hard', classStats.difficultyStats?.hard?.total || 0, classStats.difficultyStats?.hard?.correct || 0, (classStats.difficultyStats?.hard?.accuracy || 0) + '%']
             ];
 
             doc.autoTable({
@@ -816,28 +814,28 @@ class ReportGenerator {
 
             y = doc.lastAutoTable.finalY + 15;
 
-            // 3. 节省时间分析
+            // 3. Time Saving
             doc.addPage();
             y = 20;
             
             doc.setFontSize(18);
             doc.setTextColor(212, 107, 141);
-            doc.text('3. ' + this.t('timeSaving', '节省时间分析'), 20, y);
+            doc.text('3. Time Saving Analysis', 20, y);
             
             y += 15;
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
             const timeSavings = [
-                this.t('timeSaving1', '• 自动生成练习题: 每节课节省约5分钟'),
-                this.t('timeSaving2', '• 自动批改: 每份作业节省约2分钟'),
-                this.t('timeSaving3', '• 自动生成学习报告: 每份报告节省约10分钟'),
-                this.t('timeSaving4', '• 数据统计分析: 每次节省约15分钟'),
+                '• Auto-generate exercises: saves ~5 minutes per lesson',
+                '• Auto-grading: saves ~2 minutes per assignment',
+                '• Auto-generate reports: saves ~10 minutes per report',
+                '• Data analysis: saves ~15 minutes per session',
                 '',
-                this.t('estimatedMonthlySaving', '估算每月节省时间:'),
-                `  - ${this.t('dailyClasses', '按每天2节课计算')}: ${this.t('approx', '约')} ${2 * 5 * 20} ${this.t('minutesPerMonth', '分钟/月')}`,
-                `  - ${this.t('weeklyHomework', '按每周5次作业计算')}: ${this.t('approx', '约')} ${5 * 2 * 4} ${this.t('minutesPerMonth', '分钟/月')}`,
-                `  - ${this.t('monthlyReports', '按每月4次报告计算')}: ${this.t('approx', '约')} ${4 * 10} ${this.t('minutesPerMonth', '分钟/月')}`,
-                `  - ${this.t('total', '总计')}: ${this.t('approx', '约')} ${(2*5*20) + (5*2*4) + (4*10)} ${this.t('minutesPerMonth', '分钟/月')} (${this.t('approx', '约')} ${Math.round(((2*5*20) + (5*2*4) + (4*10))/60)} ${this.t('hours', '小时')})`
+                'Estimated Monthly Time Savings:',
+                '  - Based on 2 classes/day: approx. 200 minutes/month',
+                '  - Based on 5 assignments/week: approx. 40 minutes/month',
+                '  - Based on 4 reports/month: approx. 40 minutes/month',
+                '  - Total: approx. 280 minutes/month (approx. 5 hours)'
             ];
             timeSavings.forEach(text => {
                 doc.text(text, 25, y);
@@ -846,21 +844,21 @@ class ReportGenerator {
 
             y += 10;
 
-            // 4. 推广潜力
+            // 4. Dissemination Potential
             doc.setFontSize(18);
             doc.setTextColor(212, 107, 141);
-            doc.text('4. ' + this.t('disseminationPotential', '推广潜力'), 20, y);
+            doc.text('4. Dissemination Potential', 20, y);
             
             y += 15;
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
             const potentials = [
-                this.t('potential1', '• 完全基于Web技术，无需安装，打开浏览器即可使用'),
-                this.t('potential2', '• 支持多种语言（中文/英文），适用于多语言环境'),
-                this.t('potential3', '• 可以部署在学校服务器或免费托管平台'),
-                this.t('potential4', '• 支持多人同时在线使用，适合班级教学'),
-                this.t('potential5', '• 可导出学习数据，方便教师进一步分析'),
-                this.t('potential6', '• 源代码开放，其他教师可以根据需要修改和定制')
+                '• Web-based, no installation required, works in browser',
+                '• Supports multiple languages (Chinese/English)',
+                '• Can be deployed on school servers or free hosting platforms',
+                '• Supports multiple simultaneous users for classroom teaching',
+                '• Export learning data for further analysis',
+                '• Open source, customizable by other teachers'
             ];
             potentials.forEach(text => {
                 doc.text(text, 25, y);
@@ -869,42 +867,47 @@ class ReportGenerator {
 
             y += 10;
 
-            // 5. 成本分析
+            // 5. Cost Analysis
             doc.setFontSize(18);
             doc.setTextColor(212, 107, 141);
-            doc.text('5. ' + this.t('costAnalysis', '成本分析'), 20, y);
+            doc.text('5. Cost Analysis', 20, y);
             
             y += 15;
             doc.setFontSize(12);
             doc.setTextColor(0, 0, 0);
             const costs = [
-                this.t('developmentCost', '开发成本:'),
-                `  • ${this.t('developmentTime', '开发时间')}: ${this.t('approx', '约')} 40 ${this.t('hours', '小时')} (${this.t('estimated', '估算')})`,
-                `  • ${this.t('developmentTools', '开发工具')}: ${this.t('free', '免费')} (VS Code, Git)`,
+                'Development Cost:',
+                '  • Development Time: approx. 40 hours (estimated)',
+                '  • Development Tools: Free (VS Code, Git)',
                 '',
-                this.t('operationalCost', '运行成本:'),
-                `  • ${this.t('server', '服务器')}: ${this.t('free', '免费')} (Supabase ${this.t('freeTier', '免费层')})`,
-                `  • ${this.t('hosting', '托管')}: ${this.t('free', '免费')} (GitHub Pages)`,
-                `  • ${this.t('database', '数据库')}: ${this.t('free', '免费')} (Supabase 500MB)`,
+                'Operational Cost:',
+                '  • Server: Free (Supabase free tier)',
+                '  • Hosting: Free (GitHub Pages)',
+                '  • Database: Free (Supabase 500MB)',
                 '',
-                this.t('comparisonWithTraditional', '与传统方法对比:'),
-                `  • ${this.t('traditionalWorkbook', '传统练习册')}: ${this.t('perBook', '每本约')} RM 10-20，${this.t('yearlyUpdate', '每年需更新')}`,
-                `  • ${this.t('thisSystem', '本系统')}: ${this.t('oneTimeDevelopment', '一次性开发，永久使用，零维护成本')}`,
+                'Comparison with Traditional Methods:',
+                '  • Traditional workbooks: approx. RM 10-20 per book, updated yearly',
+                '  • This system: One-time development, permanent use, zero maintenance',
                 '',
-                `${this.t('totalCost', '总成本')}: RM 0 (${this.t('completelyFree', '完全免费')})`
+                'Total Cost: RM 0 (Completely Free)'
             ];
             costs.forEach(text => {
                 doc.text(text, 25, y);
                 y += 8;
             });
 
+            // 恢复语言
+            if (I18n?.setLang) {
+                I18n.setLang(currentLang);
+            }
+
             // 保存PDF
-            const fileName = `${this.t('teachingEffectivenessReport', '教学效果评估报告')}_${new Date().toISOString().slice(0,10)}.pdf`;
+            const fileName = `Teaching_Effectiveness_Report_${new Date().toISOString().slice(0,10)}.pdf`;
             doc.save(fileName);
             
         } catch (error) {
-            console.error('生成比赛报告失败:', error);
-            alert(this.t('generateReportFailed', '生成报告失败') + '：' + error.message);
+            console.error('Failed to generate competition report:', error);
+            alert('Failed to generate report: ' + error.message);
         }
     }
 }
@@ -913,5 +916,3 @@ class ReportGenerator {
 if (typeof window !== 'undefined') {
     window.ReportGenerator = ReportGenerator;
 }
-
-// ==================== 文件结束 ====================
