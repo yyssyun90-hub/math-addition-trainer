@@ -1,7 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - 学习报告生成器 ====================
- * 版本: 2.1.0 (PDF英文版 + Excel修复)
- * 功能：生成 PDF/Excel 格式的学习报告，PDF 使用英文避免乱码
+ * 版本: 2.2.0 (趋势分析版 + 完整诊断 + 中英文双语)
+ * 功能：生成 PDF/Excel 格式的学习报告，包含趋势分析和诊断建议
  * 依赖：jsPDF, jspdf-autotable, XLSX
  * ====================================================================
  */
@@ -165,7 +165,36 @@ class ReportGenerator {
     }
 
     /**
-     * 生成学生个人报告 (PDF) - 英文版
+     * 获取难度分析评语
+     */
+    getDifficultyAnalysis(difficulty, accuracy) {
+        if (accuracy === 0 && difficulty === 'hard') return 'No data yet';
+        if (accuracy >= 80) return 'Excellent performance!';
+        if (accuracy >= 65) return 'Good, keep practicing.';
+        if (accuracy >= 50) return 'Needs improvement.';
+        return 'Significant weakness, focus here.';
+    }
+
+    /**
+     * 获取学生个人建议
+     */
+    getStudentSuggestion(student) {
+        const accuracy = student.accuracy || 0;
+        const avgTime = student.avgTime || 0;
+        
+        if (accuracy < 50) {
+            return 'Start with easy difficulty, practice basic facts.';
+        } else if (accuracy < 70) {
+            return 'Review mistakes and practice daily.';
+        } else if (avgTime > 10) {
+            return 'Good accuracy! Work on speed.';
+        } else {
+            return 'Try challenging harder difficulties.';
+        }
+    }
+
+    /**
+     * 生成学生个人报告 (PDF) - 英文版 + 趋势分析
      */
     async generateStudentReport(studentId) {
         try {
@@ -174,6 +203,10 @@ class ReportGenerator {
                 alert('No student data found');
                 return;
             }
+
+            // 获取趋势数据
+            const trend = await this.studentRecord.getStudentTrend(studentId);
+            const trendMessage = this.studentRecord.getTrendMessage(trend);
 
             if (typeof window.jspdf === 'undefined') {
                 alert('PDF library not loaded, please refresh');
@@ -223,6 +256,43 @@ class ReportGenerator {
             doc.text(`Last Active: ${stats.lastActive ? new Date(stats.lastActive).toLocaleString('en-US') : 'None'}`, 120, y);
 
             y += 15;
+
+            // ========== 趋势分析 ==========
+            if (trend && trend.recent_questions > 0) {
+                doc.setFillColor(255, 248, 220);
+                doc.roundedRect(15, y, 180, 40, 5, 5, 'F');
+                
+                doc.setFontSize(12);
+                doc.setTextColor(212, 107, 141);
+                doc.text('📈 Progress Trend (Recent 7 Days vs Previous 3 Weeks)', 20, y + 10);
+                
+                doc.setFontSize(10);
+                doc.setTextColor(80, 80, 80);
+                
+                // 正确率对比
+                const recentAcc = Math.round(trend.recent_accuracy || 0);
+                const previousAcc = Math.round(trend.previous_accuracy || 0);
+                const change = Math.round(trend.accuracy_change || 0);
+                const changeSymbol = change >= 0 ? '+' : '';
+                
+                doc.text(`Recent 7 Days: ${recentAcc}% (${trend.recent_questions} questions)`, 25, y + 22);
+                doc.text(`Previous 3 Weeks: ${previousAcc}% (${trend.previous_questions} questions)`, 25, y + 32);
+                doc.text(`Change: ${changeSymbol}${change}%`, 140, y + 27);
+                
+                y += 48;
+            } else {
+                y += 10;
+            }
+
+            // 趋势评语
+            doc.setFillColor(240, 248, 255);
+            doc.roundedRect(15, y, 180, 20, 5, 5, 'F');
+            
+            doc.setFontSize(11);
+            doc.setTextColor(trendMessage.color);
+            doc.text(`${trendMessage.icon} ${trendMessage.message}`, 20, y + 13);
+            
+            y += 28;
 
             // 诊断评语
             const diagnosis = this.getDiagnosisByAccuracy(stats.accuracy || 0);
@@ -410,8 +480,11 @@ class ReportGenerator {
         }
     }
 
+    // ==================== 第 1 部分结束 ====================
+    // ==================== 第 2 部分 / 共 2 部分 ====================
+
     /**
-     * 生成全班报告 (PDF) - 英文版
+     * 生成全班报告 (PDF) - 英文版 + 完整分析 + 趋势汇总
      */
     async generateClassReport() {
         try {
@@ -469,14 +542,15 @@ class ReportGenerator {
             
             y += 8;
             doc.text(`Total Sessions: ${classStats.totalSessions || 0}`, 20, y);
-            doc.text(`Class Avg Accuracy: ${classStats.classAccuracy || 0}%`, 120, y);
+            doc.text(`Class Avg Accuracy: ${Math.round(classStats.classAccuracy || 0)}%`, 120, y);
             
             y += 8;
-            doc.text(`Class Avg Time: ${classStats.avgClassTime || 0}s`, 20, y);
+            doc.text(`Class Avg Time: ${Math.round(classStats.avgClassTime || 0)}s`, 20, y);
+            doc.text(`Total Correct: ${classStats.totalCorrect || 0}`, 120, y);
 
             y += 15;
 
-            // 班级诊断
+            // ========== 班级诊断 ==========
             const diagnosis = this.getClassDiagnosis(classStats);
             
             doc.setFillColor(240, 248, 255);
@@ -492,7 +566,7 @@ class ReportGenerator {
 
             y += 40;
 
-            // 各难度班级正确率
+            // ========== 各难度班级正确率（带分析） ==========
             doc.setFontSize(16);
             doc.setTextColor(212, 107, 141);
             doc.text('📊 Class Accuracy by Difficulty', 20, y);
@@ -500,24 +574,27 @@ class ReportGenerator {
             y += 10;
 
             const difficultyData = [
-                ['Difficulty', 'Questions', 'Correct', 'Accuracy'],
+                ['Difficulty', 'Questions', 'Correct', 'Accuracy', 'Analysis'],
                 [
                     'Easy',
                     classStats.difficultyStats?.easy?.total || 0,
                     classStats.difficultyStats?.easy?.correct || 0,
-                    (classStats.difficultyStats?.easy?.accuracy || 0) + '%'
+                    Math.round(classStats.difficultyStats?.easy?.accuracy || 0) + '%',
+                    this.getDifficultyAnalysis('easy', classStats.difficultyStats?.easy?.accuracy || 0)
                 ],
                 [
                     'Medium',
                     classStats.difficultyStats?.medium?.total || 0,
                     classStats.difficultyStats?.medium?.correct || 0,
-                    (classStats.difficultyStats?.medium?.accuracy || 0) + '%'
+                    Math.round(classStats.difficultyStats?.medium?.accuracy || 0) + '%',
+                    this.getDifficultyAnalysis('medium', classStats.difficultyStats?.medium?.accuracy || 0)
                 ],
                 [
                     'Hard',
                     classStats.difficultyStats?.hard?.total || 0,
                     classStats.difficultyStats?.hard?.correct || 0,
-                    (classStats.difficultyStats?.hard?.accuracy || 0) + '%'
+                    Math.round(classStats.difficultyStats?.hard?.accuracy || 0) + '%',
+                    this.getDifficultyAnalysis('hard', classStats.difficultyStats?.hard?.accuracy || 0)
                 ]
             ];
 
@@ -527,12 +604,15 @@ class ReportGenerator {
                 body: difficultyData.slice(1),
                 theme: 'striped',
                 headStyles: { fillColor: [212, 107, 141] },
-                styles: { fontSize: 10 }
+                styles: { fontSize: 9 },
+                columnStyles: {
+                    4: { cellWidth: 45 }
+                }
             });
 
             y = doc.lastAutoTable.finalY + 12;
 
-            // 优秀学生（前5名）
+            // ========== 优秀学生（前5名，带评级） ==========
             if (y > 230) {
                 doc.addPage();
                 y = 20;
@@ -546,8 +626,11 @@ class ReportGenerator {
 
             if (classStats.topStudents && classStats.topStudents.length > 0) {
                 const topData = [
-                    ['Rank', 'Student Name', 'Questions', 'Accuracy'],
-                    ...classStats.topStudents.slice(0, 5).map((s, i) => [i + 1, s.name, s.totalQuestions, (s.accuracy || 0) + '%'])
+                    ['Rank', 'Student Name', 'Questions', 'Accuracy', 'Rating'],
+                    ...classStats.topStudents.slice(0, 5).map((s, i) => {
+                        const rating = this.getDiagnosisByAccuracy(s.accuracy || 0).level;
+                        return [i + 1, s.name, s.totalQuestions, Math.round(s.accuracy || 0) + '%', rating];
+                    })
                 ];
 
                 doc.autoTable({
@@ -556,13 +639,13 @@ class ReportGenerator {
                     body: topData.slice(1),
                     theme: 'striped',
                     headStyles: { fillColor: [241, 196, 15] },
-                    styles: { fontSize: 10 }
+                    styles: { fontSize: 9 }
                 });
 
                 y = doc.lastAutoTable.finalY + 12;
             }
 
-            // 需要关注的学生（正确率低于60%）
+            // ========== 需要关注的学生（带建议） ==========
             if (y > 230) {
                 doc.addPage();
                 y = 20;
@@ -578,12 +661,13 @@ class ReportGenerator {
                 y += 10;
 
                 const lowData = [
-                    ['Student Name', 'Questions', 'Accuracy', 'Avg Time'],
+                    ['Student Name', 'Questions', 'Accuracy', 'Avg Time', 'Suggestion'],
                     ...lowPerformingStudents.slice(0, 10).map(s => [
                         s.name, 
                         s.totalQuestions, 
-                        (s.accuracy || 0) + '%', 
-                        (s.avgTime || 0) + 's'
+                        Math.round(s.accuracy || 0) + '%', 
+                        Math.round(s.avgTime || 0) + 's',
+                        this.getStudentSuggestion(s)
                     ])
                 ];
 
@@ -591,6 +675,41 @@ class ReportGenerator {
                     startY: y,
                     head: [lowData[0]],
                     body: lowData.slice(1),
+                    theme: 'striped',
+                    headStyles: { fillColor: [231, 76, 60] },
+                    styles: { fontSize: 8 },
+                    columnStyles: {
+                        4: { cellWidth: 45 }
+                    }
+                });
+
+                y = doc.lastAutoTable.finalY + 12;
+            }
+
+            // ========== 班级常见薄弱点 ==========
+            if (y > 230) {
+                doc.addPage();
+                y = 20;
+            }
+
+            const weaknesses = this.analyzeWeaknesses(classStats.commonMistakes, classStats.totalWrong || 0);
+            
+            if (weaknesses.length > 0) {
+                doc.setFontSize(16);
+                doc.setTextColor(212, 107, 141);
+                doc.text('📉 Class Common Weaknesses', 20, y);
+                
+                y += 10;
+
+                const weaknessData = [
+                    ['Rank', 'Combination', 'Errors', 'Percentage'],
+                    ...weaknesses.map((w, i) => [i + 1, w.combination, w.count, w.percentage + '%'])
+                ];
+
+                doc.autoTable({
+                    startY: y,
+                    head: [weaknessData[0]],
+                    body: weaknessData.slice(1),
                     theme: 'striped',
                     headStyles: { fillColor: [231, 76, 60] },
                     styles: { fontSize: 10 }
@@ -613,7 +732,7 @@ class ReportGenerator {
     }
 
     /**
-     * 导出为 Excel (用于教师进一步分析) - 修复版
+     * 导出为 Excel (用于教师进一步分析) - 修复版 + 趋势数据
      */
     exportToExcel() {
         try {
@@ -634,22 +753,28 @@ class ReportGenerator {
             // 1. 学生学习数据表（安全处理，防止 undefined）
             const studentData = (classStats.students || []).map(s => {
                 // 安全获取嵌套属性
-                const easyAccuracy = s.difficultyStats?.easy?.accuracy || 0;
-                const mediumAccuracy = s.difficultyStats?.medium?.accuracy || 0;
-                const hardAccuracy = s.difficultyStats?.hard?.accuracy || 0;
+                const easyAccuracy = Math.round(s.difficultyStats?.easy?.accuracy || 0);
+                const mediumAccuracy = Math.round(s.difficultyStats?.medium?.accuracy || 0);
+                const hardAccuracy = Math.round(s.difficultyStats?.hard?.accuracy || 0);
+                
+                // 获取诊断评级
+                const diagnosis = this.getDiagnosisByAccuracy(s.accuracy || 0);
+                const speedDiagnosis = this.getSpeedDiagnosis(s.avgTime || 0);
                 
                 return {
-                    [this.t('studentName', '学生姓名')]: s.studentName || '-',
+                    [this.t('studentName', '学生姓名')]: s.studentName || s.name || '-',
                     [this.t('studentId', '学生ID')]: s.studentId || '-',
                     [this.t('totalSessions', '练习次数')]: s.totalSessions || 0,
                     [this.t('totalQuestions', '总答题数')]: s.totalQuestions || 0,
                     [this.t('correctAnswers', '正确题数')]: s.correctQuestions || 0,
                     [this.t('wrongAnswers', '错误题数')]: s.wrongQuestions || 0,
-                    [this.t('accuracy', '正确率')]: (s.accuracy || 0) + '%',
-                    [this.t('avgTime', '平均用时')]: (s.avgTime || 0) + this.t('seconds', '秒'),
+                    [this.t('accuracy', '正确率')]: Math.round(s.accuracy || 0) + '%',
+                    [this.t('avgTime', '平均用时')]: Math.round(s.avgTime || 0) + this.t('seconds', '秒'),
                     [this.t('easyAccuracy', '简单正确率')]: easyAccuracy + '%',
                     [this.t('mediumAccuracy', '中等正确率')]: mediumAccuracy + '%',
                     [this.t('hardAccuracy', '困难正确率')]: hardAccuracy + '%',
+                    [this.t('overallRating', '综合评级')]: diagnosis.level,
+                    [this.t('speedRating', '速度评级')]: speedDiagnosis.level,
                     [this.t('lastActive', '最后活动')]: s.lastActive ? new Date(s.lastActive).toLocaleString('zh-CN') : this.t('none', '无')
                 };
             });
@@ -674,32 +799,39 @@ class ReportGenerator {
                 [this.t('value', '数值')]: classStats.totalCorrect || 0
             }, {
                 [this.t('statItem', '统计项目')]: this.t('classAvgAccuracy', '班级平均正确率'),
-                [this.t('value', '数值')]: (classStats.classAccuracy || 0) + '%'
+                [this.t('value', '数值')]: Math.round(classStats.classAccuracy || 0) + '%'
             }, {
                 [this.t('statItem', '统计项目')]: this.t('classAvgTime', '班级平均用时'),
-                [this.t('value', '数值')]: (classStats.avgClassTime || 0) + this.t('seconds', '秒')
+                [this.t('value', '数值')]: Math.round(classStats.avgClassTime || 0) + this.t('seconds', '秒')
             }];
 
             const ws2 = XLSX.utils.json_to_sheet(summaryData);
             XLSX.utils.book_append_sheet(wb, ws2, this.t('classSummary', '班级统计'));
 
-            // 保存Excel（添加 BOM 头避免中文乱码）
+            // 3. 各难度统计
+            const difficultySummary = [{
+                [this.t('difficulty', '难度')]: this.t('easy', '简单'),
+                [this.t('totalQuestions', '答题数')]: classStats.difficultyStats?.easy?.total || 0,
+                [this.t('correctAnswers', '正确数')]: classStats.difficultyStats?.easy?.correct || 0,
+                [this.t('accuracy', '正确率')]: Math.round(classStats.difficultyStats?.easy?.accuracy || 0) + '%'
+            }, {
+                [this.t('difficulty', '难度')]: this.t('medium', '中等'),
+                [this.t('totalQuestions', '答题数')]: classStats.difficultyStats?.medium?.total || 0,
+                [this.t('correctAnswers', '正确数')]: classStats.difficultyStats?.medium?.correct || 0,
+                [this.t('accuracy', '正确率')]: Math.round(classStats.difficultyStats?.medium?.accuracy || 0) + '%'
+            }, {
+                [this.t('difficulty', '难度')]: this.t('hard', '困难'),
+                [this.t('totalQuestions', '答题数')]: classStats.difficultyStats?.hard?.total || 0,
+                [this.t('correctAnswers', '正确数')]: classStats.difficultyStats?.hard?.correct || 0,
+                [this.t('accuracy', '正确率')]: Math.round(classStats.difficultyStats?.hard?.accuracy || 0) + '%'
+            }];
+
+            const ws3 = XLSX.utils.json_to_sheet(difficultySummary);
+            XLSX.utils.book_append_sheet(wb, ws3, this.t('difficultyStats', '难度统计'));
+
+            // 保存Excel
             const fileName = `${this.t('studentLearningData', '学生学习数据')}_${new Date().toISOString().slice(0,10)}.xlsx`;
-            
-            // 使用 XLSX.write 并添加 BOM
-            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
-            const buf = new ArrayBuffer(wbout.length);
-            const view = new Uint8Array(buf);
-            for (let i = 0; i < wbout.length; i++) {
-                view[i] = wbout.charCodeAt(i) & 0xFF;
-            }
-            const blob = new Blob([buf], { type: 'application/octet-stream' });
-            
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = fileName;
-            link.click();
-            URL.revokeObjectURL(link.href);
+            XLSX.writeFile(wb, fileName);
             
         } catch (error) {
             console.error('导出Excel失败:', error);
@@ -769,7 +901,7 @@ class ReportGenerator {
                 '• Real-time multiplayer matching system for online battles',
                 '• AI adaptive difficulty adjustment based on student performance',
                 '• Complete student learning record system tracking individual progress',
-                '• Automatic diagnostic learning reports with weakness analysis',
+                '• Automatic diagnostic learning reports with weakness and trend analysis',
                 '• Soft and colorful candy-themed interface to increase engagement',
                 '• Bilingual support (Chinese/English) for multilingual environments'
             ];
@@ -791,16 +923,16 @@ class ReportGenerator {
             doc.text(`Participating Students: ${classStats.totalStudents}`, 25, y);
             doc.text(`Total Practice Sessions: ${classStats.totalSessions || 0}`, 25, y + 8);
             doc.text(`Total Questions Answered: ${classStats.totalQuestions}`, 25, y + 16);
-            doc.text(`Class Average Accuracy: ${classStats.classAccuracy || 0}%`, 25, y + 24);
-            doc.text(`Average Response Time: ${classStats.avgClassTime || 0} sec/question`, 25, y + 32);
+            doc.text(`Class Average Accuracy: ${Math.round(classStats.classAccuracy || 0)}%`, 25, y + 24);
+            doc.text(`Average Response Time: ${Math.round(classStats.avgClassTime || 0)} sec/question`, 25, y + 32);
 
             y += 45;
 
             const difficultyData = [
                 ['Difficulty', 'Questions', 'Correct', 'Accuracy'],
-                ['Easy', classStats.difficultyStats?.easy?.total || 0, classStats.difficultyStats?.easy?.correct || 0, (classStats.difficultyStats?.easy?.accuracy || 0) + '%'],
-                ['Medium', classStats.difficultyStats?.medium?.total || 0, classStats.difficultyStats?.medium?.correct || 0, (classStats.difficultyStats?.medium?.accuracy || 0) + '%'],
-                ['Hard', classStats.difficultyStats?.hard?.total || 0, classStats.difficultyStats?.hard?.correct || 0, (classStats.difficultyStats?.hard?.accuracy || 0) + '%']
+                ['Easy', classStats.difficultyStats?.easy?.total || 0, classStats.difficultyStats?.easy?.correct || 0, Math.round(classStats.difficultyStats?.easy?.accuracy || 0) + '%'],
+                ['Medium', classStats.difficultyStats?.medium?.total || 0, classStats.difficultyStats?.medium?.correct || 0, Math.round(classStats.difficultyStats?.medium?.accuracy || 0) + '%'],
+                ['Hard', classStats.difficultyStats?.hard?.total || 0, classStats.difficultyStats?.hard?.correct || 0, Math.round(classStats.difficultyStats?.hard?.accuracy || 0) + '%']
             ];
 
             doc.autoTable({
@@ -916,3 +1048,5 @@ class ReportGenerator {
 if (typeof window !== 'undefined') {
     window.ReportGenerator = ReportGenerator;
 }
+
+// ==================== 文件结束 ====================
