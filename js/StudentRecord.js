@@ -1,7 +1,7 @@
 /**
  * ==================== 糖果数学消消乐 - 学生记录系统 ====================
- * 版本: 2.0.1 (Supabase集成版 - 修复版)
- * 功能：记录每个学生的学习数据，自动同步到Supabase
+ * 版本: 2.1.0 (趋势分析版)
+ * 功能：记录每个学生的学习数据，自动同步到Supabase，支持趋势分析
  * ==============================================================
  */
 
@@ -235,7 +235,9 @@ class StudentRecordSystem {
                 num2: q.num2,
                 is_correct: q.isCorrect,
                 response_time: q.timeSpent,
-                timestamp: q.timestamp
+                timestamp: q.timestamp,
+                mode: q.mode || 'challenge',
+                difficulty: q.difficulty || 'medium'
             }));
 
             const { error: questionsError } = await this.supabase
@@ -341,9 +343,29 @@ class StudentRecordSystem {
                         studentId: data.student_id,
                         studentName: data.name,
                         totalQuestions: data.total_questions,
+                        totalSessions: data.total_sessions || 0,
+                        correctQuestions: data.correct_questions || 0,
+                        wrongQuestions: data.wrong_questions || 0,
                         avgTime: data.avg_time,
                         accuracy: data.accuracy,
-                        lastActive: data.last_active
+                        lastActive: data.last_active,
+                        difficultyStats: {
+                            easy: {
+                                total: data.easy_total || 0,
+                                correct: data.easy_correct || 0,
+                                accuracy: data.easy_accuracy || 0
+                            },
+                            medium: {
+                                total: data.medium_total || 0,
+                                correct: data.medium_correct || 0,
+                                accuracy: data.medium_accuracy || 0
+                            },
+                            hard: {
+                                total: data.hard_total || 0,
+                                correct: data.hard_correct || 0,
+                                accuracy: data.hard_accuracy || 0
+                            }
+                        }
                     };
                 }
             } catch (error) {
@@ -364,6 +386,11 @@ class StudentRecordSystem {
         const allQuestions = student.sessions.flatMap(s => s.questions);
         const totalQuestions = allQuestions.length;
         const correctQuestions = allQuestions.filter(q => q.isCorrect).length;
+        
+        // 按难度统计
+        const easyQuestions = allQuestions.filter(q => q.difficulty === 'easy');
+        const mediumQuestions = allQuestions.filter(q => q.difficulty === 'medium');
+        const hardQuestions = allQuestions.filter(q => q.difficulty === 'hard');
 
         return {
             studentId,
@@ -375,8 +402,84 @@ class StudentRecordSystem {
             wrongQuestions: totalQuestions - correctQuestions,
             avgTime: this.calculateAverageTime(allQuestions),
             lastActive: student.sessions.length > 0 ? 
-                student.sessions[student.sessions.length - 1].endTime : null
+                student.sessions[student.sessions.length - 1].endTime : null,
+            difficultyStats: {
+                easy: {
+                    total: easyQuestions.length,
+                    correct: easyQuestions.filter(q => q.isCorrect).length,
+                    accuracy: easyQuestions.length ? Math.round((easyQuestions.filter(q => q.isCorrect).length / easyQuestions.length) * 100) : 0
+                },
+                medium: {
+                    total: mediumQuestions.length,
+                    correct: mediumQuestions.filter(q => q.isCorrect).length,
+                    accuracy: mediumQuestions.length ? Math.round((mediumQuestions.filter(q => q.isCorrect).length / mediumQuestions.length) * 100) : 0
+                },
+                hard: {
+                    total: hardQuestions.length,
+                    correct: hardQuestions.filter(q => q.isCorrect).length,
+                    accuracy: hardQuestions.length ? Math.round((hardQuestions.filter(q => q.isCorrect).length / hardQuestions.length) * 100) : 0
+                }
+            }
         };
+    }
+
+    /**
+     * 获取学生趋势数据（最近7天 vs 前3周）
+     */
+    async getStudentTrend(studentId) {
+        if (!this.supabase || !navigator.onLine) {
+            return null;
+        }
+        
+        try {
+            const { data, error } = await this.supabase
+                .from('student_trend')
+                .select('*')
+                .eq('student_id', studentId)
+                .maybeSingle();
+            
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.warn('获取趋势数据失败:', error);
+            return null;
+        }
+    }
+
+    /**
+     * 获取趋势评语（积极框架）
+     */
+    getTrendMessage(trend) {
+        if (!trend || trend.recent_questions === 0) {
+            return {
+                message: (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendNoData') : 'Not enough data yet, keep practicing!',
+                color: '#95a5a6',
+                icon: '📝'
+            };
+        }
+        
+        const change = trend.accuracy_change || 0;
+        
+        if (change >= 5) {
+            let msg = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendProgress') : 'Accuracy improved by {change}%! Great job!';
+            return {
+                message: msg.replace('{change}', Math.round(change)),
+                color: '#2ecc71',
+                icon: '🎉'
+            };
+        } else if (change <= -5) {
+            return {
+                message: (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendDecline') : 'Room for improvement, practice basic problems',
+                color: '#e74c3c',
+                icon: '💪'
+            };
+        } else {
+            return {
+                message: (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendStable') : 'Stable performance, keep it up',
+                color: '#3498db',
+                icon: '📊'
+            };
+        }
     }
 
     /**
@@ -392,12 +495,41 @@ class StudentRecordSystem {
                     .order('last_active', { ascending: false });
 
                 if (!error && data) {
+                    // 计算汇总数据
+                    const totalQuestions = data.reduce((sum, s) => sum + (s.total_questions || 0), 0);
+                    const totalCorrect = data.reduce((sum, s) => sum + (s.correct_questions || 0), 0);
+                    
                     return {
                         totalStudents: data.length,
                         students: data,
-                        totalQuestions: data.reduce((sum, s) => sum + (s.total_questions || 0), 0),
-                        avgClassTime: data.reduce((sum, s) => sum + (s.avg_time || 0), 0) / data.length,
-                        avgClassAccuracy: data.reduce((sum, s) => sum + (s.accuracy || 0), 0) / data.length
+                        totalQuestions: totalQuestions,
+                        totalCorrect: totalCorrect,
+                        totalSessions: data.reduce((sum, s) => sum + (s.total_sessions || 0), 0),
+                        totalWrong: totalQuestions - totalCorrect,
+                        avgClassTime: data.length > 0 ? data.reduce((sum, s) => sum + (s.avg_time || 0), 0) / data.length : 0,
+                        classAccuracy: data.length > 0 ? data.reduce((sum, s) => sum + (s.accuracy || 0), 0) / data.length : 0,
+                        difficultyStats: {
+                            easy: {
+                                total: data.reduce((sum, s) => sum + (s.easy_total || 0), 0),
+                                correct: data.reduce((sum, s) => sum + (s.easy_correct || 0), 0),
+                                accuracy: data.reduce((sum, s) => sum + (s.easy_accuracy || 0), 0) / (data.length || 1)
+                            },
+                            medium: {
+                                total: data.reduce((sum, s) => sum + (s.medium_total || 0), 0),
+                                correct: data.reduce((sum, s) => sum + (s.medium_correct || 0), 0),
+                                accuracy: data.reduce((sum, s) => sum + (s.medium_accuracy || 0), 0) / (data.length || 1)
+                            },
+                            hard: {
+                                total: data.reduce((sum, s) => sum + (s.hard_total || 0), 0),
+                                correct: data.reduce((sum, s) => sum + (s.hard_correct || 0), 0),
+                                accuracy: data.reduce((sum, s) => sum + (s.hard_accuracy || 0), 0) / (data.length || 1)
+                            }
+                        },
+                        topStudents: data
+                            .filter(s => (s.total_questions || 0) >= 10)
+                            .sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0))
+                            .slice(0, 5),
+                        commonMistakes: {}
                     };
                 }
             } catch (error) {
@@ -410,8 +542,18 @@ class StudentRecordSystem {
             totalStudents: this.students.size,
             students: [],
             totalQuestions: 0,
+            totalCorrect: 0,
+            totalWrong: 0,
+            totalSessions: 0,
             avgClassTime: 0,
-            avgClassAccuracy: 0
+            classAccuracy: 0,
+            difficultyStats: {
+                easy: { total: 0, correct: 0, accuracy: 0 },
+                medium: { total: 0, correct: 0, accuracy: 0 },
+                hard: { total: 0, correct: 0, accuracy: 0 }
+            },
+            topStudents: [],
+            commonMistakes: {}
         };
 
         this.students.forEach((student, studentId) => {
@@ -419,12 +561,19 @@ class StudentRecordSystem {
             if (stats) {
                 classStats.students.push(stats);
                 classStats.totalQuestions += stats.totalQuestions;
+                classStats.totalCorrect += stats.correctQuestions;
+                classStats.totalWrong += stats.wrongQuestions;
+                classStats.totalSessions += stats.totalSessions;
             }
         });
 
         if (classStats.students.length > 0) {
             classStats.avgClassTime = classStats.students.reduce((sum, s) => sum + s.avgTime, 0) / classStats.students.length;
-            classStats.avgClassAccuracy = classStats.students.reduce((sum, s) => sum + s.accuracy, 0) / classStats.students.length;
+            classStats.classAccuracy = classStats.students.reduce((sum, s) => sum + s.accuracy, 0) / classStats.students.length;
+            classStats.topStudents = classStats.students
+                .filter(s => s.totalQuestions >= 10)
+                .sort((a, b) => b.accuracy - a.accuracy)
+                .slice(0, 5);
         }
 
         return classStats;
