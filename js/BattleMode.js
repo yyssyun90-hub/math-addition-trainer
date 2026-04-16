@@ -3368,7 +3368,7 @@ class BattleMode {
     }
 
     // ==================== 第 3 部分结束 ====================
-         // ==================== 第 4 部分 / 共 8 部分 ====================
+        // ==================== 第 4 部分 / 共 8 部分 ====================
 
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
@@ -3391,14 +3391,15 @@ class BattleMode {
         try {
             console.log(`尝试加入房间: ${roomCode}`);
             
-            const { data: battle, error } = await this.game.state.supabase
+            // 1. 先查询房间是否存在
+            const { data: battle, error: queryError } = await this.game.state.supabase
                 .from('candy_math_battles')
-                .select('*')
+                .select('id, status, player1_id, player2_id, player1_name')
                 .eq('room_code', roomCode.toUpperCase())
                 .maybeSingle();
 
-            if (error) {
-                console.error('查询房间失败:', error);
+            if (queryError) {
+                console.error('查询房间失败:', queryError);
                 this.showFeedback('查询房间失败，请重试', '#ff4444');
                 return;
             }
@@ -3423,34 +3424,26 @@ class BattleMode {
                 return;
             }
 
-            // ✅ 修复：使用 .maybeSingle() 正确处理没有匹配行的情况
-            const { error: updateError, data: updatedBattle } = await this.game.state.supabase
-                .from('candy_math_battles')
-                .update({
-                    player2_id: user.id,
-                    player2_name: user.name || user.email,
-                    status: 'playing',
-                    started_at: new Date().toISOString(),
-                    current_turn: battle.player1_id
-                })
-                .eq('id', battle.id)
-                .is('player2_id', null)
-                .select()
-                .maybeSingle();
+            // 2. 使用 RPC 函数加入房间（原子操作，避免并发冲突）
+            const { data: rpcResult, error: rpcError } = await this.game.state.supabase
+                .rpc('join_battle_room', {
+                    p_battle_id: battle.id,
+                    p_user_id: user.id,
+                    p_user_name: user.name || user.email
+                });
 
-            if (updateError) {
-                console.error('更新房间失败:', updateError);
+            if (rpcError) {
+                console.error('RPC 加入房间失败:', rpcError);
                 this.showFeedback('加入房间失败，请重试', '#ff4444');
                 return;
             }
 
-            // ✅ 如果没有返回数据，说明房间已被其他人抢先加入
-            if (!updatedBattle) {
-                this.showFeedback('房间刚被其他人加入', '#ffa500');
+            if (!rpcResult?.success) {
+                this.showFeedback(rpcResult?.message || '加入房间失败', '#ffa500');
                 return;
             }
 
-            console.log('成功加入房间:', battle.id);
+            console.log('✅ 成功加入房间:', battle.id);
             
             this.room.battleId = battle.id;
             this.room.roomCode = roomCode;
