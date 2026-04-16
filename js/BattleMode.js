@@ -3368,7 +3368,7 @@ class BattleMode {
     }
 
     // ==================== 第 3 部分结束 ====================
-        // ==================== 第 4 部分 / 共 8 部分 ====================
+         // ==================== 第 4 部分 / 共 8 部分 ====================
 
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
@@ -3423,7 +3423,7 @@ class BattleMode {
                 return;
             }
 
-            // ✅ 修复：使用 .is() 方法正确处理 NULL
+            // ✅ 修复：使用 .maybeSingle() 正确处理没有匹配行的情况
             const { error: updateError, data: updatedBattle } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .update({
@@ -3436,7 +3436,7 @@ class BattleMode {
                 .eq('id', battle.id)
                 .is('player2_id', null)
                 .select()
-                .single();
+                .maybeSingle();
 
             if (updateError) {
                 console.error('更新房间失败:', updateError);
