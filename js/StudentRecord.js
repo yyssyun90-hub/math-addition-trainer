@@ -1,7 +1,8 @@
 /**
  * ==================== 糖果数学消消乐 - 学生记录系统 ====================
- * 版本: 2.1.0 (趋势分析版)
- * 功能：记录每个学生的学习数据，自动同步到Supabase，支持趋势分析
+ * 版本: 3.0.0 (立即保存版)
+ * 功能：记录每个学生的学习数据，每道题立即同步到Supabase
+ * 修复：确保答题记录实时保存，解决数据丢失问题
  * ==============================================================
  */
 
@@ -14,7 +15,8 @@ class StudentRecordSystem {
             studentName: null,
             startTime: null,
             questions: [],
-            currentQuestionStart: null
+            currentQuestionStart: null,
+            currentSessionId: null  // 新增：保存当前会话ID
         };
         this.storage = game?.storage || null;
         this.supabase = null;
@@ -44,27 +46,87 @@ class StudentRecordSystem {
     /**
      * 开始记录学生会话
      */
-    startSession(studentId, studentName) {
-        this.endSession(); // 先结束之前的会话
+    async startSession(studentId, studentName) {
+        await this.endSession(); // 先结束之前的会话
         
         this.currentSession = {
             studentId: studentId,
             studentName: studentName || `学生${studentId}`,
             startTime: new Date().toISOString(),
             questions: [],
-            currentQuestionStart: Date.now()
+            currentQuestionStart: Date.now(),
+            currentSessionId: null
         };
+
+        // 立即创建数据库会话记录
+        await this.createDatabaseSession();
 
         console.log(`📝 开始记录会话: ${studentName} (${studentId})`);
     }
 
     /**
-     * 记录一道题目
+     * 创建数据库会话记录
      */
-    recordQuestion(data) {
+    async createDatabaseSession() {
+        if (!this.supabase || !navigator.onLine) return;
+        if (!this.currentSession.studentId) return;
+
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            
+            // 检查今天是否已有会话
+            const { data: existingSession, error: checkError } = await this.supabase
+                .from('game_sessions')
+                .select('id')
+                .eq('student_id', this.currentSession.studentId)
+                .eq('session_date', today)
+                .maybeSingle();
+
+            if (checkError) throw checkError;
+
+            if (existingSession) {
+                // 使用现有会话
+                this.currentSession.currentSessionId = existingSession.id;
+                console.log(`📌 使用现有会话: ${existingSession.id}`);
+            } else {
+                // 创建新会话
+                const { data: newSession, error: createError } = await this.supabase
+                    .from('game_sessions')
+                    .insert([{
+                        student_id: this.currentSession.studentId,
+                        session_date: today,
+                        start_time: this.currentSession.startTime,
+                        end_time: this.currentSession.startTime,
+                        total_questions: 0,
+                        correct_answers: 0,
+                        difficulty_level: this.game?.state?.currentDifficulty || 'medium'
+                    }])
+                    .select()
+                    .single();
+
+                if (createError) throw createError;
+                
+                this.currentSession.currentSessionId = newSession.id;
+                console.log(`✅ 创建新会话: ${newSession.id}`);
+            }
+        } catch (error) {
+            console.error('创建数据库会话失败:', error);
+        }
+    }
+
+    /**
+     * 记录一道题目 - 立即保存到数据库
+     */
+    async recordQuestion(data) {
         if (!this.currentSession.studentId) {
-            console.warn('⚠️ 没有活跃会话，忽略记录');
-            return;
+            // 如果没有活跃会话，尝试自动创建
+            const currentUser = this.game?.state?.currentUser;
+            if (currentUser && currentUser.role === 'student') {
+                await this.startSession(currentUser.id, currentUser.name);
+            } else {
+                console.warn('⚠️ 没有活跃会话，忽略记录');
+                return;
+            }
         }
 
         const timeSpent = this.currentSession.currentQuestionStart ? 
@@ -84,44 +146,171 @@ class StudentRecordSystem {
         this.currentSession.questions.push(questionData);
         console.log(`📊 记录题目: ${data.num1}+${data.num2}=${data.target} ${data.isCorrect ? '✓' : '✗'} (${timeSpent}秒)`);
 
-        // 每5道题自动保存一次
-        if (this.currentSession.questions.length % 5 === 0) {
-            this.saveCurrentSession();
-        }
-
+        // ✅ 关键修复：每道题立即保存到数据库
+        await this.saveQuestionToDatabase(questionData);
+        
         // 重置题目开始时间
         this.currentSession.currentQuestionStart = Date.now();
     }
 
     /**
-     * 结束当前会话并保存
+     * 立即保存单题到数据库
      */
-    endSession() {
-        if (this.currentSession.studentId && this.currentSession.questions.length > 0) {
-            this.saveCurrentSession();
+    async saveQuestionToDatabase(questionData) {
+        if (!this.currentSession.studentId) return;
+        
+        const studentId = this.currentSession.studentId;
+        const studentName = this.currentSession.studentName;
+        
+        try {
+            // 1. 确保学生记录存在
+            let { data: student, error: selectError } = await this.supabase
+                .from('students')
+                .select('student_id, name')
+                .eq('student_id', studentId)
+                .maybeSingle();
+            
+            if (selectError) throw selectError;
+            
+            if (!student) {
+                console.log(`👤 创建新学生记录: ${studentName}`);
+                const { error: insertError } = await this.supabase
+                    .from('students')
+                    .insert([{
+                        student_id: studentId,
+                        name: studentName,
+                        created_at: new Date().toISOString()
+                    }]);
+                
+                if (insertError) throw insertError;
+            } else if (student.name !== studentName && studentName) {
+                // 更新学生姓名
+                await this.supabase
+                    .from('students')
+                    .update({ name: studentName })
+                    .eq('student_id', studentId);
+            }
+            
+            // 2. 确保有活跃的会话ID
+            if (!this.currentSession.currentSessionId) {
+                await this.createDatabaseSession();
+            }
+            
+            if (!this.currentSession.currentSessionId) {
+                console.error('无法创建会话ID');
+                return;
+            }
+            
+            // 3. 获取当前会话的问题数量（用于 question_number）
+            const { count: questionCount, error: countError } = await this.supabase
+                .from('question_responses')
+                .select('*', { count: 'exact', head: true })
+                .eq('session_id', this.currentSession.currentSessionId);
+            
+            if (countError) throw countError;
+            
+            const questionNumber = (questionCount || 0) + 1;
+            
+            // 4. 插入答题记录
+            const { error: questionError } = await this.supabase
+                .from('question_responses')
+                .insert([{
+                    student_id: studentId,
+                    session_id: this.currentSession.currentSessionId,
+                    question_number: questionNumber,
+                    target_number: questionData.target,
+                    num1: questionData.num1,
+                    num2: questionData.num2,
+                    is_correct: questionData.isCorrect,
+                    response_time: questionData.timeSpent,
+                    timestamp: questionData.timestamp,
+                    difficulty: questionData.difficulty
+                }]);
+            
+            if (questionError) {
+                console.error('保存题目失败:', questionError);
+                // 离线时加入队列
+                this.offlineQueue.push({
+                    studentId,
+                    studentName,
+                    questionData,
+                    sessionId: this.currentSession.currentSessionId,
+                    timestamp: Date.now()
+                });
+                this.saveOfflineQueue();
+                return;
+            }
+            
+            console.log(`✅ 题目已保存到数据库 (${studentName}) - 第${questionNumber}题`);
+            
+            // 5. 更新会话统计
+            await this.updateSessionStats();
+            
+            // 6. 同时保存到本地缓存
+            this.saveToLocalCache(questionData);
+            
+        } catch (error) {
+            console.error('保存题目失败:', error);
+            // 离线时加入队列
+            this.offlineQueue.push({
+                studentId,
+                studentName,
+                questionData,
+                sessionId: this.currentSession.currentSessionId,
+                timestamp: Date.now()
+            });
+            this.saveOfflineQueue();
         }
-        this.currentSession = {
-            studentId: null,
-            studentName: null,
-            startTime: null,
-            questions: [],
-            currentQuestionStart: null
-        };
     }
 
     /**
-     * 保存当前会话到本地存储和Supabase
+     * 更新会话统计
      */
-    async saveCurrentSession() {
-        if (!this.currentSession.studentId || this.currentSession.questions.length === 0) {
-            console.log('ℹ️ 没有数据需要保存');
-            return;
+    async updateSessionStats() {
+        if (!this.currentSession.currentSessionId) return;
+        
+        try {
+            // 获取会话的所有答题记录
+            const { data: questions, error: queryError } = await this.supabase
+                .from('question_responses')
+                .select('response_time, is_correct')
+                .eq('session_id', this.currentSession.currentSessionId);
+            
+            if (queryError) throw queryError;
+            
+            if (!questions || questions.length === 0) return;
+            
+            const totalQuestions = questions.length;
+            const correctAnswers = questions.filter(q => q.is_correct).length;
+            const avgResponseTime = questions.reduce((sum, q) => sum + (q.response_time || 0), 0) / totalQuestions;
+            
+            // 更新会话
+            const { error: updateError } = await this.supabase
+                .from('game_sessions')
+                .update({
+                    total_questions: totalQuestions,
+                    correct_answers: correctAnswers,
+                    avg_response_time: Math.round(avgResponseTime * 10) / 10,
+                    end_time: new Date().toISOString()
+                })
+                .eq('id', this.currentSession.currentSessionId);
+            
+            if (updateError) throw updateError;
+            
+            console.log(`📊 会话统计已更新: ${totalQuestions}题, ${correctAnswers}正确, 平均${Math.round(avgResponseTime * 10) / 10}秒`);
+            
+        } catch (error) {
+            console.error('更新会话统计失败:', error);
         }
+    }
 
+    /**
+     * 保存到本地缓存
+     */
+    saveToLocalCache(questionData) {
         const studentId = this.currentSession.studentId;
         const studentName = this.currentSession.studentName;
-
-        // 1. 保存到本地缓存
+        
         if (!this.students.has(studentId)) {
             this.students.set(studentId, {
                 id: studentId,
@@ -129,135 +318,112 @@ class StudentRecordSystem {
                 sessions: []
             });
         }
-
+        
         const student = this.students.get(studentId);
         
-        const sessionData = {
-            startTime: this.currentSession.startTime,
-            endTime: new Date().toISOString(),
-            questions: [...this.currentSession.questions],
-            questionCount: this.currentSession.questions.length,
-            correctCount: this.currentSession.questions.filter(q => q.isCorrect).length,
-            avgTime: this.calculateAverageTime(this.currentSession.questions)
-        };
-
-        student.sessions.push(sessionData);
-
-        // 限制会话数量
-        if (student.sessions.length > 50) {
-            student.sessions = student.sessions.slice(-50);
+        // 查找或创建当天的会话
+        const today = new Date().toISOString().split('T')[0];
+        let todaySession = student.sessions.find(s => s.startTime?.split('T')[0] === today);
+        
+        if (!todaySession) {
+            todaySession = {
+                startTime: this.currentSession.startTime,
+                endTime: new Date().toISOString(),
+                questions: [],
+                questionCount: 0,
+                correctCount: 0,
+                avgTime: 0
+            };
+            student.sessions.push(todaySession);
         }
-
-        // 2. 保存到localStorage
+        
+        todaySession.questions.push(questionData);
+        todaySession.questionCount = todaySession.questions.length;
+        todaySession.correctCount = todaySession.questions.filter(q => q.isCorrect).length;
+        todaySession.avgTime = this.calculateAverageTime(todaySession.questions);
+        todaySession.endTime = new Date().toISOString();
+        
+        // 保存到localStorage
         if (this.storage) {
             this.storage.saveStudentRecords(this.serialize());
         }
-
-        // 3. 同步到Supabase（如果在线）
-        if (this.supabase && navigator.onLine) {
-            await this.syncToSupabase(studentId, studentName, sessionData);
-        } else {
-            // 离线时加入队列
-            this.offlineQueue.push({
-                studentId,
-                studentName,
-                sessionData,
-                timestamp: Date.now()
-            });
-            this.saveOfflineQueue();
-            console.log('📦 网络离线，数据已加入队列');
-        }
-
-        // 清空当前会话的问题
-        this.currentSession.questions = [];
-        this.currentSession.startTime = new Date().toISOString();
     }
 
     /**
-     * 同步到Supabase
+     * 结束当前会话并保存
      */
-    async syncToSupabase(studentId, studentName, sessionData) {
-        try {
-            console.log('🔄 开始同步到Supabase...');
+    async endSession() {
+        if (this.currentSession.studentId && this.currentSession.questions.length > 0) {
+            await this.updateSessionStats();
+        }
+        
+        this.currentSession = {
+            studentId: null,
+            studentName: null,
+            startTime: null,
+            questions: [],
+            currentQuestionStart: null,
+            currentSessionId: null
+        };
+    }
 
-            // 1. 获取或创建学生记录
+    /**
+     * 计算平均答题时间
+     */
+    calculateAverageTime(questions) {
+        if (questions.length === 0) return 0;
+        const validTimes = questions.filter(q => q.timeSpent > 0);
+        if (validTimes.length === 0) return 0;
+        const totalTime = validTimes.reduce((sum, q) => sum + q.timeSpent, 0);
+        return Math.round((totalTime / validTimes.length) * 10) / 10;
+    }
+
+    /**
+     * 同步到Supabase（用于离线队列重试）
+     */
+    async syncToSupabase(studentId, studentName, questionData, sessionId) {
+        try {
+            // 确保学生存在
             let { data: student, error: selectError } = await this.supabase
                 .from('students')
-                .select('*')
+                .select('student_id')
                 .eq('student_id', studentId)
                 .maybeSingle();
-
+            
             if (selectError) throw selectError;
-
+            
             if (!student) {
-                console.log('👤 创建新学生记录');
-                const { data: newStudent, error: insertError } = await this.supabase
+                await this.supabase
                     .from('students')
                     .insert([{
                         student_id: studentId,
-                        name: studentName,
-                        created_at: new Date().toISOString()
-                    }])
-                    .select()
-                    .single();
-
-                if (insertError) throw insertError;
-                student = newStudent;
+                        name: studentName
+                    }]);
             }
-
-            // 2. 创建游戏会话
-            const { data: session, error: sessionError } = await this.supabase
-                .from('game_sessions')
+            
+            // 插入答题记录
+            const { error: questionError } = await this.supabase
+                .from('question_responses')
                 .insert([{
                     student_id: studentId,
-                    student_name: studentName,
-                    session_date: new Date().toISOString().split('T')[0],
-                    start_time: sessionData.startTime,
-                    end_time: sessionData.endTime,
-                    total_questions: sessionData.questionCount,
-                    correct_answers: sessionData.correctCount,
-                    avg_response_time: sessionData.avgTime,
-                    difficulty_level: this.game?.state?.currentDifficulty || 'medium'
-                }])
-                .select()
-                .single();
-
-            if (sessionError) throw sessionError;
-            console.log(`✅ 会话已创建: ID ${session.id}`);
-
-            // 3. 保存每题记录
-            const questions = sessionData.questions.map((q, index) => ({
-                student_id: studentId,
-                session_id: session.id,
-                question_number: index + 1,
-                target_number: q.target,
-                num1: q.num1,
-                num2: q.num2,
-                is_correct: q.isCorrect,
-                response_time: q.timeSpent,
-                timestamp: q.timestamp,
-                mode: q.mode || 'challenge',
-                difficulty: q.difficulty || 'medium'
-            }));
-
-            const { error: questionsError } = await this.supabase
-                .from('question_responses')
-                .insert(questions);
-
-            if (questionsError) throw questionsError;
-
-            console.log(`✅ 成功同步 ${questions.length} 题到Supabase`);
-
+                    session_id: sessionId,
+                    question_number: questionData.questionNumber || 1,
+                    target_number: questionData.target,
+                    num1: questionData.num1,
+                    num2: questionData.num2,
+                    is_correct: questionData.isCorrect,
+                    response_time: questionData.timeSpent,
+                    timestamp: questionData.timestamp,
+                    difficulty: questionData.difficulty
+                }]);
+            
+            if (questionError) throw questionError;
+            
+            console.log(`✅ 离线数据同步成功: ${studentName}`);
+            
         } catch (error) {
-            console.error('❌ Supabase同步失败:', error);
-            // 失败时加入队列，稍后重试
-            this.offlineQueue.push({
-                studentId,
-                studentName,
-                sessionData,
-                timestamp: Date.now()
-            });
-            this.saveOfflineQueue();
+            console.error('离线数据同步失败:', error);
+            throw error;
         }
     }
 
@@ -274,7 +440,12 @@ class StudentRecordSystem {
             console.log(`🔄 处理离线队列: ${queue.length} 条记录`);
 
             for (const item of queue) {
-                await this.syncToSupabase(item.studentId, item.studentName, item.sessionData);
+                await this.syncToSupabase(
+                    item.studentId, 
+                    item.studentName, 
+                    item.questionData,
+                    item.sessionId
+                );
             }
 
             // 清空队列
@@ -312,68 +483,75 @@ class StudentRecordSystem {
     }
 
     /**
-     * 计算平均答题时间
-     */
-    calculateAverageTime(questions) {
-        if (questions.length === 0) return 0;
-        const validTimes = questions.filter(q => q.timeSpent > 0);
-        if (validTimes.length === 0) return 0;
-        const totalTime = validTimes.reduce((sum, q) => sum + q.timeSpent, 0);
-        return Math.round((totalTime / validTimes.length) * 10) / 10;
-    }
-
-    /**
      * 获取学生学习统计
      */
     async getStudentStats(studentId) {
-        // 先从本地获取
-        const localStats = this.getLocalStudentStats(studentId);
-        
-        // 如果在线，尝试从Supabase获取最新数据
+        // 如果在线，从Supabase获取最新数据
         if (this.supabase && navigator.onLine) {
             try {
                 const { data, error } = await this.supabase
-                    .from('teacher_dashboard')
-                    .select('*')
-                    .eq('student_id', studentId)
-                    .single();
-
-                if (!error && data) {
-                    return {
-                        studentId: data.student_id,
-                        studentName: data.name,
-                        totalQuestions: data.total_questions,
-                        totalSessions: data.total_sessions || 0,
-                        correctQuestions: data.correct_questions || 0,
-                        wrongQuestions: data.wrong_questions || 0,
-                        avgTime: data.avg_time,
-                        accuracy: data.accuracy,
-                        lastActive: data.last_active,
-                        difficultyStats: {
-                            easy: {
-                                total: data.easy_total || 0,
-                                correct: data.easy_correct || 0,
-                                accuracy: data.easy_accuracy || 0
-                            },
-                            medium: {
-                                total: data.medium_total || 0,
-                                correct: data.medium_correct || 0,
-                                accuracy: data.medium_accuracy || 0
-                            },
-                            hard: {
-                                total: data.hard_total || 0,
-                                correct: data.hard_correct || 0,
-                                accuracy: data.hard_accuracy || 0
-                            }
-                        }
-                    };
+                    .from('question_responses')
+                    .select(`
+                        *,
+                        game_sessions!inner(*)
+                    `)
+                    .eq('student_id', studentId);
+                
+                if (!error && data && data.length > 0) {
+                    return this.processStudentStatsFromData(data);
                 }
             } catch (error) {
                 console.warn('从Supabase获取失败，使用本地数据', error);
             }
         }
 
-        return localStats;
+        // 回退到本地统计
+        return this.getLocalStudentStats(studentId);
+    }
+
+    /**
+     * 从数据库数据处理学生统计
+     */
+    processStudentStatsFromData(data) {
+        if (!data || data.length === 0) return null;
+        
+        const totalQuestions = data.length;
+        const correctQuestions = data.filter(q => q.is_correct).length;
+        const avgTime = data.reduce((sum, q) => sum + (q.response_time || 0), 0) / totalQuestions;
+        
+        // 按难度统计
+        const easyQuestions = data.filter(q => q.difficulty === 'easy');
+        const mediumQuestions = data.filter(q => q.difficulty === 'medium');
+        const hardQuestions = data.filter(q => q.difficulty === 'hard');
+        
+        return {
+            studentId: data[0].student_id,
+            studentName: data[0].game_sessions?.student_name || '未知',
+            totalSessions: new Set(data.map(q => q.session_id)).size,
+            totalQuestions: totalQuestions,
+            accuracy: Math.round((correctQuestions / totalQuestions) * 100),
+            correctQuestions: correctQuestions,
+            wrongQuestions: totalQuestions - correctQuestions,
+            avgTime: Math.round(avgTime * 10) / 10,
+            lastActive: data[data.length - 1]?.timestamp,
+            difficultyStats: {
+                easy: {
+                    total: easyQuestions.length,
+                    correct: easyQuestions.filter(q => q.is_correct).length,
+                    accuracy: easyQuestions.length ? Math.round((easyQuestions.filter(q => q.is_correct).length / easyQuestions.length) * 100) : 0
+                },
+                medium: {
+                    total: mediumQuestions.length,
+                    correct: mediumQuestions.filter(q => q.is_correct).length,
+                    accuracy: mediumQuestions.length ? Math.round((mediumQuestions.filter(q => q.is_correct).length / mediumQuestions.length) * 100) : 0
+                },
+                hard: {
+                    total: hardQuestions.length,
+                    correct: hardQuestions.filter(q => q.is_correct).length,
+                    accuracy: hardQuestions.length ? Math.round((hardQuestions.filter(q => q.is_correct).length / hardQuestions.length) * 100) : 0
+                }
+            }
+        };
     }
 
     /**
@@ -387,7 +565,6 @@ class StudentRecordSystem {
         const totalQuestions = allQuestions.length;
         const correctQuestions = allQuestions.filter(q => q.isCorrect).length;
         
-        // 按难度统计
         const easyQuestions = allQuestions.filter(q => q.difficulty === 'easy');
         const mediumQuestions = allQuestions.filter(q => q.difficulty === 'medium');
         const hardQuestions = allQuestions.filter(q => q.difficulty === 'hard');
@@ -424,113 +601,28 @@ class StudentRecordSystem {
     }
 
     /**
-     * 获取学生趋势数据（最近7天 vs 前3周）
-     */
-    async getStudentTrend(studentId) {
-        if (!this.supabase || !navigator.onLine) {
-            return null;
-        }
-        
-        try {
-            const { data, error } = await this.supabase
-                .from('student_trend')
-                .select('*')
-                .eq('student_id', studentId)
-                .maybeSingle();
-            
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.warn('获取趋势数据失败:', error);
-            return null;
-        }
-    }
-
-    /**
-     * 获取趋势评语（积极框架）
-     */
-    getTrendMessage(trend) {
-        if (!trend || trend.recent_questions === 0) {
-            return {
-                message: (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendNoData') : 'Not enough data yet, keep practicing!',
-                color: '#95a5a6',
-                icon: '📝'
-            };
-        }
-        
-        const change = trend.accuracy_change || 0;
-        
-        if (change >= 5) {
-            let msg = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendProgress') : 'Accuracy improved by {change}%! Great job!';
-            return {
-                message: msg.replace('{change}', Math.round(change)),
-                color: '#2ecc71',
-                icon: '🎉'
-            };
-        } else if (change <= -5) {
-            return {
-                message: (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendDecline') : 'Room for improvement, practice basic problems',
-                color: '#e74c3c',
-                icon: '💪'
-            };
-        } else {
-            return {
-                message: (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('trendStable') : 'Stable performance, keep it up',
-                color: '#3498db',
-                icon: '📊'
-            };
-        }
-    }
-
-    /**
      * 获取全班统计
      */
     async getClassStats() {
-        // 如果在线，从Supabase获取
         if (this.supabase && navigator.onLine) {
             try {
                 const { data, error } = await this.supabase
-                    .from('teacher_dashboard')
-                    .select('*')
-                    .order('last_active', { ascending: false });
-
+                    .from('students')
+                    .select(`
+                        student_id,
+                        name,
+                        class,
+                        school,
+                        question_responses(
+                            id,
+                            is_correct,
+                            response_time,
+                            difficulty
+                        )
+                    `);
+                
                 if (!error && data) {
-                    // 计算汇总数据
-                    const totalQuestions = data.reduce((sum, s) => sum + (s.total_questions || 0), 0);
-                    const totalCorrect = data.reduce((sum, s) => sum + (s.correct_questions || 0), 0);
-                    
-                    return {
-                        totalStudents: data.length,
-                        students: data,
-                        totalQuestions: totalQuestions,
-                        totalCorrect: totalCorrect,
-                        totalSessions: data.reduce((sum, s) => sum + (s.total_sessions || 0), 0),
-                        totalWrong: totalQuestions - totalCorrect,
-                        avgClassTime: data.length > 0 ? data.reduce((sum, s) => sum + (s.avg_time || 0), 0) / data.length : 0,
-                        classAccuracy: data.length > 0 ? data.reduce((sum, s) => sum + (s.accuracy || 0), 0) / data.length : 0,
-                        difficultyStats: {
-                            easy: {
-                                total: data.reduce((sum, s) => sum + (s.easy_total || 0), 0),
-                                correct: data.reduce((sum, s) => sum + (s.easy_correct || 0), 0),
-                                accuracy: data.reduce((sum, s) => sum + (s.easy_accuracy || 0), 0) / (data.length || 1)
-                            },
-                            medium: {
-                                total: data.reduce((sum, s) => sum + (s.medium_total || 0), 0),
-                                correct: data.reduce((sum, s) => sum + (s.medium_correct || 0), 0),
-                                accuracy: data.reduce((sum, s) => sum + (s.medium_accuracy || 0), 0) / (data.length || 1)
-                            },
-                            hard: {
-                                total: data.reduce((sum, s) => sum + (s.hard_total || 0), 0),
-                                correct: data.reduce((sum, s) => sum + (s.hard_correct || 0), 0),
-                                accuracy: data.reduce((sum, s) => sum + (s.hard_accuracy || 0), 0) / (data.length || 1)
-                            }
-                        },
-                        topStudents: data
-                            .filter(s => (s.total_questions || 0) >= 10)
-                            .sort((a, b) => (b.accuracy || 0) - (a.accuracy || 0))
-                            .slice(0, 5),
-                        commonMistakes: {}
-                    };
+                    return this.processClassStatsFromData(data);
                 }
             } catch (error) {
                 console.warn('从Supabase获取全班统计失败', error);
@@ -538,6 +630,73 @@ class StudentRecordSystem {
         }
 
         // 回退到本地统计
+        return this.getLocalClassStats();
+    }
+
+    /**
+     * 从数据库数据处理全班统计
+     */
+    processClassStatsFromData(studentsData) {
+        const students = [];
+        let totalQuestions = 0;
+        let totalCorrect = 0;
+        let totalSessions = 0;
+        
+        const difficultyStats = {
+            easy: { total: 0, correct: 0, accuracy: 0 },
+            medium: { total: 0, correct: 0, accuracy: 0 },
+            hard: { total: 0, correct: 0, accuracy: 0 }
+        };
+        
+        for (const student of studentsData) {
+            const responses = student.question_responses || [];
+            if (responses.length === 0) continue;
+            
+            const correctCount = responses.filter(r => r.is_correct).length;
+            const accuracy = (correctCount / responses.length) * 100;
+            const avgTime = responses.reduce((sum, r) => sum + (r.response_time || 0), 0) / responses.length;
+            
+            students.push({
+                studentId: student.student_id,
+                studentName: student.name,
+                name: student.name,
+                totalQuestions: responses.length,
+                correctQuestions: correctCount,
+                wrongQuestions: responses.length - correctCount,
+                accuracy: accuracy,
+                avgTime: avgTime,
+                class: student.class,
+                school: student.school
+            });
+            
+            totalQuestions += responses.length;
+            totalCorrect += correctCount;
+            
+            // 统计难度（需要从responses获取difficulty，但这里可能需要额外查询）
+        }
+        
+        return {
+            totalStudents: students.length,
+            students: students,
+            totalQuestions: totalQuestions,
+            totalCorrect: totalCorrect,
+            totalWrong: totalQuestions - totalCorrect,
+            totalSessions: totalSessions,
+            avgClassTime: students.length > 0 ? students.reduce((sum, s) => sum + s.avgTime, 0) / students.length : 0,
+            classAccuracy: students.length > 0 ? students.reduce((sum, s) => sum + s.accuracy, 0) / students.length : 0,
+            difficultyStats: difficultyStats,
+            topStudents: students
+                .filter(s => s.totalQuestions >= 10)
+                .sort((a, b) => b.accuracy - a.accuracy)
+                .slice(0, 5),
+            commonMistakes: {}
+        };
+    }
+
+    /**
+     * 获取本地全班统计
+     */
+    getLocalClassStats() {
         const classStats = {
             totalStudents: this.students.size,
             students: [],
@@ -558,7 +717,7 @@ class StudentRecordSystem {
 
         this.students.forEach((student, studentId) => {
             const stats = this.getLocalStudentStats(studentId);
-            if (stats) {
+            if (stats && stats.totalQuestions > 0) {
                 classStats.students.push(stats);
                 classStats.totalQuestions += stats.totalQuestions;
                 classStats.totalCorrect += stats.correctQuestions;
@@ -587,11 +746,11 @@ class StudentRecordSystem {
             const lines = csvData.split('\n');
             let imported = 0;
 
-            lines.forEach(line => {
-                line = line.trim();
-                if (!line) return;
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
                 
-                const parts = line.split(',').map(s => s.trim());
+                const parts = trimmed.split(',').map(s => s.trim());
                 if (parts.length >= 2) {
                     const studentId = parts[0];
                     const studentName = parts[1];
@@ -605,7 +764,7 @@ class StudentRecordSystem {
                         imported++;
                     }
                 }
-            });
+            }
 
             if (imported > 0 && this.storage) {
                 this.storage.saveStudentRecords(this.serialize());
@@ -667,43 +826,60 @@ class StudentRecordSystem {
     }
 
     /**
-     * 获取学生速度趋势数据（用于图表）
+     * 获取学生趋势数据
      */
-    async getSpeedTrend(studentId, days = 30) {
-        if (this.supabase && navigator.onLine) {
-            try {
-                const since = new Date();
-                since.setDate(since.getDate() - days);
-
-                const { data, error } = await this.supabase
-                    .from('question_responses')
-                    .select('timestamp, response_time')
-                    .eq('student_id', studentId)
-                    .gte('timestamp', since.toISOString())
-                    .order('timestamp');
-
-                if (!error && data) {
-                    // 按天聚合
-                    const daily = {};
-                    data.forEach(item => {
-                        const date = item.timestamp.split('T')[0];
-                        if (!daily[date]) {
-                            daily[date] = { total: 0, count: 0 };
-                        }
-                        daily[date].total += item.response_time;
-                        daily[date].count++;
-                    });
-
-                    return Object.entries(daily).map(([date, stats]) => ({
-                        date,
-                        avgTime: Math.round((stats.total / stats.count) * 10) / 10
-                    }));
-                }
-            } catch (error) {
-                console.warn('获取速度趋势失败', error);
-            }
+    async getStudentTrend(studentId) {
+        if (!this.supabase || !navigator.onLine) {
+            return null;
         }
-        return [];
+        
+        try {
+            // 获取最近7天的数据
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            const { data: recentData, error: recentError } = await this.supabase
+                .from('question_responses')
+                .select('is_correct')
+                .eq('student_id', studentId)
+                .gte('timestamp', sevenDaysAgo.toISOString());
+            
+            if (recentError) throw recentError;
+            
+            // 获取更早的数据（前3周）
+            const fourWeeksAgo = new Date();
+            fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+            const threeWeeksAgo = new Date();
+            threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+            
+            const { data: previousData, error: previousError } = await this.supabase
+                .from('question_responses')
+                .select('is_correct')
+                .eq('student_id', studentId)
+                .gte('timestamp', fourWeeksAgo.toISOString())
+                .lt('timestamp', threeWeeksAgo.toISOString());
+            
+            if (previousError) throw previousError;
+            
+            const recentCorrect = recentData?.filter(r => r.is_correct).length || 0;
+            const recentTotal = recentData?.length || 0;
+            const recentAccuracy = recentTotal > 0 ? (recentCorrect / recentTotal) * 100 : 0;
+            
+            const previousCorrect = previousData?.filter(r => r.is_correct).length || 0;
+            const previousTotal = previousData?.length || 0;
+            const previousAccuracy = previousTotal > 0 ? (previousCorrect / previousTotal) * 100 : 0;
+            
+            return {
+                recent_questions: recentTotal,
+                recent_accuracy: recentAccuracy,
+                previous_questions: previousTotal,
+                previous_accuracy: previousAccuracy,
+                accuracy_change: recentAccuracy - previousAccuracy
+            };
+        } catch (error) {
+            console.warn('获取趋势数据失败:', error);
+            return null;
+        }
     }
 }
 
