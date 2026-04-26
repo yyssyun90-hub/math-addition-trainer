@@ -1,8 +1,9 @@
 /**
  * ==================== 糖果数学消消乐 - 教师面板控制器 ====================
- * 版本: 3.2.0 (完整翻译版 - 所有文本均已支持 I18n)
+ * 版本: 3.3.0 (完整版 - 显示所有学生，包括无答题记录)
  * 功能：从Supabase读取数据并显示在教师面板，支持教师和管理员不同视图
  * 修改记录：
+ * 2024-04-22 - 修复学生列表显示问题，显示所有学生（包括无答题记录的）
  * 2024-04-14 - 完整国际化，所有硬编码文本均替换为 I18n.t()
  * ====================================================================
  */
@@ -709,8 +710,11 @@ class TeacherPanel {
         });
     }
 
-    // ==================== 学生管理功能 ====================
+    // ==================== 学生管理功能（修复版） ====================
 
+    /**
+     * 刷新学生列表 - 显示所有学生（包括没有答题记录的）
+     */
     async refreshStudentList() {
         const list = document.getElementById('student-list');
         if (!list) return;
@@ -719,52 +723,94 @@ class TeacherPanel {
             list.innerHTML = `<div style="text-align: center; padding: 20px;">⏳ ${this.t('loading', '加载中...')}</div>`;
 
             const userInfo = await this.getUserRoleAndSchool();
-            let students = [];
-
-            if (this.supabase && navigator.onLine) {
-                let query = this.supabase
-                    .from('students')
-                    .select('student_id, name, class, school');
-                
-                if (userInfo.role === 'teacher' && userInfo.schoolId) {
-                    query = query.eq('school_id', userInfo.schoolId);
-                }
-                
-                const { data, error } = await query.order('created_at', { ascending: false });
-                
-                if (!error && data) {
-                    students = data;
-                }
+            
+            // ✅ 直接从 students 表获取所有学生
+            let query = this.supabase
+                .from('students')
+                .select('student_id, name, class, school, created_at');
+            
+            if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                query = query.eq('school_id', userInfo.schoolId);
             }
-
-            if (students.length === 0) {
-                list.innerHTML = `<div style="text-align: center; color: #b2869c; padding: 20px;">📭 ${this.t('noStudentData', '暂无学生数据')}</div>`;
+            
+            const { data: students, error } = await query.order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            if (!students || students.length === 0) {
+                list.innerHTML = `<div style="text-align: center; color: #b2869c; padding: 20px;">📭 ${this.t('noStudentData', '暂无学生数据，请先导入学生')}</div>`;
                 return;
             }
 
-            let html = '<div style="margin-bottom: 10px; display: flex; justify-content: space-between;">';
-            html += `<span>👥 ${this.t('totalStudents', '共')} ${students.length} ${this.t('studentsUnit', '名学生')}</span>`;
-            html += `<span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 ' + this.t('online', '在线') : '🔴 ' + this.t('offline', '离线')}</span>`;
-            html += '</div>';
+            // 获取每个学生的答题统计
+            const studentsWithStats = await Promise.all(students.map(async (student) => {
+                const { count: questionCount } = await this.supabase
+                    .from('question_responses')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('student_id', student.student_id);
+                
+                const { count: correctCount } = await this.supabase
+                    .from('question_responses')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('student_id', student.student_id)
+                    .eq('is_correct', true);
+                
+                const accuracy = questionCount > 0 ? Math.round((correctCount / questionCount) * 100) : 0;
+                
+                return {
+                    ...student,
+                    questionCount: questionCount || 0,
+                    correctCount: correctCount || 0,
+                    accuracy: accuracy
+                };
+            }));
 
+            // 计算统计数据
+            const totalStudents = studentsWithStats.length;
+            const studentsWithActivity = studentsWithStats.filter(s => s.questionCount > 0).length;
+            const totalQuestions = studentsWithStats.reduce((sum, s) => sum + s.questionCount, 0);
+            
+            let html = `
+                <div style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 10px; display: flex; justify-content: space-between; flex-wrap: wrap;">
+                    <span>👥 ${this.t('totalStudents', '共')} ${totalStudents} ${this.t('studentsUnit', '名学生')}</span>
+                    <span>📊 ${this.t('activeStudents', '有练习记录')}: ${studentsWithActivity} ${this.t('studentsUnit', '人')}</span>
+                    <span>📝 ${this.t('totalQuestions', '总答题数')}: ${totalQuestions}</span>
+                    <span id="sync-status" style="color: ${navigator.onLine ? '#28a745' : '#dc3545'};">${navigator.onLine ? '🟢 ' + this.t('online', '在线') : '🔴 ' + this.t('offline', '离线')}</span>
+                </div>
+            `;
+            
             const unknownText = this.t('unknown', '未知');
             const studentIdText = this.t('studentId', '学号');
             const classText = this.t('class', '班级');
             const unassignedText = this.t('unassigned', '未分配');
             const schoolText = this.t('school', '学校');
             const clickForDetailText = this.t('clickForDetail', '点击查看详情');
+            const noActivityText = this.t('noActivity', '暂无练习记录');
+            const needPracticeText = this.t('needPractice', '需要练习');
 
-            students.forEach(student => {
+            studentsWithStats.forEach(student => {
+                const hasActivity = student.questionCount > 0;
+                const accuracyColor = hasActivity ? 
+                    (student.accuracy >= 70 ? '#4CAF50' : (student.accuracy >= 50 ? '#FF9800' : '#F44336')) : 
+                    '#ccc';
+                
                 html += `
-                    <div class="student-list-item" data-student-id="${this.escapeHtml(student.student_id || '')}" style="cursor: pointer;">
+                    <div class="student-list-item" data-student-id="${this.escapeHtml(student.student_id || '')}" style="cursor: pointer; border-left: 4px solid ${hasActivity ? accuracyColor : '#ccc'}; margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 12px; transition: all 0.2s;">
                         <div class="student-info">
-                            <h4>${this.escapeHtml(student.name || unknownText)}</h4>
-                            <p>${studentIdText}: ${this.escapeHtml(student.student_id || '-')} · ${classText}: ${this.escapeHtml(student.class || unassignedText)}</p>
-                            <p style="font-size: 0.8rem; color: #999;">${schoolText}: ${this.escapeHtml(student.school || '-')}</p>
+                            <h4 style="margin: 0 0 5px 0; color: #d46b8d;">
+                                ${this.escapeHtml(student.name || unknownText)}
+                                ${!hasActivity ? `<span style="font-size: 11px; color: #999; margin-left: 10px;">⚪ ${noActivityText}</span>` : ''}
+                            </h4>
+                            <p style="margin: 5px 0; font-size: 13px; color: #666;">
+                                ${studentIdText}: ${this.escapeHtml(student.student_id || '-')} · 
+                                ${classText}: ${this.escapeHtml(student.class || unassignedText)}
+                            </p>
+                            ${hasActivity ? `<p style="margin: 5px 0; font-size: 12px; color: ${accuracyColor};">📊 ${this.t('questions', '答题数')}: ${student.questionCount} · ${this.t('accuracy', '正确率')}: ${student.accuracy}%</p>` : ''}
+                            <p style="margin: 5px 0; font-size: 11px; color: #999;">${schoolText}: ${this.escapeHtml(student.school || '-')}</p>
                         </div>
-                        <div class="student-stats">
-                            <div class="student-accuracy">📚</div>
-                            <div class="student-questions">${clickForDetailText}</div>
+                        <div class="student-stats" style="margin-top: 8px;">
+                            <div class="student-accuracy">${hasActivity ? '📚' : '✨'}</div>
+                            <div class="student-questions" style="font-size: 12px;">${hasActivity ? clickForDetailText : needPracticeText}</div>
                         </div>
                     </div>
                 `;
@@ -772,6 +818,7 @@ class TeacherPanel {
 
             list.innerHTML = html;
 
+            // 绑定点击事件
             list.querySelectorAll('.student-list-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const studentId = item.dataset.studentId;
@@ -783,12 +830,9 @@ class TeacherPanel {
 
         } catch (error) {
             console.error('刷新学生列表失败:', error);
-            list.innerHTML = `<div style="text-align: center; color: #ff4444; padding: 20px;">❌ ${this.t('loadFailed', '加载失败')}</div>`;
+            list.innerHTML = `<div style="text-align: center; color: #ff4444; padding: 20px;">❌ ${this.t('loadFailed', '加载失败')}: ${error.message}</div>`;
         }
     }
-
-    // ==================== 第 1 部分结束 ====================
-    // ==================== 第 2 部分 / 共 2 部分 ====================
 
     /**
      * 导入学生 (CSV) - 支持自动生成学号
@@ -896,7 +940,7 @@ class TeacherPanel {
                                     name: studentName,
                                     class: studentClass,
                                     school_id: userInfo.schoolId,
-                                    school: userInfo.schoolName,
+                                    school: this.currentUserSchoolName,
                                     class_id: classId
                                 }]);
                             
@@ -957,16 +1001,40 @@ class TeacherPanel {
                 return;
             }
             
+            // 为每个学生添加答题统计
+            const studentsWithStats = await Promise.all(students.map(async (student) => {
+                const { count: questionCount } = await this.supabase
+                    .from('question_responses')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('student_id', student.student_id);
+                
+                const { count: correctCount } = await this.supabase
+                    .from('question_responses')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('student_id', student.student_id)
+                    .eq('is_correct', true);
+                
+                return {
+                    ...student,
+                    questionCount: questionCount || 0,
+                    correctCount: correctCount || 0,
+                    accuracy: questionCount > 0 ? Math.round((correctCount / questionCount) * 100) : 0
+                };
+            }));
+            
             const wsData = [
-                [this.t('studentId', '学号'), this.t('name', '姓名'), this.t('class', '班级'), this.t('school', '学校'), this.t('registerDate', '注册日期')]
+                [this.t('studentId', '学号'), this.t('name', '姓名'), this.t('class', '班级'), this.t('school', '学校'), this.t('totalQuestions', '答题数'), this.t('correctAnswers', '正确数'), this.t('accuracy', '正确率'), this.t('registerDate', '注册日期')]
             ];
             
-            students.forEach(s => {
+            studentsWithStats.forEach(s => {
                 wsData.push([
                     s.student_id || '-',
                     s.name || '-',
                     s.class || '-',
                     s.school || '-',
+                    s.questionCount,
+                    s.correctCount,
+                    s.accuracy + '%',
                     s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'
                 ]);
             });
@@ -974,13 +1042,13 @@ class TeacherPanel {
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             
-            ws['!cols'] = [{wch:15}, {wch:12}, {wch:10}, {wch:20}, {wch:12}];
+            ws['!cols'] = [{wch:15}, {wch:12}, {wch:10}, {wch:20}, {wch:10}, {wch:10}, {wch:10}, {wch:12}];
             
             XLSX.utils.book_append_sheet(wb, ws, this.t('studentList', '学生列表'));
             
             const fileName = userInfo.role === 'admin' 
                 ? `${this.t('allSchoolData', '全校学生数据')}_${new Date().toISOString().slice(0,10)}.xlsx`
-                : `${this.sanitizeFilename(userInfo.schoolName || this.t('school', '学校'))}_${this.t('studentData', '学生数据')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+                : `${this.sanitizeFilename(this.currentUserSchoolName || this.t('school', '学校'))}_${this.t('studentData', '学生数据')}_${new Date().toISOString().slice(0,10)}.xlsx`;
             
             XLSX.writeFile(wb, fileName);
             
@@ -1037,6 +1105,29 @@ class TeacherPanel {
                     .select('*', { count: 'exact', head: true })
                     .eq('class_id', cls.id);
                 
+                // 获取该班级学生的答题统计
+                const { data: students } = await this.supabase
+                    .from('students')
+                    .select('student_id')
+                    .eq('class_id', cls.id);
+                
+                let totalQuestions = 0;
+                let totalCorrect = 0;
+                
+                if (students && students.length > 0) {
+                    const studentIds = students.map(s => s.student_id);
+                    const { data: responses } = await this.supabase
+                        .from('question_responses')
+                        .select('is_correct')
+                        .in('student_id', studentIds);
+                    
+                    if (responses) {
+                        totalQuestions = responses.length;
+                        totalCorrect = responses.filter(r => r.is_correct).length;
+                    }
+                }
+                
+                const classAccuracy = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
                 const studentNum = studentCount || 0;
                 
                 html += `
@@ -1046,7 +1137,8 @@ class TeacherPanel {
                                 <h4 style="color: #d46b8d;">${this.escapeHtml(cls.class_name)}</h4>
                                 <div style="font-size: 0.85rem; color: #666;">
                                     ${classCodeText}: ${cls.class_code || notGeneratedText}<br>
-                                    ${studentCountText}: ${studentNum} ${studentsUnitText}
+                                    ${studentCountText}: ${studentNum} ${studentsUnitText}<br>
+                                    📊 ${this.t('classAccuracy', '班级正确率')}: ${classAccuracy}% (${totalQuestions} ${this.t('questions', '题')})
                                 </div>
                             </div>
                             <div style="margin-top: 8px;">
@@ -1084,34 +1176,32 @@ class TeacherPanel {
 
         try {
             const userInfo = await this.getUserRoleAndSchool();
-            let students = [];
-
-            if (this.supabase && navigator.onLine) {
-                let query = this.supabase
-                    .from('students')
-                    .select('student_id, name');
-                
-                if (userInfo.role === 'teacher' && userInfo.schoolId) {
-                    query = query.eq('school_id', userInfo.schoolId);
-                }
-                
-                const { data, error } = await query.order('name');
-                
-                if (!error && data) {
-                    students = data;
-                }
+            
+            // 直接从 students 表获取所有学生
+            let query = this.supabase
+                .from('students')
+                .select('student_id, name');
+            
+            if (userInfo.role === 'teacher' && userInfo.schoolId) {
+                query = query.eq('school_id', userInfo.schoolId);
             }
+            
+            const { data: students, error } = await query.order('name');
+            
+            if (error) throw error;
 
             select.innerHTML = `<option value="all">📊 ${this.t('classReport', '全班报告')}</option>`;
 
             const unknownText = this.t('unknown', '未知');
             
-            students.forEach(student => {
-                const option = document.createElement('option');
-                option.value = student.student_id;
-                option.textContent = student.name || unknownText;
-                select.appendChild(option);
-            });
+            if (students) {
+                students.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.student_id;
+                    option.textContent = student.name || unknownText;
+                    select.appendChild(option);
+                });
+            }
 
         } catch (error) {
             console.error('刷新报告选项失败:', error);
@@ -1143,6 +1233,7 @@ class TeacherPanel {
             let totalStudents = 0;
             let totalTeachers = 0;
             let totalClasses = 0;
+            let totalQuestions = 0;
             const schoolStats = [];
             
             for (const school of schools) {
@@ -1161,6 +1252,22 @@ class TeacherPanel {
                     .select('*', { count: 'exact', head: true })
                     .eq('school_id', school.id);
                 
+                // 获取该学校学生的答题总数
+                const { data: students } = await this.supabase
+                    .from('students')
+                    .select('student_id')
+                    .eq('school_id', school.id);
+                
+                let schoolQuestions = 0;
+                if (students && students.length > 0) {
+                    const studentIds = students.map(s => s.student_id);
+                    const { count: qCount } = await this.supabase
+                        .from('question_responses')
+                        .select('*', { count: 'exact', head: true })
+                        .in('student_id', studentIds);
+                    schoolQuestions = qCount || 0;
+                }
+                
                 const sCount = studentCount || 0;
                 const tCount = teacherCount || 0;
                 const cCount = classCount || 0;
@@ -1168,12 +1275,14 @@ class TeacherPanel {
                 totalStudents += sCount;
                 totalTeachers += tCount;
                 totalClasses += cCount;
+                totalQuestions += schoolQuestions;
                 
                 schoolStats.push({
                     ...school,
                     student_count: sCount,
                     teacher_count: tCount,
-                    class_count: cCount
+                    class_count: cCount,
+                    question_count: schoolQuestions
                 });
             }
             
@@ -1182,6 +1291,7 @@ class TeacherPanel {
             const totalStudentsText = this.t('totalStudents', '学生总数');
             const totalTeachersText = this.t('totalTeachers', '教师总数');
             const totalClassesText = this.t('totalClasses', '班级总数');
+            const totalQuestionsText = this.t('totalQuestions', '总答题数');
             const schoolListText = this.t('schoolList', '学校列表');
             const stateText = this.t('state', '州属');
             const teachersText = this.t('teachers', '教师');
@@ -1193,7 +1303,7 @@ class TeacherPanel {
             let html = `
                 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 20px; margin-bottom: 20px; color: white;">
                     <h3 style="margin-bottom: 15px;">📊 ${nationalStatsText}</h3>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center;">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center;">
                         <div>
                             <div style="font-size: 2rem; font-weight: bold;">${schools.length}</div>
                             <div style="font-size: 0.9rem;">${schoolCountText}</div>
@@ -1209,6 +1319,10 @@ class TeacherPanel {
                         <div>
                             <div style="font-size: 2rem; font-weight: bold;">${totalClasses}</div>
                             <div style="font-size: 0.9rem;">${totalClassesText}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 2rem; font-weight: bold;">${totalQuestions}</div>
+                            <div style="font-size: 0.9rem;">${totalQuestionsText}</div>
                         </div>
                     </div>
                 </div>
@@ -1226,7 +1340,8 @@ class TeacherPanel {
                                 <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
                                     ${teachersText}: ${school.teacher_count}${teachersUnitText} · 
                                     ${studentsText}: ${school.student_count}${this.t('studentsUnit', '人')} · 
-                                    ${classesText}: ${school.class_count}${classesUnitText}
+                                    ${classesText}: ${school.class_count}${classesUnitText} · 
+                                    📝 ${this.t('totalQuestions', '答题数')}: ${school.question_count}
                                 </div>
                             </div>
                         </div>
@@ -1287,6 +1402,20 @@ class TeacherPanel {
                 return;
             }
             
+            // 获取答题统计
+            const { count: questionCount } = await this.supabase
+                .from('question_responses')
+                .select('*', { count: 'exact', head: true })
+                .eq('student_id', studentId);
+            
+            const { count: correctCount } = await this.supabase
+                .from('question_responses')
+                .select('*', { count: 'exact', head: true })
+                .eq('student_id', studentId)
+                .eq('is_correct', true);
+            
+            const accuracy = questionCount > 0 ? Math.round((correctCount / questionCount) * 100) : 0;
+            
             const detailDiv = document.createElement('div');
             detailDiv.id = 'student-detail-modal';
             detailDiv.style.cssText = `
@@ -1310,9 +1439,13 @@ class TeacherPanel {
             const unassignedText = this.t('unassigned', '未分配');
             const schoolText = this.t('school', '学校');
             const registerTimeText = this.t('registerTime', '注册时间');
+            const totalQuestionsText = this.t('totalQuestions', '总答题数');
+            const correctAnswersText = this.t('correctAnswers', '正确数');
+            const accuracyText = this.t('accuracy', '正确率');
             const generateReportText = this.t('generateReport', '生成报告');
             const closeText = this.t('close', '关闭');
             const studentDetailText = this.t('studentDetail', '详情');
+            const noDataText = this.t('noData', '暂无答题数据');
 
             const detailHtml = `
                 <div style="background: white; border-radius: 40px; padding: 30px; max-width: 450px; width: 90%;">
@@ -1335,14 +1468,28 @@ class TeacherPanel {
                             <span style="color: #666;">${schoolText}:</span>
                             <span style="font-weight: bold;">${this.escapeHtml(student.school || '-')}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
                             <span style="color: #666;">${registerTimeText}:</span>
                             <span style="font-weight: bold;">${student.created_at ? new Date(student.created_at).toLocaleDateString() : '-'}</span>
                         </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">${totalQuestionsText}:</span>
+                            <span style="font-weight: bold;">${questionCount || 0}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                            <span style="color: #666;">${correctAnswersText}:</span>
+                            <span style="font-weight: bold;">${correctCount || 0}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                            <span style="color: #666;">${accuracyText}:</span>
+                            <span style="font-weight: bold; color: ${accuracy >= 70 ? '#4CAF50' : (accuracy >= 50 ? '#FF9800' : '#F44336')};">${accuracy}%</span>
+                        </div>
                     </div>
 
+                    ${questionCount === 0 ? `<div style="background: #fff3e0; padding: 10px; border-radius: 10px; margin-bottom: 20px; text-align: center; color: #ff9800;">⚠️ ${noDataText}</div>` : ''}
+
                     <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <button class="candy-btn primary" id="generate-student-pdf">📄 ${generateReportText}</button>
+                        ${questionCount > 0 ? `<button class="candy-btn primary" id="generate-student-pdf">📄 ${generateReportText}</button>` : ''}
                         <button class="candy-btn home" id="close-detail">${closeText}</button>
                     </div>
                 </div>
@@ -1351,10 +1498,13 @@ class TeacherPanel {
             detailDiv.innerHTML = detailHtml;
             document.body.appendChild(detailDiv);
 
-            document.getElementById('generate-student-pdf')?.addEventListener('click', () => {
-                this.reportGenerator.generateStudentReport(studentId);
-                detailDiv.remove();
-            });
+            const generateBtn = document.getElementById('generate-student-pdf');
+            if (generateBtn) {
+                generateBtn.addEventListener('click', () => {
+                    this.reportGenerator.generateStudentReport(studentId);
+                    detailDiv.remove();
+                });
+            }
 
             document.getElementById('close-detail')?.addEventListener('click', () => {
                 detailDiv.remove();
@@ -1476,5 +1626,3 @@ class TeacherPanel {
 if (typeof window !== 'undefined') {
     window.TeacherPanel = TeacherPanel;
 }
-
-// ==================== 文件结束 ====================
