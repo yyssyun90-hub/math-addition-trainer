@@ -3368,7 +3368,7 @@ class BattleMode {
     }
 
     // ==================== 第 3 部分结束 ====================
-        // ==================== 第 4 部分 / 共 8 部分 ====================
+    // ==================== 第 4 部分 / 共 8 部分 ====================
 
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
@@ -3444,6 +3444,14 @@ class BattleMode {
             }
 
             console.log('✅ 成功加入房间:', battle.id);
+            
+            // ✅ 关键修复：先打开对战模态框，再初始化对战界面
+            if (this.game.ui) {
+                this.game.ui.openModal('battle-modal');
+            } else {
+                const modal = document.getElementById('battle-modal');
+                if (modal) modal.style.display = 'flex';
+            }
             
             this.room.battleId = battle.id;
             this.room.roomCode = roomCode;
