@@ -3911,55 +3911,55 @@ class BattleMode {
     }
 
     async endTurn() {
-        if (!this.room.gameActive || this.endTurnInProgress) return;
-        this.endTurnInProgress = true;
+    if (!this.room.gameActive || this.endTurnInProgress) return;
+    this.endTurnInProgress = true;
+    
+    try {
+        this.refreshCount = 0;
+        this.stopTurnTimer();
         
-        try {
-            this.refreshCount = 0;
-            this.stopTurnTimer();
-            
-            if (this.room.opponentIsAI) {
-                this.room.myTurn = false;
-                this.updateTurnIndicator();
-                this.scheduleAIMove();
-                return;
-            }
-
-            if (!this.isSupabaseAvailable() || !this.room.gameActive) {
-                this.room.myTurn = !this.room.myTurn;
-                this.updateTurnIndicator();
-                return;
-            }
-            
-            // ✅ 正确设置下一个回合：将回合交给对手
-            const nextTurn = this.room.opponentId;
-            
-            console.log('🔄 结束回合 - 当前玩家:', this.room.playerRole);
-            console.log('🔄 结束回合 - 下一个回合交给:', nextTurn);
-            console.log('🔄 结束回合 - 对手ID:', this.room.opponentId);
-            console.log('🔄 结束回合 - 对战ID:', this.room.battleId);
-
-            const { error } = await this.game.state.supabase
-                .from('candy_math_battles')
-                .update({ current_turn: nextTurn })
-                .eq('id', this.room.battleId);
-
-            if (error) {
-                console.error('结束回合失败:', error);
-                throw error;
-            }
-            
-            console.log('✅ 回合已切换，新回合:', nextTurn);
-            
-        } catch (error) {
-            console.error('结束回合失败:', error);
-            this.room.myTurn = true;
-            this.startTurnTimer();
-        } finally {
-            this.endTurnInProgress = false;
+        if (this.room.opponentIsAI) {
+            this.room.myTurn = false;
+            this.updateTurnIndicator();
+            this.scheduleAIMove();
+            return;
         }
-    }
 
+        if (!this.isSupabaseAvailable() || !this.room.gameActive) {
+            this.room.myTurn = !this.room.myTurn;
+            this.updateTurnIndicator();
+            return;
+        }
+        
+        // ✅ 正确设置下一个回合：将回合交给对手
+        const nextTurn = this.room.opponentId;
+        
+        console.log('🔄 结束回合 - 当前玩家:', this.room.playerRole);
+        console.log('🔄 结束回合 - 下一个回合交给:', nextTurn);
+
+        const { error } = await this.game.state.supabase
+            .from('candy_math_battles')
+            .update({ current_turn: nextTurn })
+            .eq('id', this.room.battleId);
+
+        if (error) throw error;
+        
+        console.log('✅ 回合已切换，新回合:', nextTurn);
+        
+        // ✅ 关键修复：立即将本地回合设为 false，等待对方操作
+        this.room.myTurn = false;
+        this.updateTurnIndicator();
+        this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
+        
+    } catch (error) {
+        console.error('结束回合失败:', error);
+        this.room.myTurn = true;
+        this.startTurnTimer();
+    } finally {
+        this.endTurnInProgress = false;
+    }
+}
+    
     // ==================== 快速匹配 ====================
 
     async quickMatch() {
