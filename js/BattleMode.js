@@ -3394,7 +3394,7 @@ class BattleMode {
             // 1. 先查询房间是否存在
             const { data: battle, error: queryError } = await this.game.state.supabase
                 .from('candy_math_battles')
-                .select('id, status, player1_id, player2_id, player1_name')
+                .select('id, status, player1_id, player1_name, player2_id, player2_name')
                 .eq('room_code', roomCode.toUpperCase())
                 .maybeSingle();
 
@@ -3444,8 +3444,11 @@ class BattleMode {
             }
 
             console.log('✅ 成功加入房间:', battle.id);
+            console.log('📋 房间信息 - 我的ID:', user.id);
+            console.log('📋 房间信息 - 对手ID (房主):', battle.player1_id);
+            console.log('📋 房间信息 - 对手名称:', battle.player1_name);
             
-            // ✅ 关键修复：先打开对战模态框，再初始化对战界面
+            // ✅ 关键修复：先打开对战模态框
             if (this.game.ui) {
                 this.game.ui.openModal('battle-modal');
             } else {
@@ -3453,14 +3456,15 @@ class BattleMode {
                 if (modal) modal.style.display = 'flex';
             }
             
+            // ✅ 正确设置对手信息（受邀方的对手是房主）
             this.room.battleId = battle.id;
             this.room.roomCode = roomCode;
             this.room.playerRole = 'player2';
-            this.room.opponentId = battle.player1_id;
+            this.room.opponentId = battle.player1_id;  // ✅ 对手是房主
             this.room.opponentName = battle.player1_name;
             this.room.status = 'playing';
             this.room.gameActive = true;
-            this.room.myTurn = false;
+            this.room.myTurn = false;  // 房主先手
             this.room.opponentIsAI = false;
             this.room.timeLeft = 30;
             
@@ -3478,8 +3482,12 @@ class BattleMode {
     }
 
     showWaitingForOpponent(roomCode) {
+        // ✅ 先打开对战模态框
         if (this.game.ui) {
             this.game.ui.openModal('battle-modal');
+        } else {
+            const modal = document.getElementById('battle-modal');
+            if (modal) modal.style.display = 'flex';
         }
         
         const waitingDiv = document.getElementById('battle-waiting');
@@ -3579,6 +3587,7 @@ class BattleMode {
                     clearInterval(this.pollingInterval);
                     this.pollingInterval = null;
                     
+                    // ✅ 正确设置对手信息（房主的对手是加入者）
                     this.room.opponentId = battle.player2_id;
                     this.room.opponentName = battle.player2_name;
                     this.room.status = 'playing';
@@ -3586,7 +3595,10 @@ class BattleMode {
                     this.room.myTurn = battle.current_turn === this.game.state.currentUser.id;
                     this.room.timeLeft = 30;
                     
-                    console.log('对手已加入:', battle.player2_name);
+                    console.log('📋 对手已加入 - 对手ID:', battle.player2_id);
+                    console.log('📋 对手已加入 - 对手名称:', battle.player2_name);
+                    console.log('📋 当前回合:', this.room.myTurn ? '我的回合' : '对手回合');
+                    
                     this.startBattleAfterJoin();
                 }
             } catch (error) {
@@ -3600,6 +3612,12 @@ class BattleMode {
             id: this.room.opponentId,
             name: this.room.opponentName
         };
+        
+        console.log('🎮 开始对战 - 我的ID:', this.game.state.currentUser.id);
+        console.log('🎮 开始对战 - 我的角色:', this.room.playerRole);
+        console.log('🎮 开始对战 - 对手ID:', opponent.id);
+        console.log('🎮 开始对战 - 对手名称:', opponent.name);
+        console.log('🎮 开始对战 - 我的回合:', this.room.myTurn);
         
         const firstPlayer = this.room.myTurn ? this.game.state.currentUser.id : this.room.opponentId;
         
@@ -3679,8 +3697,13 @@ class BattleMode {
                     }
                 }
                 
+                // ✅ 检查回合切换
                 const newTurn = battle.current_turn === this.game.state.currentUser.id;
                 if (newTurn !== this.room.myTurn) {
+                    console.log('🔄 回合切换 - 旧状态:', this.room.myTurn, '新状态:', newTurn);
+                    console.log('🔄 数据库 current_turn:', battle.current_turn);
+                    console.log('🔄 我的 ID:', this.game.state.currentUser.id);
+                    
                     this.room.myTurn = newTurn;
                     this.updateTurnIndicator();
                     
@@ -3688,6 +3711,8 @@ class BattleMode {
                         this.startTurnTimer();
                         this.addSystemMessage('你的回合');
                         this.showFeedback('轮到你了！', '#a3d8d8');
+                        // 自动检查是否需要刷新网格
+                        setTimeout(() => this.autoRefreshGridIfNeeded(), 500);
                     } else {
                         this.stopTurnTimer();
                         this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
@@ -3789,14 +3814,17 @@ class BattleMode {
                     this.updateProgressUI('player2-progress', battle.player1_progress);
                 }
                 
+                // ✅ 检查回合切换
                 const newTurn = battle.current_turn === this.game.state.currentUser.id;
                 if (newTurn !== this.room.myTurn && !this.room.opponentIsAI) {
+                    console.log('🔄 轮询检测到回合切换 - 新状态:', newTurn);
                     this.room.myTurn = newTurn;
                     this.updateTurnIndicator();
                     
                     if (this.room.myTurn) {
                         this.startTurnTimer();
                         this.addSystemMessage('你的回合');
+                        setTimeout(() => this.autoRefreshGridIfNeeded(), 500);
                     } else {
                         this.stopTurnTimer();
                         this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
@@ -3903,16 +3931,25 @@ class BattleMode {
                 return;
             }
             
-            const nextTurn = this.room.playerRole === 'player1' 
-                ? this.room.opponentId 
-                : this.game.state.currentUser.id;
+            // ✅ 正确设置下一个回合：将回合交给对手
+            const nextTurn = this.room.opponentId;
+            
+            console.log('🔄 结束回合 - 当前玩家:', this.room.playerRole);
+            console.log('🔄 结束回合 - 下一个回合交给:', nextTurn);
+            console.log('🔄 结束回合 - 对手ID:', this.room.opponentId);
+            console.log('🔄 结束回合 - 对战ID:', this.room.battleId);
 
             const { error } = await this.game.state.supabase
                 .from('candy_math_battles')
                 .update({ current_turn: nextTurn })
                 .eq('id', this.room.battleId);
 
-            if (error) throw error;
+            if (error) {
+                console.error('结束回合失败:', error);
+                throw error;
+            }
+            
+            console.log('✅ 回合已切换，新回合:', nextTurn);
             
         } catch (error) {
             console.error('结束回合失败:', error);
@@ -4317,7 +4354,7 @@ class BattleMode {
     }
 
     // ==================== 第 4 部分结束 ====================
-    // ==================== 第 5 部分 / 共 8 部分 ====================
+        // ==================== 第 5 部分 / 共 8 部分 ====================
 
     // ==================== 通用对战逻辑 ====================
 
@@ -4398,7 +4435,7 @@ class BattleMode {
         
         let numbers;
         let attempts = 0;
-        const maxAttempts = 30;  // ✅ 增加最大尝试次数
+        const maxAttempts = 20;
         let hasValidPair = false;
         
         do {
@@ -4422,19 +4459,12 @@ class BattleMode {
         } while (!hasValidPair && attempts < maxAttempts);
         
         if (!hasValidPair) {
-            // ✅ 改进：确保生成有效的组合
             const num1 = Math.floor(Math.random() * Math.min(target + 1, 10));
             const num2 = target - num1;
             if (num2 >= 0 && num2 <= 9) {
-                // 将这对数字放到数组前两个位置
                 numbers[0] = num1;
                 numbers[1] = num2;
-            } else {
-                // 如果计算失败，使用默认值
-                numbers[0] = Math.min(target, 9);
-                numbers[1] = Math.max(0, target - 9);
             }
-            console.log(`✅ 强制添加有效组合: ${numbers[0]} + ${numbers[1]} = ${target}`);
         }
 
         const fragment = document.createDocumentFragment();
@@ -4460,7 +4490,7 @@ class BattleMode {
         
         let numbers;
         let attempts = 0;
-        const maxAttempts = 30;  // ✅ 增加最大尝试次数
+        const maxAttempts = 20;
         let hasValidPair = false;
         
         do {
@@ -4484,17 +4514,12 @@ class BattleMode {
         } while (!hasValidPair && attempts < maxAttempts);
         
         if (!hasValidPair) {
-            // ✅ 改进：确保生成有效的组合
             const num1 = Math.floor(Math.random() * Math.min(target + 1, 10));
             const num2 = target - num1;
             if (num2 >= 0 && num2 <= 9) {
                 numbers[0] = num1;
                 numbers[1] = num2;
-            } else {
-                numbers[0] = Math.min(target, 9);
-                numbers[1] = Math.max(0, target - 9);
             }
-            console.log(`✅ 强制添加有效组合: ${numbers[0]} + ${numbers[1]} = ${target}`);
         }
         
         const fragment = document.createDocumentFragment();
@@ -4516,13 +4541,12 @@ class BattleMode {
     }
 
     generateBattleTarget() {
-        // ✅ 生成合理范围的目标数字（5-15之间）
-        const target = Math.floor(Math.random() * 11) + 5;  // 5-15
+        const target = Math.floor(Math.random() * 10) + 5;
         const targetEl = document.getElementById('battle-target-number');
         if (targetEl) targetEl.textContent = target;
         
-        // ✅ 生成新目标时重置刷新计数
-        this.refreshCount = 0;
+        // ✅ 确保新目标有有效组合
+        setTimeout(() => this.autoRefreshGridIfNeeded(), 100);
     }
 
     async handleBattleCardClick(e) {
@@ -4618,6 +4642,8 @@ class BattleMode {
         const sum = num1 + num2;
         const isCorrect = sum === target;
 
+        console.log(`🎯 检查匹配: ${num1} + ${num2} = ${sum}, 目标: ${target}, 结果: ${isCorrect ? '✓ 正确' : '✗ 错误'}`);
+
         if (isCorrect) {
             await this.handleCorrectMatch(card1, card2);
         } else {
@@ -4629,9 +4655,6 @@ class BattleMode {
     }
 
     async handleCorrectMatch(card1, card2) {
-        // ✅ 重置刷新计数
-        this.refreshCount = 0;
-        
         this.playSound('correct');
         
         card1.classList.add('matched');
@@ -4671,22 +4694,18 @@ class BattleMode {
         this.refreshTimer = setTimeout(() => {
             this.refreshTimer = null;
             
-            // ✅ 增加最大刷新次数检查
-            if (this.refreshCount >= this.constants.MAX_REFRESH_COUNT) {
-                console.log(`⚠️ 刷新次数达到上限 (${this.refreshCount}/${this.constants.MAX_REFRESH_COUNT})，强制结束回合`);
+            if (this.refreshCount > this.constants.MAX_REFRESH_COUNT) {
                 this.refreshCount = 0;
                 this.endTurn();
                 return;
             }
             
             if (!this.checkGridHasValidCombination()) {
-                console.log(`🔄 没有有效组合，刷新网格 (${this.refreshCount + 1}/${this.constants.MAX_REFRESH_COUNT})`);
                 this.refreshBattleGrid();
                 this.generateBattleTarget();
                 this.refreshCount++;
                 this.showFeedback('✨ 重新生成数字组合', '#fba9c4');
             } else {
-                // ✅ 有有效组合时重置计数
                 this.refreshCount = 0;
             }
         }, this.constants.REFRESH_DEBOUNCE);
@@ -4697,22 +4716,13 @@ class BattleMode {
         if (!grid) return true;
 
         const cards = Array.from(grid.querySelectorAll('.number-card:not(.matched)'));
-        if (cards.length < 2) {
-            console.log('⚠️ 卡片数量不足 2 张');
-            return false;
-        }
+        if (cards.length < 2) return false;
 
         const targetEl = document.getElementById('battle-target-number');
         if (!targetEl) return true;
         
         const target = parseInt(targetEl.textContent);
         if (isNaN(target)) return true;
-        
-        // ✅ 检查目标数字是否在合理范围内
-        if (target < 0 || target > 18) {
-            console.log('⚠️ 目标数字超出合理范围:', target);
-            return false;
-        }
 
         for (let i = 0; i < cards.length; i++) {
             for (let j = i + 1; j < cards.length; j++) {
@@ -4723,8 +4733,6 @@ class BattleMode {
                 }
             }
         }
-        
-        console.log('❌ 没有找到有效组合，目标:', target, '卡片:', cards.map(c => c.dataset.value));
         return false;
     }
 
@@ -4782,8 +4790,7 @@ class BattleMode {
         if (player2Card) player2Card.classList.toggle('active', !this.room.myTurn);
 
         if (this.room.opponentIsAI && !this.room.myTurn) {
-            // ✅ 使用翻译
-            if (turnText) turnText.textContent = I18n?.t?.('aiThinking') || 'AI 思考中...';
+            if (turnText) turnText.textContent = 'AI思考中...';
             if (timerEl) {
                 timerEl.textContent = `${this.room.timeLeft || 30}s`;
                 timerEl.classList.remove('warning');
