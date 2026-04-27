@@ -3750,6 +3750,7 @@ class BattleMode {
                     console.log('✅ WebSocket 实时连接已建立');
                     this.addSystemMessage('📡 实时连接已建立');
                     this.room.usingPolling = false;
+                    this.startBattlePolling();
                 } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                     console.error('❌ WebSocket 连接失败，切换到轮询模式');
                     if (!this.room.usingPolling) {
