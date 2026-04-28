@@ -1,19 +1,19 @@
 /**
  * ==================== 糖果数学消消乐 - 对战模式 ====================
- * 版本: 9.4.0 (完整修复版 - AI点击 + 资源清理 + 并发冲突 + 再来一局 + 界面美化)
+ * 版本: 9.4.1 (双人对战修复版 - 回合切换 + 退出保护 + 对手检测)
  * 
  * 功能：
- * - 双人对战：使用 Supabase Realtime WebSocket，实时同步，无延迟
+ * - 双人对战：使用 Supabase Realtime WebSocket + 轮询双保险
  * - AI对战：延迟答题（3-7秒），多种难度可选
  * - 再来一局：双方确认后自动重新开始
  * - 界面美化：绚丽糖果风格，与主界面一致
  * 
  * 修复记录：
- * 2024-04-13 - 修复AI对战无法点击卡片问题（延迟事件绑定）
- * 2024-04-13 - 修复关闭界面后AI仍在运行问题（增强资源清理）
- * 2024-04-13 - 修复加入房间并发冲突问题（数据库条件更新）
- * 2024-04-13 - 完善再来一局功能（双方确认机制）
- * 2024-04-13 - 界面美化（绚丽糖果风格）
+ * 2024-04-27 - 修复双人对战回合切换问题（WebSocket + 轮询双保险）
+ * 2024-04-27 - 修复回合切换后立即触发 endTurn 问题
+ * 2024-04-27 - 修复计时器不重置问题
+ * 2024-04-27 - 添加对战进行中防止误点退出
+ * 2024-04-27 - 添加对手退出自动检测
  * ============================================================
  */
 
@@ -182,9 +182,9 @@ class BattleMode {
             TIME_BONUS_FACTOR: 30,
             MAX_TIME_BONUS: 400,
             LOCAL_STORAGE_KEY: 'candy_battle_local',
-            STORAGE_VERSION: '9.4.0',
+            STORAGE_VERSION: '9.4.1',
             STORAGE_EXPIRY: 3600000,
-            MAX_REFRESH_COUNT: 5,
+            MAX_REFRESH_COUNT: 3,
             REFRESH_DEBOUNCE: 300,
             SOUND_QUEUE_MAX: 10,
             WRONG_SOUND_COOLDOWN: 200,
@@ -355,6 +355,7 @@ class BattleMode {
             };
         }
         
+        // ✅ 修复：对战进行中不允许点击外部关闭
         const battleModal = document.getElementById('battle-modal');
         if (battleModal) {
             const oldModal = battleModal.cloneNode(true);
@@ -362,10 +363,16 @@ class BattleMode {
             
             oldModal.onclick = (e) => {
                 if (e.target === oldModal) {
-                    console.log('点击模态框外部，关闭对战');
-                    this.leaveBattle();
-                    if (this.game?.ui) this.game.ui.closeModal('battle-modal');
-                    oldModal.style.display = 'none';
+                    // ✅ 只有游戏未激活时才允许点击外部关闭
+                    if (!this.room.gameActive) {
+                        console.log('点击模态框外部，关闭对战');
+                        this.leaveBattle();
+                        if (this.game?.ui) this.game.ui.closeModal('battle-modal');
+                        oldModal.style.display = 'none';
+                    } else {
+                        // 对战进行中，提示用户使用关闭按钮
+                        this.showFeedback('对战进行中，请使用关闭按钮退出', '#ffa500');
+                    }
                 }
             };
             
@@ -544,8 +551,13 @@ class BattleMode {
             
         } catch (error) {
             console.error('设置实时订阅失败:', error);
-            this.offlineMode = true;
-            console.log('订阅失败，切换到离线模式，可以使用AI对战');
+            // ✅ 只有在网络真正离线时才设置 offlineMode
+            if (!navigator.onLine) {
+                this.offlineMode = true;
+                console.log('网络离线，切换到离线模式');
+            } else {
+                console.log('订阅失败但网络在线，继续尝试使用Supabase');
+            }
             return true;
         }
     }
@@ -572,7 +584,7 @@ class BattleMode {
             return;
         }
         
-        console.log('BattleMode 9.4.0 初始化开始...');
+        console.log('BattleMode 9.4.1 初始化开始...');
         
         if (this.initRetryTimer) {
             clearTimeout(this.initRetryTimer);
@@ -3368,7 +3380,7 @@ class BattleMode {
     }
 
     // ==================== 第 3 部分结束 ====================
-    // ==================== 第 4 部分 / 共 8 部分 ====================
+        // ==================== 第 4 部分 / 共 8 部分 ====================
 
     async joinBattleRoom(roomCode) {
         if (!this.isSupabaseAvailable()) {
@@ -3460,11 +3472,11 @@ class BattleMode {
             this.room.battleId = battle.id;
             this.room.roomCode = roomCode;
             this.room.playerRole = 'player2';
-            this.room.opponentId = battle.player1_id;  // ✅ 对手是房主
+            this.room.opponentId = battle.player1_id;
             this.room.opponentName = battle.player1_name;
             this.room.status = 'playing';
             this.room.gameActive = true;
-            this.room.myTurn = false;  // 房主先手
+            this.room.myTurn = false;
             this.room.opponentIsAI = false;
             this.room.timeLeft = 30;
             
@@ -3671,6 +3683,13 @@ class BattleMode {
                 const oldBattle = payload.old;
                 console.log('📡 收到实时更新:', battle);
                 
+                // ✅ 检测对手退出
+                if (battle.status === 'cancelled' || battle.status === 'finished') {
+                    this.addSystemMessage('对手已退出对战');
+                    this.showBattleResult(battle);
+                    return;
+                }
+                
                 if (this.room.playerRole === 'player1') {
                     this.updateScoreUI('player1-score', battle.player1_score);
                     this.updateScoreUI('player2-score', battle.player2_score);
@@ -3700,27 +3719,25 @@ class BattleMode {
                 // ✅ 检查回合切换
                 const newTurn = battle.current_turn === this.game.state.currentUser.id;
                 if (newTurn !== this.room.myTurn) {
-                    console.log('🔄 回合切换 - 旧状态:', this.room.myTurn, '新状态:', newTurn);
-                    console.log('🔄 数据库 current_turn:', battle.current_turn);
-                    console.log('🔄 我的 ID:', this.game.state.currentUser.id);
+                    console.log('🔄 WebSocket 回合切换 - 旧状态:', this.room.myTurn, '新状态:', newTurn);
                     
                     this.room.myTurn = newTurn;
                     this.updateTurnIndicator();
                     
                     if (this.room.myTurn) {
+                        this.room.timeLeft = 30;  // ✅ 重置计时器
                         this.startTurnTimer();
                         this.addSystemMessage('你的回合');
                         this.showFeedback('轮到你了！', '#a3d8d8');
-                        // 自动检查是否需要刷新网格
-                        setTimeout(() => this.autoRefreshGridIfNeeded(), 500);
+                        // ✅ 只检查是否需要刷新，但不自动 endTurn
+                        if (!this.checkGridHasValidCombination()) {
+                            this.refreshBattleGrid();
+                            this.generateBattleTarget();
+                        }
                     } else {
                         this.stopTurnTimer();
                         this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
                     }
-                }
-                
-                if (battle.status === 'finished') {
-                    this.showBattleResult(battle);
                 }
             })
             .on('postgres_changes', {
@@ -3750,6 +3767,7 @@ class BattleMode {
                     console.log('✅ WebSocket 实时连接已建立');
                     this.addSystemMessage('📡 实时连接已建立');
                     this.room.usingPolling = false;
+                    // ✅ 同时启动轮询作为备份
                     this.startBattlePolling();
                 } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                     console.error('❌ WebSocket 连接失败，切换到轮询模式');
@@ -3803,6 +3821,13 @@ class BattleMode {
                 
                 if (error) throw error;
                 
+                // ✅ 检测对手退出
+                if (battle.status === 'cancelled' || battle.status === 'finished') {
+                    this.addSystemMessage('对手已退出对战');
+                    this.showBattleResult(battle);
+                    return;
+                }
+                
                 if (this.room.playerRole === 'player1') {
                     this.updateScoreUI('player1-score', battle.player1_score);
                     this.updateScoreUI('player2-score', battle.player2_score);
@@ -3823,17 +3848,18 @@ class BattleMode {
                     this.updateTurnIndicator();
                     
                     if (this.room.myTurn) {
+                        this.room.timeLeft = 30;  // ✅ 重置计时器
                         this.startTurnTimer();
                         this.addSystemMessage('你的回合');
-                        setTimeout(() => this.autoRefreshGridIfNeeded(), 500);
+                        // ✅ 只检查是否需要刷新，但不自动 endTurn
+                        if (!this.checkGridHasValidCombination()) {
+                            this.refreshBattleGrid();
+                            this.generateBattleTarget();
+                        }
                     } else {
                         this.stopTurnTimer();
                         this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
                     }
-                }
-                
-                if (battle.status === 'finished') {
-                    this.showBattleResult(battle);
                 }
             } catch (error) {
                 console.error('轮询对战状态失败:', error);
@@ -3912,55 +3938,55 @@ class BattleMode {
     }
 
     async endTurn() {
-    if (!this.room.gameActive || this.endTurnInProgress) return;
-    this.endTurnInProgress = true;
-    
-    try {
-        this.refreshCount = 0;
-        this.stopTurnTimer();
+        if (!this.room.gameActive || this.endTurnInProgress) return;
+        this.endTurnInProgress = true;
         
-        if (this.room.opponentIsAI) {
+        try {
+            this.refreshCount = 0;
+            this.stopTurnTimer();
+            
+            if (this.room.opponentIsAI) {
+                this.room.myTurn = false;
+                this.updateTurnIndicator();
+                this.scheduleAIMove();
+                return;
+            }
+
+            if (!this.isSupabaseAvailable() || !this.room.gameActive) {
+                this.room.myTurn = !this.room.myTurn;
+                this.updateTurnIndicator();
+                return;
+            }
+            
+            // ✅ 正确设置下一个回合：将回合交给对手
+            const nextTurn = this.room.opponentId;
+            
+            console.log('🔄 结束回合 - 当前玩家:', this.room.playerRole);
+            console.log('🔄 结束回合 - 下一个回合交给:', nextTurn);
+
+            const { error } = await this.game.state.supabase
+                .from('candy_math_battles')
+                .update({ current_turn: nextTurn })
+                .eq('id', this.room.battleId);
+
+            if (error) throw error;
+            
+            console.log('✅ 回合已切换，新回合:', nextTurn);
+            
+            // ✅ 关键修复：立即将本地回合设为 false，等待对方操作
             this.room.myTurn = false;
             this.updateTurnIndicator();
-            this.scheduleAIMove();
-            return;
+            this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
+            
+        } catch (error) {
+            console.error('结束回合失败:', error);
+            this.room.myTurn = true;
+            this.startTurnTimer();
+        } finally {
+            this.endTurnInProgress = false;
         }
-
-        if (!this.isSupabaseAvailable() || !this.room.gameActive) {
-            this.room.myTurn = !this.room.myTurn;
-            this.updateTurnIndicator();
-            return;
-        }
-        
-        // ✅ 正确设置下一个回合：将回合交给对手
-        const nextTurn = this.room.opponentId;
-        
-        console.log('🔄 结束回合 - 当前玩家:', this.room.playerRole);
-        console.log('🔄 结束回合 - 下一个回合交给:', nextTurn);
-
-        const { error } = await this.game.state.supabase
-            .from('candy_math_battles')
-            .update({ current_turn: nextTurn })
-            .eq('id', this.room.battleId);
-
-        if (error) throw error;
-        
-        console.log('✅ 回合已切换，新回合:', nextTurn);
-        
-        // ✅ 关键修复：立即将本地回合设为 false，等待对方操作
-        this.room.myTurn = false;
-        this.updateTurnIndicator();
-        this.addSystemMessage(`等待 ${this.room.opponentName} 操作`);
-        
-    } catch (error) {
-        console.error('结束回合失败:', error);
-        this.room.myTurn = true;
-        this.startTurnTimer();
-    } finally {
-        this.endTurnInProgress = false;
     }
-}
-    
+
     // ==================== 快速匹配 ====================
 
     async quickMatch() {
